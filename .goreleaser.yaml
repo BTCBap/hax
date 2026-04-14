@@ -1,0 +1,58 @@
+version: 2
+
+project_name: hax
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: hax
+    main: ./cmd/wallet
+    binary: hax
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X hax/internal/version.Version={{ .Version }}
+        -X hax/internal/version.Prerelease={{ .Prerelease }}
+        -X hax/internal/version.GitCommit={{ .ShortCommit }}
+        -X hax/internal/version.GitBranch={{ .Branch }}
+        -X hax/internal/version.BuildDate={{ .Date }}
+
+archives:
+  - id: default
+    ids:
+      - hax
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - SECURITY.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot"
+
+changelog:
+  disable: true
+
+release:
+  draft: true
+  prerelease: auto

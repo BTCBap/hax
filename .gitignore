@@ -1,0 +1,19 @@
+# Debug logs
+debug.log
+
+# macOS
+**/.DS_Store
+
+# Built binaries and build output
+hax
+wallet
+cmd/wallet/main
+hax-video.mov
+
+build/
+dist/
+
+# Local agent and note directories
+.agents/
+.claude/
+tasks/

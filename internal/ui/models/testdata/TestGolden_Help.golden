@@ -1,0 +1,39 @@
+Help  0%
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│  GETTING STARTED                                                                                 │
+│                                                                                                  │
+│    1. Create or restore a wallet with your password                                              │
+│    2. Back up your seed phrase immediately - Settings (t) then (m)                               │
+│    3. Generate a receive address (r) to accept bitcoin                                           │
+│    4. Monitor balance, history, addresses, and UTXOs from the dashboard                          │
+│                                                                                                  │
+│  KEYBOARD SHORTCUTS                                                                              │
+│                                                                                                  │
+│    Navigation                                                                                    │
+│      esc         Go back / Cancel                                                                │
+│      q           Back on many screens; some dialogs use esc only; quit from dashboard            │
+│      ?           Open help from dashboard / close help                                           │
+│      ctrl+c      Quit application                                                                │
+│                                                                                                  │
+│    Dashboard                                                                                     │
+│      ↑/↓         Navigate menu                                                                   │
+│      enter       Open selected screen                                                            │
+│      r           Receive bitcoin                                                                 │
+│      s           Send bitcoin                                                                    │
+│      h           Transaction history                                                             │
+│      a           Addresses                                                                       │
+│      u           UTXOs                                                                           │
+│      t           Settings                                                                        │
+│                                                                                                  │
+│    Receive                                                                                       │
+│      esc/q       Back                                                                            │
+│      n           Generate new address                                                            │
+│      c           Copy address to clipboard                                                       │
+│      ←/→         Navigate addresses                                                              │
+│                                                                                                  │
+│    History                                                                                       │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+↑/↓ scroll • esc back
