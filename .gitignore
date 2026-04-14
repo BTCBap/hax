@@ -5,8 +5,8 @@ debug.log
 **/.DS_Store
 
 # Built binaries and build output
-hax
-wallet
+/hax
+/wallet
 cmd/wallet/main
 hax-video.mov
 
