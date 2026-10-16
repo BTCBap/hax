@@ -32,6 +32,10 @@ type UnlockModel struct {
 	syncing        bool
 	err            error
 
+	// Set by auto-lock: the wallet to preselect and why we are here.
+	preferredWallet string
+	notice          string
+
 	// Animation
 	lockSpinAngle    float64
 	lockSpinVelocity float64
@@ -153,11 +157,20 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.SetValue("")
 			if len(msg.Wallets) > 0 {
 				m.walletName = msg.Wallets[0]
-				if len(msg.Wallets) == 1 {
-					m.passwordInput.Focus()
-					cmds = append(cmds, textinput.Blink)
-				} else {
-					m.passwordInput.Blur()
+				for i, w := range msg.Wallets {
+					if m.preferredWallet != "" && w == m.preferredWallet {
+						m.walletName, m.selectedWallet, m.cursor = w, i, i
+						m.passwordInput.Focus()
+						cmds = append(cmds, textinput.Blink)
+					}
+				}
+				if !m.passwordInput.Focused() {
+					if len(msg.Wallets) == 1 {
+						m.passwordInput.Focus()
+						cmds = append(cmds, textinput.Blink)
+					} else {
+						m.passwordInput.Blur()
+					}
 				}
 			}
 		}
@@ -289,6 +302,9 @@ func (m UnlockModel) View() string {
 	header := lockIcon + "\n\n" +
 		titleStyle.Render("🔐 Unlock Wallet") + "\n" +
 		styles.SubtitleStyle.Render("Enter your password to access your Bitcoin wallet")
+	if m.notice != "" {
+		header += "\n\n" + styles.WarningText.Render(m.notice)
+	}
 
 	var content string
 

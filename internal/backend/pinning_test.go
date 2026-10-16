@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -108,5 +109,26 @@ func TestVerifyConnection_HandshakeFailsOnChange(t *testing.T) {
 	}
 	if err := dial(s2); err == nil {
 		t.Fatal("handshake succeeded with a different key")
+	}
+}
+
+func TestPinStore_TrustReplacesOnlyExpectedPin(t *testing.T) {
+	s := NewPinStore(t.TempDir() + "/pins.json")
+	if err := s.Trust("h:1", "", "aaa"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Trust("h:1", "stale", "bbb"); err == nil {
+		t.Fatal("stale expected pin accepted")
+	}
+	if err := s.Trust("h:1", "aaa", "bbb"); err != nil {
+		t.Fatal(err)
+	}
+	pins, _ := s.load()
+	if pins["h:1"] != "bbb" {
+		t.Fatalf("pin = %q", pins["h:1"])
+	}
+	pe := &PinMismatchError{Server: "h:1"}
+	if !errors.Is(fmt.Errorf("wrap: %w", pe), ErrCertPinMismatch) {
+		t.Fatal("PinMismatchError must match ErrCertPinMismatch")
 	}
 }
