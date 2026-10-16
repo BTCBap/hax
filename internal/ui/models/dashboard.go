@@ -672,26 +672,35 @@ func (m MainDashboardModel) analyzeTransactionSimple(tx api.Transaction, ourAddr
 	}{txType, netAmount}
 }
 
-// renderFeeEstimates renders network fee estimates
+// renderFeeEstimates renders network fee estimates from the connected backend
+// (Electrum blockchain.estimatefee or Core estimatesmartfee). Missing rates
+// are shown as unavailable — never invented.
 func (m MainDashboardModel) renderFeeEstimates(fees *api.FeeEstimates) string {
 	if fees == nil {
-		return styles.DimText.Render("Loading...")
+		return styles.DimText.Render("Unavailable")
+	}
+
+	format := func(rate float64) string {
+		if rate <= 0 {
+			return "unavailable"
+		}
+		return fmt.Sprintf("%s sat/vB", formatFeeRate(rate))
 	}
 
 	lines := []string{
 		fmt.Sprintf("%s %s",
 			styles.DimText.Render("High:"),
-			styles.HighlightText.Render(fmt.Sprintf("%s sat/vB", formatFeeRate(fees.FastestFee)))),
+			styles.HighlightText.Render(format(fees.FastestFee))),
 		styles.DimText.Render("  Next block"),
 		"",
 		fmt.Sprintf("%s %s",
 			styles.DimText.Render("Med: "),
-			styles.HighlightText.Render(fmt.Sprintf("%s sat/vB", formatFeeRate(fees.HalfHourFee)))),
+			styles.HighlightText.Render(format(fees.HalfHourFee))),
 		styles.DimText.Render("  Within 30 min"),
 		"",
 		fmt.Sprintf("%s %s",
 			styles.DimText.Render("Low: "),
-			styles.HighlightText.Render(fmt.Sprintf("%s sat/vB", formatFeeRate(fees.EconomyFee)))),
+			styles.HighlightText.Render(format(fees.EconomyFee))),
 		styles.DimText.Render("  Within 1 hour"),
 	}
 

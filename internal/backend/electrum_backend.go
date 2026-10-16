@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -1072,48 +1071,70 @@ func (b *ElectrumBackend) BroadcastTransaction(rawTxHex string) (string, error) 
 	return txid, nil
 }
 
-// GetFeeEstimates retrieves current fee rate estimates.
-// Uses mempool.space REST API for precise sat/vB values, falls back to Electrum RPC.
+// GetFeeEstimates retrieves fee rate estimates via Electrum blockchain.estimatefee
+// on the existing server connection (so Tor/SOCKS proxy settings apply).
+// It never contacts third-party HTTP APIs such as mempool.space.
 func (b *ElectrumBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
-	fees, err := b.fetchMempoolPreciseFees()
-	if err == nil {
-		return fees, nil
-	}
-	debugLog("mempool.space precise fees unavailable, falling back to Electrum RPC: %v", err)
-
 	return b.fetchElectrumFeeEstimates()
 }
 
-// fetchMempoolPreciseFees fetches fee estimates from mempool.space /api/v1/fees/precise.
-// Returns precise sat/vB values including sub-1 rates.
-func (b *ElectrumBackend) fetchMempoolPreciseFees() (*api.FeeEstimates, error) {
-	var baseURL string
-	if b.config.Network == "mainnet" {
-		baseURL = "https://mempool.space/api/v1/fees/precise"
-	} else {
-		baseURL = "https://mempool.space/testnet4/api/v1/fees/precise"
+// btcPerKBToSatPerVB converts an Electrum blockchain.estimatefee result (BTC/kB)
+// to sat/vB. ok is false when the server reported no estimate (negative) or a
+// non-positive rate — callers must not invent a fallback rate.
+func btcPerKBToSatPerVB(btcPerKB float64) (satPerVB float64, ok bool) {
+	if btcPerKB < 0 {
+		return 0, false
 	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(baseURL)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	satPerVB = btcPerKB * 100000 // BTC/kB * 1e8 / 1000
+	if satPerVB <= 0 {
+		return 0, false
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	// Floor extremely small positive estimates at the common min-relay rate.
+	if satPerVB < 0.1 {
+		satPerVB = 0.1
 	}
-
-	var fees api.FeeEstimates
-	if err := json.NewDecoder(resp.Body).Decode(&fees); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &fees, nil
+	return satPerVB, true
 }
 
-// fetchElectrumFeeEstimates uses Electrum RPC blockchain.estimatefee as a fallback.
+// assembleFeeEstimates builds FeeEstimates from per-target sat/vB values.
+// A false ok entry means that target is unavailable (left as 0).
+// Returns an error when every target failed — never invents 1 sat/vB.
+func assembleFeeEstimates(rates []float64, ok []bool) (*api.FeeEstimates, error) {
+	if len(rates) != 5 || len(ok) != 5 {
+		return nil, fmt.Errorf("fee estimates unavailable: invalid target count")
+	}
+	any := false
+	for _, v := range ok {
+		if v {
+			any = true
+			break
+		}
+	}
+	if !any {
+		return nil, fmt.Errorf("fee estimates unavailable")
+	}
+	out := &api.FeeEstimates{}
+	if ok[0] {
+		out.FastestFee = rates[0]
+	}
+	if ok[1] {
+		out.HalfHourFee = rates[1]
+	}
+	if ok[2] {
+		out.HourFee = rates[2]
+	}
+	if ok[3] {
+		out.EconomyFee = rates[3]
+	}
+	if ok[4] {
+		out.MinimumFee = rates[4]
+	}
+	return out, nil
+}
+
+// fetchElectrumFeeEstimates uses Electrum RPC blockchain.estimatefee over the
+// existing connection (Tor/proxy aware). Failed targets are left unavailable
+// rather than silently replaced with a hardcoded rate.
 func (b *ElectrumBackend) fetchElectrumFeeEstimates() (*api.FeeEstimates, error) {
 	if !b.IsConnected() {
 		if err := b.Connect(); err != nil {
@@ -1122,39 +1143,32 @@ func (b *ElectrumBackend) fetchElectrumFeeEstimates() (*api.FeeEstimates, error)
 	}
 
 	targets := []int{1, 3, 6, 144, 504}
-	fees := make([]float64, len(targets))
+	rates := make([]float64, len(targets))
+	ok := make([]bool, len(targets))
 
 	for i, target := range targets {
 		result, err := b.request("blockchain.estimatefee", []interface{}{target})
 		if err != nil {
-			fees[i] = 1
+			debugLog("blockchain.estimatefee(%d) failed: %v", target, err)
 			continue
 		}
 
 		var feeRate float64
 		if err := json.Unmarshal(result, &feeRate); err != nil {
-			fees[i] = 1
+			debugLog("blockchain.estimatefee(%d) decode failed: %v", target, err)
 			continue
 		}
 
-		if feeRate < 0 {
-			fees[i] = 1
-		} else {
-			// Convert BTC/kB to sat/vB: BTC/kB * 1e8 / 1000
-			fees[i] = feeRate * 100000
-			if fees[i] < 0.1 {
-				fees[i] = 0.1
-			}
+		satPerVB, valid := btcPerKBToSatPerVB(feeRate)
+		if !valid {
+			debugLog("blockchain.estimatefee(%d) returned no estimate (%v)", target, feeRate)
+			continue
 		}
+		rates[i] = satPerVB
+		ok[i] = true
 	}
 
-	return &api.FeeEstimates{
-		FastestFee:  fees[0],
-		HalfHourFee: fees[1],
-		HourFee:     fees[2],
-		EconomyFee:  fees[3],
-		MinimumFee:  fees[4],
-	}, nil
+	return assembleFeeEstimates(rates, ok)
 }
 
 // GetBlockHeight retrieves the current block height

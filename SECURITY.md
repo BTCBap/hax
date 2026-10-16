@@ -55,3 +55,10 @@ Only the latest release and `main` get security fixes.
 ## Verifying releases
 
 Release archives come with a cosign-signed `checksums.txt`, SBOMs, and SLSA provenance. See [docs/release-verification.md](docs/release-verification.md).
+
+## Privacy notes
+
+- **Fee estimates** come only from the configured backend (Electrum `blockchain.estimatefee` or Bitcoin Core `estimatesmartfee`). They travel over that same connection, so Electrum Tor/SOCKS settings apply. hax does not phone home to mempool.space or other HTTP fee APIs.
+- **Electrum servers** learn the addresses (scripthashes) you query. Prefer your own node, or Tor, when privacy matters.
+- **Optional explorer opens** (History / Send → open tx in browser) use your system browser and are unrelated to fee fetching.
+
