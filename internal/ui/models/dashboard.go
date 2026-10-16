@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -48,6 +49,10 @@ type MainDashboardModel struct {
 
 	// Chain state for confirmation calculation
 	blockHeight int64
+
+	// Re-trust flow for an Electrum server whose TLS key changed.
+	retrustPrompt *backend.PinMismatchError
+	retrustErr    error
 }
 
 // BalanceMsg is sent when balance is fetched
@@ -222,9 +227,19 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		if m.retrustPrompt != nil {
+			return m.handleRetrustKey(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+
+		case "T":
+			if pe := pinMismatch(m.walletManager.GetState()); pe != nil {
+				m.retrustPrompt = pe
+				m.retrustErr = nil
+				return m, nil
+			}
 
 		// Arrow key navigation
 		case "up", "k":
@@ -307,6 +322,15 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MainDashboardModel) View() string {
+	grid := m.viewGrid()
+	state := m.walletManager.GetState()
+	if panel := m.renderRetrustPanel(state); panel != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, grid, panel)
+	}
+	return grid
+}
+
+func (m MainDashboardModel) viewGrid() string {
 	// Get unified state for status display
 	state := m.walletManager.GetState()
 	displayUnit := m.getDisplayUnit()
@@ -373,6 +397,9 @@ func (m MainDashboardModel) View() string {
 		if state.LastError != nil {
 			errMsg = state.LastError.Error()
 			errMsg = truncateRunes(errMsg, 33, "...")
+		}
+		if pinMismatch(state) != nil {
+			errMsg = "Server key changed"
 		}
 		statusIndicator = styles.StatusErrorStyle.Render("● " + errMsg)
 	}

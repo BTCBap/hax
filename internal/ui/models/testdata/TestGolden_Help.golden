@@ -26,6 +26,7 @@ Help  0%
 │      a           Addresses                                                                       │
 │      u           UTXOs                                                                           │
 │      t           Settings                                                                        │
+│      T           Re-trust a changed server key (when shown)                                      │
 │                                                                                                  │
 │    Receive                                                                                       │
 │      esc/q       Back                                                                            │
@@ -33,7 +34,6 @@ Help  0%
 │      c           Copy address to clipboard                                                       │
 │      ←/→         Navigate addresses                                                              │
 │                                                                                                  │
-│    History                                                                                       │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ↑/↓ scroll • esc back

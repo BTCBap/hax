@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BTCBap/hax/internal/backend"
 )
@@ -26,6 +27,23 @@ type AppConfig struct {
 	DisplayUnit      DisplayUnit            `json:"display_unit,omitempty"`   // BIP-177 unit preference
 	GapLimit         int                    `json:"gap_limit,omitempty"`      // Address gap limit (default 20)
 	RecentServers    []backend.SavedServer  `json:"recent_servers,omitempty"` // Recently used Electrum servers
+	// AutoLockMinutes locks an unlocked wallet after this many idle minutes.
+	// 0 uses DefaultAutoLockMinutes; a negative value disables auto-lock.
+	AutoLockMinutes int `json:"auto_lock_minutes,omitempty"`
+}
+
+// DefaultAutoLockMinutes is the idle timeout used when none is configured.
+const DefaultAutoLockMinutes = 10
+
+// AutoLockAfter returns the idle timeout, or 0 when auto-lock is disabled.
+func (c *AppConfig) AutoLockAfter() time.Duration {
+	if c == nil || c.AutoLockMinutes == 0 {
+		return DefaultAutoLockMinutes * time.Minute
+	}
+	if c.AutoLockMinutes < 0 {
+		return 0
+	}
+	return time.Duration(c.AutoLockMinutes) * time.Minute
 }
 
 // ValidationError represents a field-specific validation error

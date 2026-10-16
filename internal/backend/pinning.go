@@ -115,9 +115,7 @@ func (s *PinStore) Check(server string, state tls.ConnectionState) error {
 		return s.save(pins)
 	}
 	if want != got {
-		return fmt.Errorf("%w for %s (pinned %s, presented %s): this may be a key rotation "+
-			"or an interception; refusing to connect. If you verified the change out of band, "+
-			"remove the %q entry from %s", ErrCertPinMismatch, server, want, got, server, s.path)
+		return &PinMismatchError{Server: server, Pinned: want, Presented: got}
 	}
 	return nil
 }
@@ -130,4 +128,48 @@ func verifyConnection(server string) func(tls.ConnectionState) error {
 		return nil
 	}
 	return func(cs tls.ConnectionState) error { return store.Check(server, cs) }
+}
+
+// PinMismatchError describes a server whose TLS public key differs from the
+// pinned one. errors.Is(err, ErrCertPinMismatch) holds for it.
+type PinMismatchError struct {
+	Server    string // host:port
+	Pinned    string // hex SHA-256 of the pinned SubjectPublicKeyInfo
+	Presented string // hex SHA-256 of the key the server presented
+}
+
+func (e *PinMismatchError) Error() string {
+	return fmt.Sprintf("%v for %s (pinned %s, presented %s): this may be a key rotation "+
+		"or an interception; refusing to connect. Re-trust the server from the dashboard "+
+		"only if you verified the new key out of band", ErrCertPinMismatch, e.Server, e.Pinned, e.Presented)
+}
+
+// Is makes errors.Is(err, ErrCertPinMismatch) true.
+func (e *PinMismatchError) Is(target error) bool { return target == ErrCertPinMismatch }
+
+// Trust replaces the pin for server with fingerprint (hex SHA-256 of the
+// public key). It refuses if the stored pin is no longer expected, so a
+// stale confirmation can't overwrite a newer decision.
+func (s *PinStore) Trust(server, expectedOld, fingerprint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pins, err := s.load()
+	if err != nil {
+		return err
+	}
+	if cur, ok := pins[server]; ok && cur != expectedOld {
+		return fmt.Errorf("pin for %s changed since the prompt was shown; reconnect and try again", server)
+	}
+	pins[server] = fingerprint
+	return s.save(pins)
+}
+
+// TrustPresentedKey accepts the key from a PinMismatchError in the default
+// pin store, so the next connection to that server succeeds.
+func TrustPresentedKey(e *PinMismatchError) error {
+	store := getDefaultPinStore()
+	if store == nil {
+		return errors.New("certificate pinning is not enabled")
+	}
+	return store.Trust(e.Server, e.Pinned, e.Presented)
 }

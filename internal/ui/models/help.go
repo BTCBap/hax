@@ -244,6 +244,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("a", "Addresses"))
 	lines = append(lines, m.shortcut("u", "UTXOs"))
 	lines = append(lines, m.shortcut("t", "Settings"))
+	lines = append(lines, m.shortcut("T", "Re-trust a changed server key (when shown)"))
 
 	// Receive
 	lines = append(lines, "")
