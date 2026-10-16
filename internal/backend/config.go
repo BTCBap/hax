@@ -60,10 +60,10 @@ var PublicElectrumServers = map[string][]PublicElectrumServer{
 		{Name: "ACINQ", Host: "electrum.acinq.co", Port: 50002, UseSSL: true},
 		{Name: "Emzy", Host: "electrum.emzy.de", Port: 50002, UseSSL: true},
 		{Name: "Bitaroo", Host: "electrum.bitaroo.net", Port: 50002, UseSSL: true},
-		{Name: "Blockstream (Tor)", Host: "explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion", Port: 50001, UseSSL: false},
 	},
 	"testnet": {
 		{Name: "Mempool.space", Host: "mempool.space", Port: 40002, UseSSL: true},
+		{Name: "C3 Soft (Fulcrum)", Host: "blackie.c3-soft.com", Port: 57010, UseSSL: true},
 	},
 }
 

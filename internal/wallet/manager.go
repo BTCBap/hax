@@ -24,9 +24,12 @@ type WalletManager struct {
 	// encKey/encSalt are the AES key derived from the wallet password at
 	// unlock, kept so the session can re-persist. The password itself is
 	// never retained. Both are wiped on lock. Guarded by keyMu.
-	encKey  []byte
-	encSalt []byte
-	keyMu   sync.RWMutex
+	encKey []byte
+
+	netMu       sync.Mutex
+	netVerified bool // backend genesis matched wallet network
+	encSalt     []byte
+	keyMu       sync.RWMutex
 
 	// dataMu protects m.data and m.data.Accounts.
 	dataMu sync.RWMutex
@@ -126,6 +129,7 @@ func (m *WalletManager) SetBackend(b backend.BitcoinBackend) error {
 	}
 
 	m.backend = b
+	m.resetNetworkVerified()
 
 	m.invalidateBlockchainCache()
 
@@ -200,6 +204,16 @@ func (m *WalletManager) getGapLimit() int {
 
 // CreateWallet creates a new wallet with a generated mnemonic
 func (m *WalletManager) CreateWallet(name string, password string, wordCount int) (string, error) {
+	return m.CreateWalletOnNetwork(name, password, wordCount, NetworkTestnet)
+}
+
+// CreateWalletOnNetwork creates a new software wallet for network
+// (NetworkMainnet or NetworkTestnet). The network is persisted in the wallet
+// file and fixes derivation coin type and address encoding for its lifetime.
+func (m *WalletManager) CreateWalletOnNetwork(name, password string, wordCount int, network string) (string, error) {
+	if _, err := ParamsForNetwork(network); err != nil {
+		return "", err
+	}
 	if err := ValidateWalletName(name); err != nil {
 		return "", err
 	}
@@ -234,7 +248,7 @@ func (m *WalletManager) CreateWallet(name string, password string, wordCount int
 		Name:      name,
 		Mnemonic:  mnemonic,
 		CreatedAt: time.Now().Unix(),
-		Network:   "testnet",
+		Network:   network,
 		Accounts:  make([]AccountData, 0),
 	}
 
@@ -254,6 +268,14 @@ func (m *WalletManager) RestoreWallet(name string, password string, mnemonic str
 // RestoreWalletWithPassphrase creates a wallet from an existing mnemonic and an
 // optional BIP39 passphrase, which is honored on every unlock.
 func (m *WalletManager) RestoreWalletWithPassphrase(name, password, mnemonic, passphrase string) error {
+	return m.RestoreWalletOnNetwork(name, password, mnemonic, passphrase, NetworkTestnet)
+}
+
+// RestoreWalletOnNetwork restores a software wallet for network.
+func (m *WalletManager) RestoreWalletOnNetwork(name, password, mnemonic, passphrase, network string) error {
+	if _, err := ParamsForNetwork(network); err != nil {
+		return err
+	}
 	if err := ValidateWalletName(name); err != nil {
 		return err
 	}
@@ -277,7 +299,7 @@ func (m *WalletManager) RestoreWalletWithPassphrase(name, password, mnemonic, pa
 		Mnemonic:   mnemonic,
 		Passphrase: passphrase,
 		CreatedAt:  time.Now().Unix(),
-		Network:    "testnet",
+		Network:    network,
 		Accounts:   make([]AccountData, 0),
 	}
 
@@ -563,6 +585,20 @@ func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 			Wipe(key)
 			m.state.SetError(fmt.Errorf("failed to create HD wallet: %w", err))
 			return fmt.Errorf("failed to create HD wallet: %w", err)
+		}
+	}
+
+	// Hard fail if the server is on another chain. If the server is
+	// unreachable the check is deferred to the first sync connection.
+	m.resetNetworkVerified()
+	if m.backend != nil {
+		if cerr := m.backend.Connect(); cerr == nil {
+			if _, err := checkBackendNetwork(m.backend, data.Network); err != nil {
+				Wipe(key)
+				m.state.SetError(err)
+				return err
+			}
+			m.netVerified = true
 		}
 	}
 

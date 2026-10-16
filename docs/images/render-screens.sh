@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 tmp=$(mktemp -d)
 HAX_SCREENSHOT_DIR="$tmp" go test ./internal/ui/models -tags screenshots -run TestScreenshots -count=1
-for f in dashboard receive history help; do
+for f in dashboard receive send history utxos help; do
   freeze --language ansi --window=false --theme catppuccin-mocha --padding 24 \
     --font.size 15 --output "$tmp/$f.svg" "$tmp/$f.ansi" </dev/null >/dev/null
   read -r W H < <(head -c 400 "$tmp/$f.svg" | grep -oE 'width="[0-9.]+" height="[0-9.]+"' | head -1 | tr -dc '0-9. ' | awk '{print int($1)+1, int($2)+1}')

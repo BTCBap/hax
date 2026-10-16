@@ -636,6 +636,9 @@ func (m *WalletManager) BroadcastPSBT(result *PSBTResult) (string, error) {
 	}
 
 	// Broadcast
+	if err := m.ensureNetworkVerified(); err != nil {
+		return "", err
+	}
 	txID, err := m.backend.BroadcastTransaction(txHex)
 	if err != nil {
 		return "", fmt.Errorf("failed to broadcast transaction: %w", err)

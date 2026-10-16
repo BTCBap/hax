@@ -1,6 +1,6 @@
 # Security Policy
 
-hax is experimental software for **Bitcoin testnet4**. Do not use it with keys or seed phrases that control real bitcoin.
+hax is beta software for Bitcoin mainnet and testnet4. It has not been independently audited.
 
 ## Reporting a vulnerability
 

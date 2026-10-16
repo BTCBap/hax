@@ -28,6 +28,7 @@ const (
 	StepShowMnemonic
 	StepConfirmMnemonic
 	StepComplete
+	StepChooseNetwork // mainnet / testnet4 (create + restore, software seed)
 
 	// Restore flow steps
 	StepRestoreChooseMethod
@@ -81,6 +82,8 @@ type WalletSetupModel struct {
 	walletName           string
 	password             string
 	wordCount            int
+	network              string // wallet.NetworkTestnet or wallet.NetworkMainnet
+	confirmMainnet       bool   // mainnet warning shown, awaiting y/n
 	generatedMnemonic    string
 	selectedScriptType   wallet.AddressType
 	customDerivationPath string // Optional custom derivation path (e.g. "m/84'/0'/3'")
@@ -245,6 +248,7 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 		confirmPasswordInput: confirmPasswordInput,
 		mnemonicInput:        mnemonicInput,
 		wordCount:            12, // Default to 12 words
+		network:              wallet.NetworkTestnet,
 		hasLastWallet:        hasLastWallet,
 		lastWalletName:       lastWalletName,
 		selectedWallet:       lastWalletName, // Pre-select the last wallet
@@ -384,6 +388,10 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.step == StepChooseAction {
 				return m, tea.Quit
 			}
+			if m.step == StepChooseNetwork && m.confirmMainnet {
+				m.confirmMainnet = false
+				return m, nil
+			}
 			// Clear errors when navigating back
 			m.hwiError = nil
 			m.err = nil
@@ -424,6 +432,9 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case StepChooseWordCount:
 			return m.handleChooseWordCount(msg)
+
+		case StepChooseNetwork:
+			return m.handleChooseNetwork(msg)
 
 		case StepShowMnemonic:
 			switch msg.String() {
@@ -592,7 +603,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "enter" {
 				if m.confirmPasswordInput.Value() == m.password {
 					// Restore the wallet
-					err := m.walletManager.RestoreWallet(m.walletName, m.password, m.restoreMnemonic)
+					err := m.walletManager.RestoreWalletOnNetwork(m.walletName, m.password, m.restoreMnemonic, "", m.network)
 					if err != nil {
 						m.err = fmt.Errorf("failed to restore wallet: %w", err)
 						return m, tea.Batch(cmds...)
@@ -859,9 +870,10 @@ func (m WalletSetupModel) proceedFromScriptType() (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	}
-	// Restore flow
-	m.step = StepRestoreEnterPassword
-	return m, m.passwordInput.Focus()
+	// Restore flow: choose network before setting the password
+	m.step = StepChooseNetwork
+	m.cursor = 0
+	return m, nil
 }
 
 func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -883,7 +895,7 @@ func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.
 		}
 
 		// Generate wallet
-		mnemonic, err := m.walletManager.CreateWallet(m.walletName, m.password, m.wordCount)
+		mnemonic, err := m.walletManager.CreateWalletOnNetwork(m.walletName, m.password, m.wordCount, m.network)
 		if err != nil {
 			m.err = err
 			return m, nil
@@ -1000,8 +1012,13 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 		return StepConfirmPassword
 	case StepChooseKeySource:
 		return StepChooseScriptType
-	case StepChooseWordCount:
+	case StepChooseNetwork:
+		if m.isRestore {
+			return StepRestoreChooseScriptType
+		}
 		return StepChooseKeySource
+	case StepChooseWordCount:
+		return StepChooseNetwork
 	case StepShowMnemonic:
 		return StepChooseWordCount
 
@@ -1039,7 +1056,7 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 	case StepRestoreChooseScriptType:
 		return StepRestoreEnterMnemonic
 	case StepRestoreEnterPassword:
-		return StepRestoreChooseScriptType
+		return StepChooseNetwork
 	case StepRestoreConfirmPassword:
 		return StepRestoreEnterPassword
 
@@ -1070,6 +1087,8 @@ func (m WalletSetupModel) getStepProgress() float64 {
 		return 0.40
 	case StepChooseScriptType:
 		return 0.60
+	case StepChooseNetwork:
+		return 0.75
 	case StepChooseWordCount:
 		return 0.80
 	case StepShowMnemonic:
@@ -1130,6 +1149,11 @@ func (m WalletSetupModel) renderProgressBar() string {
 		stepNum, totalSteps = 2, 5
 	case StepChooseScriptType:
 		stepNum, totalSteps = 3, 5
+	case StepChooseNetwork:
+		stepNum, totalSteps = 4, 5
+		if m.isRestore {
+			stepNum = 3
+		}
 	case StepChooseWordCount:
 		stepNum, totalSteps = 4, 5
 	case StepShowMnemonic:
@@ -1200,6 +1224,8 @@ func (m WalletSetupModel) View() string {
 		content.WriteString(m.viewChooseScriptType())
 	case StepChooseWordCount:
 		content.WriteString(m.viewChooseWordCount())
+	case StepChooseNetwork:
+		content.WriteString(m.viewChooseNetwork())
 	case StepShowMnemonic:
 		content.WriteString(m.viewShowMnemonic())
 
@@ -1557,8 +1583,8 @@ func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyMsg) (tea.Model, tea.
 		}
 	case "enter":
 		if m.cursor == 0 {
-			// Generate new seed - go to word count selection
-			m.step = StepChooseWordCount
+			// Generate new seed - choose network, then word count
+			m.step = StepChooseNetwork
 			m.cursor = 0
 		} else {
 			// Import from hardware wallet - scan for devices
@@ -2841,4 +2867,86 @@ func (m *WalletSetupModel) createWalletFromDescriptor() error {
 		cfg.AddressType,
 		"descriptor", // device type
 	)
+}
+
+// =============================================================================
+// Network selection
+// =============================================================================
+
+func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirmMainnet {
+		switch msg.String() {
+		case "y", "Y":
+			m.confirmMainnet = false
+			m.network = wallet.NetworkMainnet
+			return m.advanceFromNetwork()
+		case "n", "N":
+			m.confirmMainnet = false
+		}
+		return m, nil
+	}
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < 1 {
+			m.cursor++
+		}
+	case "enter":
+		if m.cursor == 0 {
+			// Mainnet requires an explicit second confirmation.
+			m.confirmMainnet = true
+			return m, nil
+		}
+		m.network = wallet.NetworkTestnet
+		return m.advanceFromNetwork()
+	}
+	return m, nil
+}
+
+func (m WalletSetupModel) advanceFromNetwork() (tea.Model, tea.Cmd) {
+	m.cursor = 0
+	if m.isRestore {
+		m.step = StepRestoreEnterPassword
+		return m, m.passwordInput.Focus()
+	}
+	m.step = StepChooseWordCount
+	return m, nil
+}
+
+func (m WalletSetupModel) viewChooseNetwork() string {
+	if m.confirmMainnet {
+		warning := styles.RenderErrorBox(
+			"Mainnet wallet\n\n"+
+				"hax is beta software and has not been independently audited.\n"+
+				"The network cannot be changed after creation.", m.width)
+		help := styles.RenderHelp(
+			styles.HK("y", "continue on mainnet"),
+			styles.HK("n/esc", "go back"),
+		)
+		return styles.CenterHorizontal(warning+"\n\n"+help, m.width)
+	}
+
+	info := styles.DimText.Render("Which Bitcoin network is this wallet for?")
+	options := []struct{ name, desc string }{
+		{"Mainnet", "Bitcoin network."},
+		{"Testnet4", "Test network; coins have no value."},
+	}
+	menu := ""
+	for i, opt := range options {
+		if m.cursor == i {
+			menu += styles.SelectedItemStyle.Render("▶ "+opt.name) + "\n"
+			menu += styles.DimText.Render("   "+opt.desc) + "\n"
+		} else {
+			menu += styles.UnselectedItemStyle.Render("  "+opt.name) + "\n"
+		}
+	}
+	help := styles.RenderHelp(
+		styles.HK("↑/↓", "navigate"),
+		styles.HK("enter", "select"),
+		styles.HK("esc", "back"),
+	)
+	return styles.CenterHorizontal(info+"\n\n"+menu+help, m.width)
 }
