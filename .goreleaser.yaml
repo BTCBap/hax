@@ -1,43 +1,44 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
 project_name: hax
 
 before:
   hooks:
+    - go mod tidy -diff
     - go test ./...
 
 builds:
   - id: hax
-    main: ./cmd/wallet
+    main: ./cmd/hax
     binary: hax
     env:
       - CGO_ENABLED=0
-    goos:
-      - darwin
-      - linux
-      - windows
-    goarch:
-      - amd64
-      - arm64
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    # Reproducible builds: strip paths, no VCS-dependent timestamps.
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - >-
-        -s -w
-        -X hax/internal/version.Version={{ .Version }}
-        -X hax/internal/version.Prerelease={{ .Prerelease }}
-        -X hax/internal/version.GitCommit={{ .ShortCommit }}
-        -X hax/internal/version.GitBranch={{ .Branch }}
-        -X hax/internal/version.BuildDate={{ .Date }}
+        -s -w -buildid=
+        -X github.com/BTCBap/hax/internal/version.Version={{ .Version }}
+        -X github.com/BTCBap/hax/internal/version.Prerelease={{ .Prerelease }}
+        -X github.com/BTCBap/hax/internal/version.GitCommit={{ .ShortCommit }}
+        -X github.com/BTCBap/hax/internal/version.GitBranch={{ .Branch }}
+        -X github.com/BTCBap/hax/internal/version.BuildDate={{ .CommitDate }}
 
 archives:
   - id: default
-    ids:
-      - hax
-    formats:
-      - tar.gz
+    ids: [hax]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        formats:
-          - zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE
@@ -47,11 +48,39 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# SPDX SBOM per archive (requires syft).
+sboms:
+  - artifacts: archive
+
+# Keyless Sigstore signature over checksums.txt (GitHub OIDC identity).
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    artifacts: checksum
+    output: true
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+
 snapshot:
-  version_template: "{{ .Version }}-snapshot"
+  version_template: "{{ incpatch .Version }}-snapshot"
 
 changelog:
-  disable: true
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Homebrew tap intentionally disabled until a tap repo exists.
+# brews:
+#   - repository: { owner: BTCBap, name: homebrew-tap }
 
 release:
   draft: true
