@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -206,7 +207,7 @@ func (m *WalletManager) scanAddressChainWithContext(ctx context.Context, account
 			balance, _ = m.backend.GetAddressBalance(addr)
 		}
 		scripthash, _ := m.backend.AddressToScripthash(addr)
-		m.backend.SubscribeAddress(addr)
+		_, _ = m.backend.SubscribeAddress(addr)
 
 		// Cache the address info
 		entry := &AddressCacheEntry{
@@ -445,7 +446,9 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 	// Sync address usage to ensure we have all addresses
 	if !opts.SkipAddressScan {
 		setStatus("Scanning addresses...")
-		m.SyncAddressUsage(0)
+		if err := m.SyncAddressUsage(0); err != nil {
+			log.Printf("[SYNC] address scan failed: %v", err)
+		}
 	}
 
 	// Fetch UTXOs first (needed for accurate balance)
@@ -778,7 +781,7 @@ func (m *WalletManager) GetBalance(accountIndex uint32) (api.Satoshi, error) {
 		currentIndex++
 
 		// Safety limit
-		if currentIndex > uint32(gapLimit*5) {
+		if currentIndex > uint32(gapLimit*5) { // #nosec G115 -- gap limit is a small positive config value
 			break
 		}
 	}

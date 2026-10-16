@@ -31,8 +31,8 @@ func newPipedBackend(t *testing.T) (*ElectrumBackend, net.Conn) {
 	t.Helper()
 	clientConn, serverConn := net.Pipe()
 	t.Cleanup(func() {
-		clientConn.Close()
-		serverConn.Close()
+		_ = clientConn.Close()
+		_ = serverConn.Close()
 	})
 
 	b := &ElectrumBackend{
@@ -56,7 +56,7 @@ func writeJSONLine(t *testing.T, w net.Conn, v interface{}) {
 	if err != nil {
 		t.Fatalf("writeJSONLine: marshal error: %v", err)
 	}
-	w.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_ = w.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	if _, err := w.Write(append(data, '\n')); err != nil {
 		t.Fatalf("writeJSONLine: write error: %v", err)
 	}
@@ -65,7 +65,7 @@ func writeJSONLine(t *testing.T, w net.Conn, v interface{}) {
 // readJSONLine reads one newline-terminated line from conn and unmarshals it.
 func readJSONLine(t *testing.T, conn net.Conn, dst interface{}) {
 	t.Helper()
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	r := bufio.NewReader(conn)
 	line, err := r.ReadBytes('\n')
 	if err != nil {
@@ -84,7 +84,7 @@ func refusedAddr(t *testing.T) string {
 		t.Fatalf("refusedAddr: listen: %v", err)
 	}
 	addr := l.Addr().String()
-	l.Close() // Close immediately so the port refuses connections
+	_ = l.Close() // Close immediately so the port refuses connections
 	return addr
 }
 
@@ -184,7 +184,7 @@ func TestDisconnect_WhenNotConnected(t *testing.T) {
 
 func TestDisconnect_Idempotent(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	if err := b.Disconnect(); err != nil {
 		t.Fatalf("first disconnect error: %v", err)
@@ -199,7 +199,7 @@ func TestDisconnect_Idempotent(t *testing.T) {
 
 func TestDisconnect_MarksDisconnected(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	if !b.IsConnected() {
 		t.Fatal("expected connected before disconnect")
@@ -214,7 +214,7 @@ func TestDisconnect_MarksDisconnected(t *testing.T) {
 
 func TestDisconnect_SignalsReaderDone(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	if err := b.Disconnect(); err != nil {
 		t.Fatalf("disconnect error: %v", err)
@@ -288,14 +288,14 @@ func TestReadLoop_ExitsWhenConnectionClosed(t *testing.T) {
 	go b.readLoop()
 
 	// Close server side → client ReadBytes returns EOF → loop exits
-	serverConn.Close()
+	_ = serverConn.Close()
 
 	waitFor(t, 2*time.Second, func() bool { return !b.IsConnected() })
 }
 
 func TestReadLoop_ExitsOnReaderDoneSignal(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	go b.readLoop()
 
@@ -304,7 +304,7 @@ func TestReadLoop_ExitsOnReaderDoneSignal(t *testing.T) {
 
 	// The loop should exit within a read deadline (60s is too long to wait;
 	// also close the server conn so the blocking read unblocks immediately).
-	serverConn.Close()
+	_ = serverConn.Close()
 
 	waitFor(t, 2*time.Second, func() bool { return !b.IsConnected() })
 }
@@ -314,8 +314,8 @@ func TestReadLoop_SkipsMalformedJSON(t *testing.T) {
 	go b.readLoop()
 
 	// Send malformed JSON line — readLoop should skip it and continue.
-	serverConn.SetWriteDeadline(time.Now().Add(time.Second))
-	serverConn.Write([]byte("{invalid json\n"))
+	_ = serverConn.SetWriteDeadline(time.Now().Add(time.Second))
+	_, _ = serverConn.Write([]byte("{invalid json\n"))
 
 	// Now send a valid header notification — proves the loop continued.
 	writeJSONLine(t, serverConn, map[string]interface{}{
@@ -332,7 +332,7 @@ func TestReadLoop_SkipsMalformedJSON(t *testing.T) {
 		t.Fatal("expected header notification after malformed JSON was skipped")
 	}
 
-	serverConn.Close()
+	_ = serverConn.Close()
 }
 
 func TestReadLoop_RoutesResponseByID(t *testing.T) {
@@ -365,7 +365,7 @@ func TestReadLoop_RoutesResponseByID(t *testing.T) {
 		t.Fatal("response not delivered to pending channel")
 	}
 
-	serverConn.Close()
+	_ = serverConn.Close()
 }
 
 func TestReadLoop_DropsResponseForUnknownID(t *testing.T) {
@@ -383,7 +383,7 @@ func TestReadLoop_DropsResponseForUnknownID(t *testing.T) {
 	// Give readLoop a moment to process then verify no crash.
 	time.Sleep(50 * time.Millisecond)
 
-	serverConn.Close()
+	_ = serverConn.Close()
 	waitFor(t, 2*time.Second, func() bool { return !b.IsConnected() })
 }
 
@@ -411,7 +411,7 @@ func TestReadLoop_RoutesNotificationToHandler(t *testing.T) {
 		t.Fatal("expected scripthash notification from readLoop")
 	}
 
-	serverConn.Close()
+	_ = serverConn.Close()
 }
 
 // ─── request() Error Path Tests ───────────────────────────────────────────────
@@ -444,7 +444,7 @@ func TestRequest_SuccessfulRoundtrip(t *testing.T) {
 		t.Fatalf("unexpected result: %s", result)
 	}
 
-	serverConn.Close()
+	_ = serverConn.Close()
 }
 
 func TestRequest_ServerReturnsError(t *testing.T) {
@@ -477,14 +477,14 @@ func TestRequest_ServerReturnsError(t *testing.T) {
 		t.Fatalf("expected server message in error, got: %v", err)
 	}
 
-	serverConn.Close()
+	_ = serverConn.Close()
 }
 
 func TestRequest_WriteFailureDisconnects(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
 
 	// Close the server side so the client write will fail.
-	serverConn.Close()
+	_ = serverConn.Close()
 	// Give OS a moment to propagate the close.
 	time.Sleep(10 * time.Millisecond)
 
@@ -506,7 +506,7 @@ func TestRequest_NotConnectedReconnectFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	var port int
-	fmt.Sscan(portStr, &port)
+	_, _ = fmt.Sscan(portStr, &port)
 
 	b := &ElectrumBackend{
 		config: &BackendConfig{
@@ -615,7 +615,7 @@ func TestServerInfo_ReflectsSetValues(t *testing.T) {
 
 func TestConnect_AlreadyConnectedIsNoop(t *testing.T) {
 	b, serverConn := newPipedBackend(t)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	// Backend is already connected — calling Connect() must return nil immediately.
 	if err := b.Connect(); err != nil {

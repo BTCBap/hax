@@ -467,7 +467,7 @@ func (m ConnectionSetupModel) testConnection() tea.Cmd {
 		if err := b.Connect(); err != nil {
 			return ConnectionTestMsg{Success: false, Error: err}
 		}
-		defer b.Disconnect()
+		defer func() { _ = b.Disconnect() }()
 
 		err = b.TestConnection()
 		if err != nil {
@@ -627,7 +627,9 @@ func (m ConnectionSetupModel) saveRecentServers() {
 		return
 	}
 	existing.RecentServers = m.recentServers
-	m.configManager.Save(existing)
+	if err := m.configManager.Save(existing); err != nil {
+		debugLog("[CONNECTION] saving recent servers failed: %v", err)
+	}
 }
 
 func (m ConnectionSetupModel) getPreviousStep() ConnectionSetupStep {

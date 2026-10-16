@@ -645,7 +645,7 @@ func (w *HDWallet) DeriveBIP48Key(path BIP48Path, change, index uint32) (*hdkeyc
 		hdkeychain.HardenedKeyStart + 48, // BIP48 purpose
 		hdkeychain.HardenedKeyStart + path.CoinType,
 		hdkeychain.HardenedKeyStart + path.Account,
-		hdkeychain.HardenedKeyStart + uint32(path.ScriptType),
+		hdkeychain.HardenedKeyStart + uint32(path.ScriptType), // #nosec G115 -- BIP48 script types are 1 or 2
 		change,
 		index,
 	}
@@ -671,7 +671,7 @@ func (w *HDWallet) GetMultisigAccountXpub(path BIP48Path) (string, error) {
 		hdkeychain.HardenedKeyStart + 48,
 		hdkeychain.HardenedKeyStart + path.CoinType,
 		hdkeychain.HardenedKeyStart + path.Account,
-		hdkeychain.HardenedKeyStart + uint32(path.ScriptType),
+		hdkeychain.HardenedKeyStart + uint32(path.ScriptType), // #nosec G115 -- BIP48 script types are 1 or 2
 	}
 
 	var err error
@@ -761,13 +761,13 @@ func BuildMultisigScript(m int, sortedPubKeys [][]byte) ([]byte, error) {
 	}
 
 	builder := txscript.NewScriptBuilder()
-	builder.AddOp(txscript.OP_1 - 1 + byte(m)) // OP_M
+	builder.AddOp(txscript.OP_1 - 1 + byte(m)) // #nosec G115 -- 1 <= m <= 15 checked above
 
 	for _, pk := range sortedPubKeys {
 		builder.AddData(pk)
 	}
 
-	builder.AddOp(txscript.OP_1 - 1 + byte(len(sortedPubKeys))) // OP_N
+	builder.AddOp(txscript.OP_1 - 1 + byte(len(sortedPubKeys))) // #nosec G115 -- at most 15 keys checked above
 	builder.AddOp(txscript.OP_CHECKMULTISIG)
 
 	return builder.Script()

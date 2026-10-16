@@ -159,7 +159,7 @@ func encodeMultisigOutput(buf *cborBuf, info DescriptorInfo) ([]byte, error) {
 
 	// Key 1: threshold (M)
 	buf.writeUint(1)
-	buf.writeUint(uint64(info.Threshold))
+	buf.writeUint(uint64(info.Threshold)) // #nosec G115 -- threshold is a validated small positive M
 
 	// Key 2: array of crypto-hdkeys
 	buf.writeUint(2)
@@ -259,7 +259,7 @@ func encodeCryptoCoinInfo(buf *cborBuf, network int) {
 		// Testnet: specify network=1
 		buf.writeMapHeader(1)
 		buf.writeUint(2)
-		buf.writeUint(uint64(network))
+		buf.writeUint(uint64(network)) // #nosec G115 -- network is a non-negative enum
 	}
 }
 

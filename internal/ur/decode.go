@@ -109,7 +109,7 @@ func decodeCBORByteString(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported CBOR additional info: %d", additional)
 	}
 
-	if uint64(len(data)-headerLen) < length {
+	if uint64(len(data)-headerLen) < length { // #nosec G115 -- headerLen <= len(data) checked above
 		return nil, fmt.Errorf("CBOR byte string length %d exceeds available data %d", length, len(data)-headerLen)
 	}
 

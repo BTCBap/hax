@@ -22,7 +22,7 @@ func main() {
 			fmt.Println("fatal:", err)
 			os.Exit(1)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 	} else {
 		log.SetOutput(io.Discard)
 	}

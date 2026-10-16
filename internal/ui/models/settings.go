@@ -625,7 +625,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cfg, err := m.configManager.Load()
 				if err == nil && cfg != nil {
 					cfg.DisplayUnit = m.displayUnit
-					m.configManager.Save(cfg)
+					if err := m.configManager.Save(cfg); err != nil {
+						debugLog("[SETTINGS] saving display unit failed: %v", err)
+					}
 				}
 			}
 			m.showCopied = true
@@ -670,7 +672,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cfg, err := m.configManager.Load()
 				if err == nil && cfg != nil {
 					cfg.GapLimit = m.gapLimit
-					m.configManager.Save(cfg)
+					if err := m.configManager.Save(cfg); err != nil {
+						debugLog("[SETTINGS] saving gap limit failed: %v", err)
+					}
 				}
 			}
 			m.showCopied = true

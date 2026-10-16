@@ -38,7 +38,7 @@ func mockRPCServer(t *testing.T, handlers map[string]interface{}) *httptest.Serv
 					Message: "Method not found",
 				},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
 
@@ -48,7 +48,7 @@ func mockRPCServer(t *testing.T, handlers map[string]interface{}) *httptest.Serv
 				ID:    req.ID,
 				Error: rpcErr,
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
 
@@ -61,7 +61,7 @@ func mockRPCServer(t *testing.T, handlers map[string]interface{}) *httptest.Serv
 			ID:     req.ID,
 			Result: resultBytes,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 }
 
@@ -458,7 +458,7 @@ func TestRPCBackend_GetAddressInfo_NoUTXOs(t *testing.T) {
 		}
 
 		var req rpcRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		var resp rpcResponse
 		resp.ID = req.ID
@@ -477,7 +477,7 @@ func TestRPCBackend_GetAddressInfo_NoUTXOs(t *testing.T) {
 			resp.Error = &rpcError{Code: -1, Message: "Index is not enabled for filtertype basic"}
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -709,7 +709,7 @@ func TestRPCBackend_GetAddressTransactions_Scanblocks(t *testing.T) {
 		}
 
 		var req rpcRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		var resp rpcResponse
 		resp.ID = req.ID
@@ -798,7 +798,7 @@ func TestRPCBackend_GetAddressTransactions_Scanblocks(t *testing.T) {
 			resp.Error = &rpcError{Code: -32601, Message: "Method not found"}
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -834,7 +834,7 @@ func TestRPCBackend_GetAddressTransactions_Fallback(t *testing.T) {
 		}
 
 		var req rpcRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		var resp rpcResponse
 		resp.ID = req.ID
@@ -892,7 +892,7 @@ func TestRPCBackend_GetAddressTransactions_Fallback(t *testing.T) {
 			resp.Error = &rpcError{Code: -32601, Message: "Method not found"}
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -942,7 +942,7 @@ func TestRPCBackend_GetAddressInfo_SpentViaScanblocks(t *testing.T) {
 		}
 
 		var req rpcRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		var resp rpcResponse
 		resp.ID = req.ID
@@ -962,7 +962,7 @@ func TestRPCBackend_GetAddressInfo_SpentViaScanblocks(t *testing.T) {
 			resp.Result = result
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -989,7 +989,7 @@ func TestRPCBackend_GetTransaction_NoPrevout(t *testing.T) {
 		}
 
 		var req rpcRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		var resp rpcResponse
 		resp.ID = req.ID
@@ -998,7 +998,7 @@ func TestRPCBackend_GetTransaction_NoPrevout(t *testing.T) {
 		case "getrawtransaction":
 			params, _ := json.Marshal(req.Params)
 			var args []interface{}
-			json.Unmarshal(params, &args)
+			_ = json.Unmarshal(params, &args)
 			txid, _ := args[0].(string)
 
 			switch txid {
@@ -1069,7 +1069,7 @@ func TestRPCBackend_GetTransaction_NoPrevout(t *testing.T) {
 			resp.Error = &rpcError{Code: -32601, Message: "Method not found"}
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -1228,7 +1228,7 @@ func TestRPCBackend_CallRPC_MalformedResponse(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		w.Write([]byte("this is not json"))
+		_, _ = w.Write([]byte("this is not json"))
 	}))
 	defer server.Close()
 

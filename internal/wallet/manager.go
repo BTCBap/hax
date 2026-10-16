@@ -123,7 +123,7 @@ func (m *WalletManager) SetBackend(b backend.BitcoinBackend) error {
 	m.StopBackgroundSync()
 
 	if m.backend != nil {
-		m.backend.Disconnect()
+		_ = m.backend.Disconnect()
 	}
 
 	if err := b.TestConnection(); err != nil {
@@ -720,7 +720,7 @@ func (m *WalletManager) CreateAccount(name string, addrType AddressType, customD
 	}
 
 	m.dataMu.Lock()
-	accountIndex := uint32(len(m.data.Accounts))
+	accountIndex := uint32(len(m.data.Accounts)) // #nosec G115 -- account count is tiny
 	account := AccountData{
 		Index:                accountIndex,
 		Name:                 name,
