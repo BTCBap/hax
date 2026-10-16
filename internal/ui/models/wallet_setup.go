@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"hax/internal/config"
-	"hax/internal/ui/styles"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 // WalletSetupStep represents the current step in wallet setup

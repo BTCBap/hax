@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"hax/internal/api"
-	"hax/internal/backend"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/psbt"

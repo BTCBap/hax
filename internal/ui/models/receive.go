@@ -9,10 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
-	"hax/internal/api"
-	"hax/internal/ui"
-	"hax/internal/ui/styles"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type ReceiveModel struct {

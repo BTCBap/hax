@@ -12,10 +12,10 @@ import (
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
-	"hax/internal/api"
-	"hax/internal/config"
-	"hax/internal/ui/styles"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type MainDashboardModel struct {

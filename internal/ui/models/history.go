@@ -16,8 +16,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
-	"hax/internal/api"
-	"hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
 type TransactionHistoryModel struct {

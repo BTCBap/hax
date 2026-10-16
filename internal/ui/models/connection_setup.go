@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"hax/internal/backend"
-	"hax/internal/config"
-	"hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"

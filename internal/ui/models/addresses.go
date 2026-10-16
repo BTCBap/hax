@@ -10,10 +10,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"hax/internal/api"
-	"hax/internal/config"
-	"hax/internal/ui/styles"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 // AddrDisplayInfo holds info about an address for display

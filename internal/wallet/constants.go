@@ -1,6 +1,6 @@
 package wallet
 
-import "hax/internal/api"
+import "github.com/BTCBap/hax/internal/api"
 
 // Bitcoin protocol constants
 const (

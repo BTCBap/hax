@@ -1,9 +1,9 @@
 package models
 
 import (
-	"hax/internal/api"
-	"hax/internal/backend"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 // WalletService defines the interface that UI models use to interact with the wallet.

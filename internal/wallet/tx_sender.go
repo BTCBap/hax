@@ -3,7 +3,7 @@ package wallet
 import (
 	"fmt"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // TxRecipient represents a single output in a batch transaction

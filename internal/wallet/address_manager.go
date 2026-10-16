@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // resolvePathPrefix returns the expected path prefix for addresses in an account.

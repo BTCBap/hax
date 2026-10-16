@@ -3,8 +3,8 @@ package models
 import (
 	"fmt"
 
-	"hax/internal/ui/styles"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 // Restore flow view functions

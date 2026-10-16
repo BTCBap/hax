@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // GetTransactionLabel returns the label for a transaction (BIP-329)

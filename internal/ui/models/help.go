@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"

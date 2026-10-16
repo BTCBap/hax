@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"hax/internal/backend"
+	"github.com/BTCBap/hax/internal/backend"
 )
 
 // DisplayUnit represents the unit for displaying Bitcoin amounts (BIP-177)

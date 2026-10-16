@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/btcutil/psbt"

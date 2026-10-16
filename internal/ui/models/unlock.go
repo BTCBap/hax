@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
-	"hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
 type UnlockModel struct {

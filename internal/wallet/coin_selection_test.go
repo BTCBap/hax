@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // makeUTXO is a test helper that creates a UTXOWithPath with the given value.

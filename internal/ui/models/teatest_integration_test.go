@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 
-	"hax/internal/config"
+	"github.com/BTCBap/hax/internal/config"
 )
 
 // TestRootTeatest_SplashToConnectionSetup runs a full tea.Program through the
