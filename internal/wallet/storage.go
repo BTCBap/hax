@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,16 +11,12 @@ import (
 	"path/filepath"
 
 	"github.com/BTCBap/hax/internal/api"
-
-	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
-	// PBKDF2 parameters
-	saltSize   = 32
-	keySize    = 32
-	pbkdf2Iter = 100000
-	nonceSize  = 12
+	saltSize  = 32
+	keySize   = 32
+	nonceSize = 12
 )
 
 // WalletData represents the data stored in a wallet file
@@ -143,12 +138,14 @@ type AddressData struct {
 	Used    bool   `json:"used"`
 }
 
-// EncryptedWalletFile represents the encrypted wallet file format
+// EncryptedWalletFile represents the encrypted wallet file format. See
+// kdf.go for the version history.
 type EncryptedWalletFile struct {
-	Version int    `json:"version"`
-	Salt    []byte `json:"salt"`
-	Nonce   []byte `json:"nonce"`
-	Data    []byte `json:"data"` // Encrypted WalletData
+	Version int        `json:"version"`
+	KDF     *KDFParams `json:"kdf,omitempty"` // v2+; absent in v1 (PBKDF2)
+	Salt    []byte     `json:"salt"`
+	Nonce   []byte     `json:"nonce"`
+	Data    []byte     `json:"data"` // Encrypted WalletData
 }
 
 // WalletStorage handles secure wallet persistence
@@ -176,14 +173,16 @@ func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password
 		return fmt.Errorf("failed to generate salt: %w", err)
 	}
 	pw := []byte(password)
-	key := deriveKey(pw, salt)
+	key := defaultKDF.derive(pw, salt)
 	defer Wipe(key)
 	defer Wipe(pw)
 	return s.SaveWalletWithKey(walletName, data, salt, key)
 }
 
 // SaveWalletWithKey encrypts and saves a wallet with an already-derived key
-// and its salt. A fresh random nonce is used on every save. This lets an
+// and its salt. key must have been derived with defaultKDF over salt (as
+// SaveWallet and LoadWalletKey do); the file is always written in the
+// current format. A fresh random nonce is used on every save. This lets an
 // unlocked session re-persist without retaining the password.
 func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, salt, key []byte) error {
 	walletPath, err := s.walletPath(walletName)
@@ -200,13 +199,15 @@ func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, s
 	}
 	defer Wipe(plaintext)
 
-	ciphertext, nonce, err := encrypt(plaintext, key)
+	kdf := defaultKDF
+	ciphertext, nonce, err := encrypt(plaintext, key, associatedData(currentFileVersion, kdf, salt))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt wallet: %w", err)
 	}
 
 	fileData, err := json.MarshalIndent(EncryptedWalletFile{
-		Version: 1,
+		Version: currentFileVersion,
+		KDF:     &kdf,
 		Salt:    salt,
 		Nonce:   nonce,
 		Data:    ciphertext,
@@ -241,6 +242,11 @@ func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletD
 // LoadWalletKey decrypts a wallet and also returns the salt and derived key so
 // the caller can re-save without keeping the password. The caller owns key and
 // must Wipe it when done. password is not retained.
+//
+// Files in an older format, or with non-default KDF parameters, are upgraded:
+// a fresh salt and key are derived with defaultKDF and the file is rewritten.
+// If that rewrite fails the old file is left intact and the new key is still
+// returned, so the next save completes the upgrade.
 func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*WalletData, []byte, []byte, error) {
 	walletPath, err := s.walletPath(walletName)
 	if err != nil {
@@ -257,9 +263,12 @@ func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*Wall
 		return nil, nil, nil, fmt.Errorf("failed to parse wallet file: %w", err)
 	}
 
-	key := deriveKey(password, encryptedWallet.Salt)
+	key, aad, err := fileKey(&encryptedWallet, password)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read wallet file: %w", err)
+	}
 
-	plaintext, err := decrypt(encryptedWallet.Data, encryptedWallet.Nonce, key)
+	plaintext, err := decrypt(encryptedWallet.Data, encryptedWallet.Nonce, key, aad)
 	if err != nil {
 		Wipe(key)
 		return nil, nil, nil, fmt.Errorf("failed to decrypt wallet (incorrect password?): %w", err)
@@ -272,11 +281,19 @@ func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*Wall
 		return nil, nil, nil, fmt.Errorf("failed to parse wallet data: %w", err)
 	}
 
-	return &walletData, encryptedWallet.Salt, key, nil
-}
+	if encryptedWallet.isCurrent() {
+		return &walletData, encryptedWallet.Salt, key, nil
+	}
 
-func deriveKey(password, salt []byte) []byte {
-	return pbkdf2.Key(password, salt, pbkdf2Iter, keySize, sha256.New)
+	// Upgrade to the current format under a fresh salt.
+	Wipe(key)
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to generate salt: %w", err)
+	}
+	key = defaultKDF.derive(password, salt)
+	_ = s.SaveWalletWithKey(walletName, &walletData, salt, key) // best effort; see doc comment
+	return &walletData, salt, key, nil
 }
 
 // WalletExists checks if a wallet file exists
@@ -333,8 +350,8 @@ func (s *WalletStorage) walletPath(walletName string) (string, error) {
 	return p, nil
 }
 
-// encrypt encrypts data using AES-GCM
-func encrypt(plaintext []byte, key []byte) (ciphertext []byte, nonce []byte, err error) {
+// encrypt encrypts data using AES-GCM, authenticating aad alongside it.
+func encrypt(plaintext, key, aad []byte) (ciphertext []byte, nonce []byte, err error) {
 	// Create AES cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -354,12 +371,12 @@ func encrypt(plaintext []byte, key []byte) (ciphertext []byte, nonce []byte, err
 	}
 
 	// Encrypt
-	ciphertext = gcm.Seal(nil, nonce, plaintext, nil)
+	ciphertext = gcm.Seal(nil, nonce, plaintext, aad)
 	return ciphertext, nonce, nil
 }
 
-// decrypt decrypts data using AES-GCM
-func decrypt(ciphertext []byte, nonce []byte, key []byte) (plaintext []byte, err error) {
+// decrypt decrypts data using AES-GCM, verifying aad.
+func decrypt(ciphertext, nonce, key, aad []byte) (plaintext []byte, err error) {
 	// Create AES cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -373,7 +390,10 @@ func decrypt(ciphertext []byte, nonce []byte, key []byte) (plaintext []byte, err
 	}
 
 	// Decrypt
-	plaintext, err = gcm.Open(nil, nonce, ciphertext, nil)
+	if len(nonce) != gcm.NonceSize() {
+		return nil, fmt.Errorf("invalid nonce length %d", len(nonce))
+	}
+	plaintext, err = gcm.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return nil, fmt.Errorf("decryption failed: %w", err)
 	}
