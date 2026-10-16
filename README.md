@@ -48,12 +48,12 @@ The full threat model is in [docs/threat-model.md](docs/threat-model.md).
 
 | | |
 |---|---|
-| **Protects against** | Theft of wallet files at rest (needs the password); wrong-network addresses (strict decoding against testnet4 params); silent fee/change surprises (review-step warnings); tampered release artifacts (signed checksums + provenance) |
+| **Protects against** | Theft of wallet files at rest (needs the password); wrong-network addresses (strict decoding against the wallet's own network, mainnet or testnet4, no fallback); Electrum server impersonation after first connect (TLS public-key pinning); silent fee/change surprises (review-step warnings); tampered release artifacts (signed checksums + provenance) |
 | **Does not protect against** | A compromised host (malware, keyloggers, memory scraping); a malicious Electrum server's view of your addresses (use your own node or Tor); weak passwords |
 | **Trust boundaries** | Backends are untrusted for correctness of wallet meaning. Imported PSBTs and descriptors are untrusted input. Hardware wallets are a separate trust domain, so confirm on the device. |
-| **Key material** | The seed is generated from `crypto/rand` and never written to the clipboard or logs. Signing happens locally or on the hardware device. |
+| **Key material** | The seed is generated from `crypto/rand` (128 or 256 bits, BIP39 checksum) and never written to the clipboard or logs. The wallet password is not kept after unlock; only the derived AES key is held, as a byte slice that is zeroed on lock and exit. Signing happens locally or on the hardware device. |
 
-Known gaps before any mainnet consideration are tracked in [TODO.md](TODO.md) and the issue tracker. They include in-memory secret lifetime, Electrum certificate pinning, and a memory-hard KDF.
+Known gaps are tracked in [TODO.md](TODO.md) and the issue tracker. They include Go's limits on wiping immutable strings (the mnemonic is still held as a `string` while unlocked), idle auto-lock, and a memory-hard KDF.
 
 ## Install
 
@@ -124,14 +124,19 @@ All state lives in `~/.hax/`:
 | Path | Contents |
 |---|---|
 | `~/.hax/<name>.wallet` | Encrypted wallet (seed, optional passphrase, accounts, labels, cache) |
+| `~/.hax/known_servers.json` | Electrum TLS pins: SHA-256 of each server's public key, recorded on first connect (`0600`) |
 | `~/.hax/config.json` | Backend selection, display unit, gap limit, recent servers |
 | `~/.hax/*_labels_bip329.jsonl`, `*_koinly.csv` | Exports (`0600`) |
 
 `config.json` is not encrypted. If you use Bitcoin Core RPC, your RPC credentials are stored there in plaintext (mode `0600`). Prefer a dedicated RPC user with minimal permissions.
 
-## Testnet4
+## Networks
 
-hax targets [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94) only. Testnet coins have no value. Addresses use `tb1…` / `m…` / `n…` / `2…` and are checked strictly against testnet4 params. Mainnet support is explicitly out of scope until the gaps above are closed.
+Each wallet records its network: mainnet or [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94). The dashboard and send review show it at all times, and mainnet appears as a red **MAINNET** badge. A recipient address has to decode under that network's params. `tb1…` is rejected on a mainnet wallet and `bc1…` on a testnet4 wallet, and nothing falls back to another network. Testnet coins have no value, so practice there first.
+
+## Electrum certificate pinning
+
+On the first TLS connection to an Electrum server, hax verifies the certificate chain as usual and records the SHA-256 of the server's public key in `~/.hax/known_servers.json`. Later connections still verify the chain and also require that key to match. If the key changes, hax refuses to connect and shows both fingerprints. A changed key can be a legitimate rotation or an interception. If you have confirmed it out of band, delete that server's entry to re-pin.
 
 ## Contributing
 
