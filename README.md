@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/BTCBap/hax/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/BTCBap/hax/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/BTCBap/hax/releases"><img alt="Release" src="https://img.shields.io/github/v/release/BTCBap/hax?include_prereleases&sort=semver"></a>
   <a href="https://pkg.go.dev/github.com/BTCBap/hax"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/BTCBap/hax.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
@@ -112,17 +113,13 @@ All state lives in `~/.hax/`:
 | `~/.hax/config.json` | Backend selection, display unit, gap limit, recent servers |
 | `~/.hax/*_labels_bip329.jsonl`, `*_koinly.csv` | Exports (`0600`) |
 
-`config.json` is not encrypted. If you use Bitcoin Core RPC, your RPC credentials are stored there in plaintext (mode `0600`). Prefer a dedicated RPC user with minimal permissions.
-
-Fee estimates come only from your configured backend (Electrum or Bitcoin Core).
-
 ## Security
 
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
