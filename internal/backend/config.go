@@ -77,6 +77,7 @@ func DefaultElectrumConfig(network string) *BackendConfig {
 		host = "electrum.blockstream.info"
 		port = 50002
 	}
+	network = NormalizeNetwork(network)
 
 	return &BackendConfig{
 		Type:    BackendTypeElectrum,
