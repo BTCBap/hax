@@ -5,7 +5,7 @@ This is the operator runbook for validating software-wallet recovery in `hax`.
 It is intentionally narrow:
 
 - software wallet only
-- testnet4 only
+- run on testnet4 (the procedure is identical on mainnet)
 - mnemonic-based restore only
 
 Use this alongside [public-beta-checklist.md](public-beta-checklist.md).

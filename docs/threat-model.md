@@ -57,7 +57,8 @@ Out of scope for now:
 
 ## Current Mitigations
 
-- Testnet4-only operation
+- Explicit per-wallet network; recipient addresses strictly validated against it (no cross-network fallback)
+- Active network shown in the UI, mainnet highlighted
 - Encrypted wallet files at rest
 - PSBT-based signing flow
 - Existing automated tests across wallet, backend, and UI packages

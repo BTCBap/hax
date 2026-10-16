@@ -7,7 +7,7 @@ There are no official GitHub release binaries yet.
 Right now the project is:
 
 - source-first
-- testnet4-only
+- mainnet and testnet4 supported (beta, unaudited)
 - fine to build locally
 - not a polished release package yet
 

@@ -135,7 +135,7 @@ func (m *WalletManager) registerAddress(accountIndex uint32, addr AddressData) {
 // lock held — acquires RLock internally for the save.
 func (m *WalletManager) persistAndSubscribe(address string) {
 	m.dataMu.RLock()
-	err := m.saveWalletTracked(m.data.Name, m.data, m.password)
+	err := m.saveWalletTracked(m.data.Name, m.data)
 	m.dataMu.RUnlock()
 	if err != nil {
 		log.Printf("[WALLET] persistAndSubscribe: SaveWallet failed: %v", err)
@@ -686,7 +686,7 @@ func (m *WalletManager) SyncAddressUsage(accountIndex uint32) error {
 	m.dataMu.RLock()
 	name := m.data.Name
 	data := m.data
-	err := m.saveWalletTracked(name, data, m.password)
+	err := m.saveWalletTracked(name, data)
 	m.dataMu.RUnlock()
 
 	if err != nil {
@@ -791,7 +791,7 @@ func (m *WalletManager) MarkAddressAsUsed(accountIndex uint32, address string) e
 
 	// Save under read lock (allows concurrent readers, blocks during marshal)
 	m.dataMu.RLock()
-	err = m.saveWalletTracked(m.data.Name, m.data, m.password)
+	err = m.saveWalletTracked(m.data.Name, m.data)
 	m.dataMu.RUnlock()
 
 	if err != nil {

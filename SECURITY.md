@@ -43,7 +43,10 @@ Out of scope:
 - Attacks that require a fully compromised host
 - Social engineering
 - Bugs in third-party hardware wallet firmware or HWI, unless hax triggers them
-- Mainnet-only scenarios, while hax is testnet4-only
+
+## Network and transport
+
+hax supports mainnet and testnet4. Addresses are validated strictly against the wallet's network. Electrum TLS servers are pinned trust-on-first-use (public-key SHA-256, `~/.hax/known_servers.json`), and a changed key is a hard failure. Bypassing either check is in scope.
 
 ## Supported versions
 

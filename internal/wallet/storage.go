@@ -168,90 +168,115 @@ func NewWalletStorage(walletDir string) (*WalletStorage, error) {
 	}, nil
 }
 
-// SaveWallet encrypts and saves a wallet to disk
+// SaveWallet encrypts and saves a wallet to disk under a fresh salt derived
+// from password. Used when creating a wallet.
 func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password string) error {
-	walletPath, err := s.walletPath(walletName)
-	if err != nil {
-		return err
-	}
-	// Generate salt for key derivation
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
 		return fmt.Errorf("failed to generate salt: %w", err)
 	}
+	pw := []byte(password)
+	key := deriveKey(pw, salt)
+	defer Wipe(key)
+	defer Wipe(pw)
+	return s.SaveWalletWithKey(walletName, data, salt, key)
+}
 
-	// Derive encryption key from password using PBKDF2
-	key := pbkdf2.Key([]byte(password), salt, pbkdf2Iter, keySize, sha256.New)
+// SaveWalletWithKey encrypts and saves a wallet with an already-derived key
+// and its salt. A fresh random nonce is used on every save. This lets an
+// unlocked session re-persist without retaining the password.
+func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, salt, key []byte) error {
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return err
+	}
+	if len(key) != keySize || len(salt) == 0 {
+		return fmt.Errorf("wallet encryption key not available (wallet locked?)")
+	}
 
-	// Marshal wallet data to JSON
 	plaintext, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal wallet data: %w", err)
 	}
+	defer Wipe(plaintext)
 
-	// Encrypt the data
 	ciphertext, nonce, err := encrypt(plaintext, key)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt wallet: %w", err)
 	}
 
-	// Create encrypted wallet file structure
-	encryptedWallet := EncryptedWalletFile{
+	fileData, err := json.MarshalIndent(EncryptedWalletFile{
 		Version: 1,
 		Salt:    salt,
 		Nonce:   nonce,
 		Data:    ciphertext,
-	}
-
-	// Marshal to JSON
-	fileData, err := json.MarshalIndent(encryptedWallet, "", "  ")
+	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal encrypted wallet: %w", err)
 	}
 
-	// Write to file with restricted permissions
-	if err := os.WriteFile(walletPath, fileData, 0600); err != nil {
+	// Write atomically with restricted permissions.
+	tmp := walletPath + ".tmp"
+	if err := os.WriteFile(tmp, fileData, 0600); err != nil {
 		return fmt.Errorf("failed to write wallet file: %w", err)
 	}
-
+	if err := os.Rename(tmp, walletPath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("failed to write wallet file: %w", err)
+	}
 	return nil
 }
 
-// LoadWallet decrypts and loads a wallet from disk
+// LoadWallet decrypts and loads a wallet from disk.
 func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletData, error) {
-	walletPath, err := s.walletPath(walletName)
+	data, salt, key, err := s.LoadWalletKey(walletName, []byte(password))
 	if err != nil {
 		return nil, err
 	}
+	Wipe(key)
+	Wipe(salt)
+	return data, nil
+}
 
-	// Read wallet file
+// LoadWalletKey decrypts a wallet and also returns the salt and derived key so
+// the caller can re-save without keeping the password. The caller owns key and
+// must Wipe it when done. password is not retained.
+func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*WalletData, []byte, []byte, error) {
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	fileData, err := os.ReadFile(walletPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read wallet file: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to read wallet file: %w", err)
 	}
 
-	// Unmarshal encrypted wallet
 	var encryptedWallet EncryptedWalletFile
 	if err := json.Unmarshal(fileData, &encryptedWallet); err != nil {
-		return nil, fmt.Errorf("failed to parse wallet file: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to parse wallet file: %w", err)
 	}
 
-	// Derive decryption key from password
-	key := pbkdf2.Key([]byte(password), encryptedWallet.Salt, pbkdf2Iter, keySize, sha256.New)
+	key := deriveKey(password, encryptedWallet.Salt)
 
-	// Decrypt the data
 	plaintext, err := decrypt(encryptedWallet.Data, encryptedWallet.Nonce, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt wallet (incorrect password?): %w", err)
+		Wipe(key)
+		return nil, nil, nil, fmt.Errorf("failed to decrypt wallet (incorrect password?): %w", err)
 	}
+	defer Wipe(plaintext)
 
-	// Unmarshal wallet data
 	var walletData WalletData
 	if err := json.Unmarshal(plaintext, &walletData); err != nil {
-		return nil, fmt.Errorf("failed to parse wallet data: %w", err)
+		Wipe(key)
+		return nil, nil, nil, fmt.Errorf("failed to parse wallet data: %w", err)
 	}
 
-	return &walletData, nil
+	return &walletData, encryptedWallet.Salt, key, nil
+}
+
+func deriveKey(password, salt []byte) []byte {
+	return pbkdf2.Key(password, salt, pbkdf2Iter, keySize, sha256.New)
 }
 
 // WalletExists checks if a wallet file exists
