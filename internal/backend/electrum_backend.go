@@ -162,7 +162,7 @@ func (b *ElectrumBackend) Connect() error {
 				VerifyConnection: verifyConnection(addr),
 			})
 			if err := tlsConn.Handshake(); err != nil {
-				conn.Close()
+				_ = conn.Close()
 				b.mu.Unlock()
 				return fmt.Errorf("TLS handshake failed: %w", err)
 			}
@@ -206,7 +206,7 @@ func (b *ElectrumBackend) Connect() error {
 	if err := b.handshake(); err != nil {
 		b.mu.Lock()
 		if b.conn != nil {
-			b.conn.Close()
+			_ = b.conn.Close()
 		}
 		b.conn = nil
 		b.reader = nil
@@ -243,7 +243,7 @@ func (b *ElectrumBackend) readLoop() {
 		b.mu.RUnlock()
 
 		// Set read deadline
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
@@ -356,7 +356,7 @@ func (b *ElectrumBackend) disconnectLocked() error {
 	}
 
 	if b.conn != nil {
-		b.conn.Close()
+		_ = b.conn.Close()
 		b.conn = nil
 		b.reader = nil
 	}
@@ -487,7 +487,7 @@ func (b *ElectrumBackend) request(method string, params []interface{}) (json.Raw
 	}
 
 	// Set write deadline
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 	// Send request (newline-delimited JSON)
 	_, err = conn.Write(append(data, '\n'))

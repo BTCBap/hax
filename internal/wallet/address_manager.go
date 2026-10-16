@@ -141,7 +141,7 @@ func (m *WalletManager) persistAndSubscribe(address string) {
 		log.Printf("[WALLET] persistAndSubscribe: SaveWallet failed: %v", err)
 	}
 
-	m.backend.SubscribeAddress(address)
+	_, _ = m.backend.SubscribeAddress(address)
 }
 
 // GetNewAddress generates a new receiving address for an account
@@ -633,7 +633,7 @@ func (m *WalletManager) SyncAddressUsage(accountIndex uint32) error {
 
 	// Sync receive addresses
 	consecutiveUnused := 0
-	maxIndex := uint32(gapLimit * 5)
+	maxIndex := uint32(gapLimit * 5) // #nosec G115 -- gap limit is a small positive config value
 	for currentIndex := uint32(0); currentIndex < maxIndex; currentIndex++ {
 		// Get or derive address at current index (has its own locking)
 		address, _, err := m.GetAddressByIndex(accountIndex, currentIndex)

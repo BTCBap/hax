@@ -20,8 +20,8 @@ func DescriptorChecksum(desc string) string {
 
 	// Polymod function for checksum calculation
 	polymod := func(c uint64, val int) uint64 {
-		c0 := byte(c >> 35)
-		c = ((c & 0x7ffffffff) << 5) ^ uint64(val)
+		c0 := byte(c >> 35)                        // #nosec G115 -- c is a 40-bit polymod state, so c>>35 fits in 5 bits
+		c = ((c & 0x7ffffffff) << 5) ^ uint64(val) // #nosec G115 -- val is a non-negative charset index
 		if c0&1 != 0 {
 			c ^= 0xf5dee51989
 		}

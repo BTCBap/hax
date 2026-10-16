@@ -363,10 +363,13 @@ func parseBip32Path(path string) ([]uint32, error) {
 
 		// Apply hardened offset if needed
 		if hardened {
+			if idx >= 0x80000000 {
+				return nil, fmt.Errorf("hardened path component out of range: %s'", part)
+			}
 			idx += 0x80000000 // Hardened offset
 		}
 
-		result = append(result, uint32(idx))
+		result = append(result, uint32(idx)) // #nosec G115 -- ParseUint(…, 32) and the check above bound idx to uint32
 	}
 
 	return result, nil
@@ -387,12 +390,12 @@ func parseMultisigPath(path string) (change bool, index uint32, err error) {
 	changeStr := strings.TrimSuffix(parts[len(parts)-2], "'")
 	indexStr := strings.TrimSuffix(parts[len(parts)-1], "'")
 
-	var changeVal, indexVal int
-	_, err = fmt.Sscanf(changeStr, "%d", &changeVal)
+	changeVal, err := strconv.ParseUint(changeStr, 10, 32)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to parse change from path: %w", err)
 	}
-	_, err = fmt.Sscanf(indexStr, "%d", &indexVal)
+	// Non-hardened index: 0 .. 2^31-1. Rejects negatives that used to wrap.
+	indexVal, err := strconv.ParseUint(indexStr, 10, 31)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to parse index from path: %w", err)
 	}

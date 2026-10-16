@@ -273,11 +273,11 @@ func GetCosignerSigningStatus(
 
 				// Big-endian style (what you'd expect reading hex left to right)
 				derivFPBE := fmt.Sprintf("%02x%02x%02x%02x",
-					byte(fp>>24), byte(fp>>16), byte(fp>>8), byte(fp))
+					byte(fp>>24), byte(fp>>16), byte(fp>>8), byte(fp)) // #nosec G115 -- byte extraction
 
 				// Little-endian style (how Go stores uint32 in memory)
 				derivFPLE := fmt.Sprintf("%02x%02x%02x%02x",
-					byte(fp), byte(fp>>8), byte(fp>>16), byte(fp>>24))
+					byte(fp), byte(fp>>8), byte(fp>>16), byte(fp>>24)) // #nosec G115 -- byte extraction
 
 				// Also standard %08x format
 				derivFPHex := fmt.Sprintf("%08x", fp)
@@ -946,8 +946,8 @@ func SignMultisigPSBTFromDerivation(
 			for _, deriv := range input.Bip32Derivation {
 				csFingerprint := strings.ToLower(cosigner.Fingerprint)
 				fp := deriv.MasterKeyFingerprint
-				derivFPBE := fmt.Sprintf("%02x%02x%02x%02x", byte(fp>>24), byte(fp>>16), byte(fp>>8), byte(fp))
-				derivFPLE := fmt.Sprintf("%02x%02x%02x%02x", byte(fp), byte(fp>>8), byte(fp>>16), byte(fp>>24))
+				derivFPBE := fmt.Sprintf("%02x%02x%02x%02x", byte(fp>>24), byte(fp>>16), byte(fp>>8), byte(fp)) // #nosec G115 -- byte extraction
+				derivFPLE := fmt.Sprintf("%02x%02x%02x%02x", byte(fp), byte(fp>>8), byte(fp>>16), byte(fp>>24)) // #nosec G115 -- byte extraction
 				derivFPHex := fmt.Sprintf("%08x", fp)
 
 				if derivFPBE != csFingerprint && derivFPLE != csFingerprint && derivFPHex != csFingerprint {
@@ -1451,13 +1451,11 @@ func finalizeTaprootKeyPath(packet *psbt.Packet, inputIndex int) error {
 
 	witness := wire.TxWitness{input.TaprootKeySpendSig}
 
-	var witnessBytes []byte
-	witnessBytes = append(witnessBytes, byte(len(witness))) // Number of stack items
-	for _, item := range witness {
-		witnessBytes = append(witnessBytes, byte(len(item))) // Length of item
-		witnessBytes = append(witnessBytes, item...)         // Item data
+	var buf bytes.Buffer
+	if err := psbt.WriteTxWitness(&buf, witness); err != nil {
+		return fmt.Errorf("serialize taproot witness: %w", err)
 	}
-	input.FinalScriptWitness = witnessBytes
+	input.FinalScriptWitness = buf.Bytes()
 
 	input.TaprootKeySpendSig = nil
 	input.TaprootInternalKey = nil
@@ -1746,11 +1744,11 @@ func serializeWitness(witness wire.TxWitness) []byte {
 	var buf bytes.Buffer
 
 	// Write number of witness elements as varint
-	wire.WriteVarInt(&buf, 0, uint64(len(witness)))
+	_ = wire.WriteVarInt(&buf, 0, uint64(len(witness)))
 
 	// Write each element with length prefix
 	for _, elem := range witness {
-		wire.WriteVarBytes(&buf, 0, elem)
+		_ = wire.WriteVarBytes(&buf, 0, elem)
 	}
 
 	return buf.Bytes()

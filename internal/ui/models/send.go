@@ -735,7 +735,7 @@ func (m SendModel) loadPSBTFromFile(path string) tea.Cmd {
 		}
 
 		// Read file contents
-		data, err := os.ReadFile(expandedPath)
+		data, err := os.ReadFile(expandedPath) // #nosec G304 -- the user chose this PSBT file to import
 		if err != nil {
 			return PSBTFileMsg{Operation: "import", Err: fmt.Errorf("failed to read file: %w", err)}
 		}

@@ -326,6 +326,7 @@ func (h *HWIClient) runCommand(args ...string) (string, error) {
 	}
 	cmdArgs = append(cmdArgs, args...)
 
+	// #nosec G204 -- hwiPath is the resolved HWI binary; args are passed as argv, not via a shell
 	cmd := exec.Command(h.hwiPath, cmdArgs...)
 
 	var stdout, stderr bytes.Buffer

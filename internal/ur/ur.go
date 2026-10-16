@@ -23,10 +23,11 @@ func EncodeSinglePart(urType string, cborData []byte) string {
 	checksum := crc32.ChecksumIEEE(cborData)
 	withChecksum := make([]byte, len(cborData)+4)
 	copy(withChecksum, cborData)
+	// #nosec G115 -- intentional big-endian byte extraction from the CRC32
 	withChecksum[len(cborData)] = byte(checksum >> 24)
-	withChecksum[len(cborData)+1] = byte(checksum >> 16)
-	withChecksum[len(cborData)+2] = byte(checksum >> 8)
-	withChecksum[len(cborData)+3] = byte(checksum)
+	withChecksum[len(cborData)+1] = byte(checksum >> 16) // #nosec G115 -- byte extraction
+	withChecksum[len(cborData)+2] = byte(checksum >> 8)  // #nosec G115 -- byte extraction
+	withChecksum[len(cborData)+3] = byte(checksum)       // #nosec G115 -- byte extraction
 
 	encoded := EncodeMinimal(withChecksum)
 	return fmt.Sprintf("ur:%s/%s", urType, strings.ToLower(encoded))

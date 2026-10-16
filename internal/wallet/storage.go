@@ -247,7 +247,7 @@ func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*Wall
 		return nil, nil, nil, err
 	}
 
-	fileData, err := os.ReadFile(walletPath)
+	fileData, err := os.ReadFile(walletPath) // #nosec G304 -- path built from a validated wallet name inside the wallet dir
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to read wallet file: %w", err)
 	}

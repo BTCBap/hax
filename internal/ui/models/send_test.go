@@ -238,7 +238,7 @@ func TestValidatePSBTFilePath_Import(t *testing.T) {
 
 	// Create a directory to test the "is a directory" error
 	dirPath := filepath.Join(tmpDir, "isdir.psbt")
-	if err := os.Mkdir(dirPath, 0755); err != nil {
+	if err := os.Mkdir(dirPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3121,7 +3121,7 @@ func TestSend_SavePSBTToFile(t *testing.T) {
 	}
 
 	// Verify file was written
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filePath) // #nosec G304 -- test temp file
 	if err != nil {
 		t.Fatalf("failed to read saved file: %v", err)
 	}

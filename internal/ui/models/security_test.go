@@ -31,7 +31,8 @@ func TestSettings_MnemonicCannotBeCopied(t *testing.T) {
 func TestWritePrivateFile_Mode0600(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "export.csv")
 	// Pre-existing world-readable file must be tightened too.
-	if err := os.WriteFile(p, []byte("old"), 0644); err != nil {
+	// #nosec G306 -- deliberately world-readable to test tightening
+	if err := os.WriteFile(p, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := writePrivateFile(p, []byte("new")); err != nil {

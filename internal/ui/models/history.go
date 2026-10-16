@@ -1334,11 +1334,11 @@ func openTransactionInBrowser(network, txID string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin": // macOS
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", url) // #nosec G204 -- fixed opener; url is a block explorer URL built from a txid
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", url) // #nosec G204 -- fixed opener; url is a block explorer URL built from a txid
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.Command("cmd", "/c", "start", url) // #nosec G204 -- fixed opener; url is a block explorer URL built from a txid
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
