@@ -46,7 +46,7 @@
 
 ### Release binaries (recommended)
 
-Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore bundle for it, an SPDX SBOM per archive, and a SLSA build-provenance attestation.
+Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore bundle for it, and a SLSA build-provenance attestation.
 
 Verify before running:
 

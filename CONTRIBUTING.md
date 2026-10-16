@@ -21,7 +21,7 @@ make test-race              # go test -race ./...
 go vet ./...
 golangci-lint run ./...
 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-goreleaser release --snapshot --clean --skip=sign,sbom   # local release dry run
+goreleaser release --snapshot --clean --skip=sign   # local release dry run
 ```
 
 Use testnet4 for manual testing. Use a throwaway `HOME` to keep test wallets isolated:
@@ -58,4 +58,4 @@ A PR description should say what changed, why, how you verified it, and what is 
 
 ## Releases
 
-Maintainers tag `vX.Y.Z` on `main`. The release workflow builds reproducible archives, signs `checksums.txt` keyless with cosign, attaches SBOMs, attests build provenance, and opens a **draft** release for manual review before it's published.
+Maintainers tag `vX.Y.Z` on `main`. The release workflow builds reproducible archives, signs `checksums.txt` keyless with cosign, attests build provenance, and opens a **draft** release for manual review before it's published.

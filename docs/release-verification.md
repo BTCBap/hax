@@ -7,7 +7,6 @@ Every tagged release (`vX.Y.Z`) is built by `.github/workflows/release.yml` with
 | `hax_<ver>_<os>_<arch>.tar.gz` / `.zip` | Binaries + README, LICENSE, SECURITY |
 | `checksums.txt` | SHA-256 of every archive |
 | `checksums.txt.sigstore.json` | Keyless [Sigstore](https://www.sigstore.dev/) bundle (signature and certificate) over the checksum manifest |
-| `*.sbom.json` | SPDX SBOM per archive (syft) |
 | GitHub attestation | SLSA build provenance for the archives |
 
 ## 1. Verify the signature on `checksums.txt`
@@ -42,7 +41,7 @@ Builds use `CGO_ENABLED=0`, `-trimpath`, `-buildid=`, and commit-derived timesta
 
 ```bash
 git checkout ${VERSION}
-goreleaser release --snapshot --clean --skip=sign,sbom
+goreleaser release --snapshot --clean --skip=sign
 sha256sum dist/*.tar.gz dist/*.zip   # compare against the published checksums.txt
 ```
 
