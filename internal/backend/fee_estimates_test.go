@@ -72,7 +72,7 @@ func TestElectrumBackend_NoMempoolFeeAPI(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	srcPath := filepath.Join(filepath.Dir(file), "electrum_backend.go")
-	src, err := os.ReadFile(srcPath)
+	src, err := os.ReadFile(srcPath) // #nosec G304 -- fixed path next to this test file
 	if err != nil {
 		t.Fatal(err)
 	}
