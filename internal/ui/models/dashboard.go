@@ -595,9 +595,10 @@ func (m MainDashboardModel) renderRecentTransactions(txs []api.Transaction, unit
 
 		// Direction indicator
 		direction := styles.TxDirectionInStyle.Render("↓")
-		if analysis.Type == "↑ OUT" {
+		switch analysis.Type {
+		case "↑ OUT":
 			direction = styles.TxDirectionOutStyle.Render("↑")
-		} else if analysis.Type == "⟲ SELF" {
+		case "⟲ SELF":
 			direction = styles.DimText.Render("⟲")
 		}
 

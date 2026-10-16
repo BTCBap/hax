@@ -213,7 +213,7 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	// Check for last used wallet (auto-login feature)
 	var hasLastWallet bool
 	var lastWalletName string
-	var startStep WalletSetupStep = StepChooseAction
+	var startStep = StepChooseAction
 
 	if configManager != nil {
 		cfg, err := configManager.Load()
@@ -338,11 +338,12 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.hwDerivedXpub = msg.Xpub
 			m.hwFingerprint = msg.Fingerprint
 
-			if m.step == StepHardwareWalletConnect {
+			switch m.step {
+			case StepHardwareWalletConnect:
 				// Single-sig hardware wallet: advance to review
 				m.step = StepHardwareWalletReview
 				m.cursor = 0
-			} else if m.step == StepMultisigEnterCosigners {
+			case StepMultisigEnterCosigners:
 				// Check for duplicate xpub
 				if m.hasDuplicateCosignerXpub(msg.Xpub) {
 					m.hwiError = fmt.Errorf("this key is already added as a cosigner")
@@ -716,12 +717,13 @@ func (m WalletSetupModel) handleChooseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			m.cursor++
 		}
 	case "enter":
-		if m.cursor == 0 {
+		switch m.cursor {
+		case 0:
 			// Create new wallet - go to wallet type selection
 			m.isRestore = false
 			m.cursor = 0
 			m.step = StepChooseWalletType
-		} else if m.cursor == 1 {
+		case 1:
 			// Restore wallet - show method selection
 			m.isRestore = true
 			m.isMultisig = false
@@ -2462,13 +2464,14 @@ func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Mode
 		m.multisigInputMode = (m.multisigInputMode + 1) % 3
 		m.err = nil // Clear any errors when switching modes
 		// Focus the appropriate input
-		if m.multisigInputMode == 0 {
+		switch m.multisigInputMode {
+		case 0:
 			m.multisigCurrentXpub.Focus()
 			m.multisigCosignerSeed.Blur()
-		} else if m.multisigInputMode == 1 {
+		case 1:
 			m.multisigCosignerSeed.Focus()
 			m.multisigCurrentXpub.Blur()
-		} else {
+		default:
 			// Hardware wallet mode - no text input focused
 			m.multisigCurrentXpub.Blur()
 			m.multisigCosignerSeed.Blur()
@@ -2487,7 +2490,8 @@ func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Mode
 		return m, tea.Batch(m.spinner.Tick, m.enumerateHWIDevicesForSetup())
 
 	case "enter":
-		if m.multisigInputMode == 0 {
+		switch m.multisigInputMode {
+		case 0:
 			// xpub mode
 			xpubVal := m.multisigCurrentXpub.Value()
 			if xpubVal != "" {
@@ -2518,7 +2522,7 @@ func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Mode
 				m.multisigWarningAcked = "" // Reset for next cosigner
 				m.err = nil
 			}
-		} else if m.multisigInputMode == 1 {
+		case 1:
 			// Seed mode - derive BIP48 xpub from mnemonic
 			seedVal := strings.TrimSpace(m.multisigCosignerSeed.Value())
 			if seedVal != "" {
@@ -2544,7 +2548,7 @@ func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Mode
 				m.multisigCosignerSeed.SetValue("")
 				m.err = nil
 			}
-		} else if m.multisigInputMode == 2 {
+		case 2:
 			// Hardware wallet mode - enumerate devices
 			m.hwiLoading = true
 			m.hwiError = nil

@@ -57,7 +57,6 @@ type ConnectionSetupModel struct {
 
 	// Managers
 	configManager *config.ConfigManager
-	testBackend   backend.BitcoinBackend
 
 	// UI components
 	spinner      spinner.Model

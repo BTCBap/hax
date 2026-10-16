@@ -1245,7 +1245,7 @@ func (m SettingsModel) viewCosignerList() string {
 	for i, cs := range cosigners {
 		// Status indicator and text
 		var statusIcon, statusText string
-		statusStyle := styles.DimText
+		var statusStyle lipgloss.Style
 
 		switch {
 		case cs.IsMine && cs.Mnemonic != "":

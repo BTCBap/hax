@@ -571,9 +571,7 @@ func TestUnlock_SpinnerTick_WhenIdle(t *testing.T) {
 	model, cmd := m.Update(tickMsg)
 	_ = model.(UnlockModel)
 
-	// Should not propagate spinner tick when idle
-	if cmd != nil {
-		// Spinner may still produce ticks but model shouldn't propagate them
-		// This is implementation-dependent, so we just verify no panic
-	}
+	// Whether an idle spinner tick re-arms is implementation-dependent;
+	// this test only checks that it doesn't panic.
+	_ = cmd
 }

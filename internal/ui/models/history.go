@@ -2,12 +2,13 @@ package models
 
 import (
 	"fmt"
-	"github.com/BTCBap/hax/internal/wallet"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/BTCBap/hax/internal/wallet"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui/styles"
@@ -499,7 +500,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "K":
 			output, err := m.walletManager.ExportKoinly(m.transactions)
 			if err != nil {
-				m.err = fmt.Errorf("Koinly export failed: %v", err)
+				m.err = fmt.Errorf("koinly export failed: %w", err)
 				m.errorTime = time.Now()
 				cmds = append(cmds, m.animateTick())
 			} else {
@@ -1159,11 +1160,6 @@ func (m TransactionHistoryModel) renderEmptyState() string {
 }
 
 func (m TransactionHistoryModel) renderTransactionTable() string {
-	opacity := m.fadeIn
-	if opacity > 1.0 {
-		opacity = 1.0
-	}
-
 	tableStyle := styles.TableBorderStyle
 
 	return tableStyle.Render(m.table.View())

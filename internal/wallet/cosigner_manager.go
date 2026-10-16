@@ -219,7 +219,7 @@ func (m *WalletManager) UpdateCosigner(index int, name, fingerprint string) erro
 			return fmt.Errorf("fingerprint must be 8 hex characters")
 		}
 		for _, c := range fingerprint {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 				return fmt.Errorf("fingerprint must be hexadecimal")
 			}
 		}

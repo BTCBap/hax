@@ -1,8 +1,6 @@
 package wallet
 
 import (
-	"encoding/hex"
-	"fmt"
 	"testing"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -379,11 +377,6 @@ func TestBIP49WithRealAddress(t *testing.T) {
 		}
 		t.Logf("Address %d: %s", i, addr)
 	}
-}
-
-// Helper to print hex
-func hexDump(label string, data []byte) string {
-	return fmt.Sprintf("%s: %s", label, hex.EncodeToString(data))
 }
 
 // Test that uses the actual PSBT flow (CreatePSBT -> SignPSBT -> FinalizePSBT)

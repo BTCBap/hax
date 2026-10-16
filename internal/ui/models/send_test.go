@@ -2225,12 +2225,8 @@ func TestSend_PSBTExport_SignWithNoPSBT(t *testing.T) {
 	m.psbtResult = nil // No PSBT
 
 	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-	updated := asSendModel(t, model)
-
-	// Should do nothing when psbtResult is nil
-	if updated.psbtExportErr != nil {
-		// This is also acceptable behavior
-	}
+	// Should do nothing (and not panic) when psbtResult is nil.
+	_ = asSendModel(t, model)
 }
 
 func TestSend_PSBTExport_AlreadyFullySigned(t *testing.T) {

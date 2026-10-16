@@ -368,7 +368,6 @@ func CreatePSBT(
 		// Recalculate without change output (smaller tx = lower base fee)
 		numOutputs = len(outputs)
 		vSize = EstimateVSize(len(utxos), numOutputs, inputScriptType, inputScriptType, multisigM, multisigN)
-		fee = api.Satoshi(math.Ceil(float64(vSize) * feeRate))
 
 		// Add the dust to the fee (this is what actually happens)
 		fee = totalInput - totalOutput
@@ -451,11 +450,7 @@ func CreatePSBT(
 			PkScript: pkScript,
 		}
 
-		// P2SH-P2WPKH (BIP49): redeemScript is set during signing, not here
-		if _, ok := addr.(*btcutil.AddressScriptHash); ok {
-			if strings.Contains(utxo.Path, "49'") || strings.Contains(utxo.Path, "49h") {
-			}
-		}
+		// P2SH-P2WPKH (BIP49): redeemScript is set during signing, not here.
 
 		// BIP174: Legacy P2SH uses RedeemScript, SegWit P2WSH/P2SH-P2WSH uses WitnessScript
 		if witnessScripts != nil && i < len(witnessScripts) && len(witnessScripts[i]) > 0 {
@@ -796,11 +791,12 @@ func SignPSBTFromDerivation(packet *psbt.Packet, wallet *HDWallet, network *chai
 
 				psbtDebugLog("[DEBUG]   Pubkey matches! Signing input %d", i)
 
-				if purpose == 86 {
+				switch purpose {
+				case 86:
 					err = signTaprootInput(packet, i, privKey, witnessUtxo)
-				} else if purpose == 44 {
+				case 44:
 					err = signLegacyInput(packet, i, privKey, ourPubKey, witnessUtxo, network)
-				} else {
+				default:
 					err = signSegWitInput(packet, i, privKey, ourPubKey, witnessUtxo, purpose == 49)
 				}
 
@@ -1366,41 +1362,6 @@ func SignMultisigPSBT(
 	}
 
 	return sigsAdded, nil
-}
-
-// parseBIP48PathComponents extracts change and index from a BIP48 path
-// Path format: m/48'/coin'/account'/script'/change/index
-func parseBIP48PathComponents(path string) (change uint32, index uint32, err error) {
-	path = strings.TrimPrefix(path, "m/")
-
-	rawParts := strings.Split(path, "/")
-	parts := make([]string, 0, len(rawParts))
-	for _, p := range rawParts {
-		if p != "" {
-			parts = append(parts, p)
-		}
-	}
-
-	if len(parts) < 6 {
-		return 0, 0, fmt.Errorf("invalid BIP48 path: expected 6 parts, got %d", len(parts))
-	}
-
-	changeStr := trimHardened(parts[len(parts)-2])
-	var changeVal uint64
-	_, err = fmt.Sscanf(changeStr, "%d", &changeVal)
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid change value: %s", parts[len(parts)-2])
-	}
-
-	indexStr := parts[len(parts)-1]
-	indexStr = trimHardened(indexStr)
-	var indexVal uint64
-	_, err = fmt.Sscanf(indexStr, "%d", &indexVal)
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid index value: %s", parts[len(parts)-1])
-	}
-
-	return uint32(changeVal), uint32(indexVal), nil
 }
 
 // parsePathChangeIndex extracts change and index from any derivation path format.

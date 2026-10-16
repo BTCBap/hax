@@ -1001,7 +1001,8 @@ func TestRPCBackend_GetTransaction_NoPrevout(t *testing.T) {
 			json.Unmarshal(params, &args)
 			txid, _ := args[0].(string)
 
-			if txid == "main_tx" {
+			switch txid {
+			case "main_tx":
 				result, _ := json.Marshal(map[string]interface{}{
 					"txid":    "main_tx",
 					"version": 2,
@@ -1033,7 +1034,7 @@ func TestRPCBackend_GetTransaction_NoPrevout(t *testing.T) {
 					"blocktime":     1700000000,
 				})
 				resp.Result = result
-			} else if txid == "prev_tx" {
+			case "prev_tx":
 				result, _ := json.Marshal(map[string]interface{}{
 					"txid":    "prev_tx",
 					"version": 2,
