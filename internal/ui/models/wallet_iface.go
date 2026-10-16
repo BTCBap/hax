@@ -36,6 +36,8 @@ type WalletService interface {
 	RestoreWalletOnNetwork(name, password, mnemonic, passphrase, network string) error
 	CreateHardwareWallet(name, password, xpub, fingerprint, keyOrigin string, addrType wallet.AddressType, deviceType string) error
 	CreateMultisigWallet(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType) error
+	CreateHardwareWalletOnNetwork(name, password, xpub, fingerprint, keyOrigin string, addrType wallet.AddressType, deviceType, network string) error
+	CreateMultisigWalletOnNetwork(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType, network string) error
 	ImportSeedToWatchOnlyWallet(mnemonic string) error
 	UnlockWallet(name, password string) error
 	LockWallet()

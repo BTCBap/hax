@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 )
 
@@ -62,4 +63,30 @@ func ValidateAddressForNetwork(address, network string) error {
 // ValidateAddress checks a recipient address against the unlocked wallet's network.
 func (m *WalletManager) ValidateAddress(address string) error {
 	return ValidateAddressForNetwork(address, m.GetNetwork())
+}
+
+// expectedXpubHint names the extended key prefix used on network.
+func expectedXpubHint(network string) string {
+	if network == NetworkMainnet {
+		return "mainnet expects xpub"
+	}
+	return "testnet4 expects tpub"
+}
+
+// CoinTypeForNetwork returns the BIP44 coin type: 0 for mainnet, 1 otherwise.
+func CoinTypeForNetwork(network string) uint32 {
+	if network == NetworkMainnet {
+		return 0
+	}
+	return 1
+}
+
+// NetworkOfXpub returns NetworkMainnet for a mainnet extended key and
+// NetworkTestnet otherwise (including keys that fail to parse).
+func NetworkOfXpub(xpub string) string {
+	k, err := hdkeychain.NewKeyFromString(xpub)
+	if err == nil && k.IsForNet(&chaincfg.MainNetParams) {
+		return NetworkMainnet
+	}
+	return NetworkTestnet
 }

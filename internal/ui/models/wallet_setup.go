@@ -84,6 +84,7 @@ type WalletSetupModel struct {
 	wordCount            int
 	network              string // wallet.NetworkTestnet or wallet.NetworkMainnet
 	confirmMainnet       bool   // mainnet warning shown, awaiting y/n
+	networkFor           networkFlow
 	generatedMnemonic    string
 	selectedScriptType   wallet.AddressType
 	customDerivationPath string // Optional custom derivation path (e.g. "m/84'/0'/3'")
@@ -522,8 +523,9 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 
 					if m.isMultisig {
-						// Normal multisig flow - go to M-of-N configuration
-						m.step = StepMultisigChooseType
+						// Normal multisig flow - choose network, then M-of-N
+						m.networkFor = networkForMultisig
+						m.step = StepChooseNetwork
 						m.cursor = 0
 					} else {
 						// Single-sig flow - go to script type selection
@@ -1016,6 +1018,9 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 		if m.isRestore {
 			return StepRestoreChooseScriptType
 		}
+		if m.networkFor == networkForMultisig {
+			return StepConfirmPassword
+		}
 		return StepChooseKeySource
 	case StepChooseWordCount:
 		return StepChooseNetwork
@@ -1024,15 +1029,15 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 
 	// Single-sig hardware wallet flow
 	case StepHWISetup:
-		return StepChooseKeySource
+		return StepChooseNetwork
 	case StepHardwareWalletConnect:
-		return StepChooseKeySource
+		return StepChooseNetwork
 	case StepHardwareWalletReview:
 		return StepHardwareWalletConnect
 
 	// Multisig flow (after password confirmation)
 	case StepMultisigChooseType:
-		return StepConfirmPassword
+		return StepChooseNetwork
 	case StepMultisigConfirm:
 		return StepMultisigChooseType
 	case StepMultisigEnterCosigners:
@@ -1584,16 +1589,14 @@ func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyMsg) (tea.Model, tea.
 	case "enter":
 		if m.cursor == 0 {
 			// Generate new seed - choose network, then word count
+			m.networkFor = networkForSoftware
 			m.step = StepChooseNetwork
 			m.cursor = 0
 		} else {
-			// Import from hardware wallet - scan for devices
-			m.step = StepHardwareWalletConnect
+			// Hardware wallet - choose network, then scan for devices
+			m.networkFor = networkForHardware
+			m.step = StepChooseNetwork
 			m.cursor = 0
-			m.hwiLoading = true
-			m.hwiError = nil
-			m.hwiDevices = nil
-			return m, tea.Batch(m.spinner.Tick, m.enumerateHWIDevicesForSingleSig())
 		}
 	}
 	return m, nil
@@ -1825,7 +1828,7 @@ func (m WalletSetupModel) viewHardwareWalletReview() string {
 	}
 
 	// Format key origin
-	keyOrigin := fmt.Sprintf("%s/%d'/1'/0'", m.hwFingerprint, purpose)
+	keyOrigin := fmt.Sprintf("%s/%d'/%d'/0'", m.hwFingerprint, purpose, m.coinType())
 
 	// Truncate xpub for display
 	xpubShort := m.hwDerivedXpub
@@ -1870,10 +1873,10 @@ func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyMsg) (tea.Model,
 		case wallet.AddressTypeTaproot:
 			purpose = 86
 		}
-		keyOrigin := fmt.Sprintf("%s/%d'/1'/0'", m.hwFingerprint, purpose)
+		keyOrigin := fmt.Sprintf("%s/%d'/%d'/0'", m.hwFingerprint, purpose, m.coinType())
 
 		// Create the hardware wallet
-		err := m.walletManager.CreateHardwareWallet(
+		err := m.walletManager.CreateHardwareWalletOnNetwork(
 			m.walletName,
 			m.password,
 			m.hwDerivedXpub,
@@ -1881,6 +1884,7 @@ func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyMsg) (tea.Model,
 			keyOrigin,
 			m.selectedScriptType,
 			deviceType,
+			m.network,
 		)
 		if err != nil {
 			m.err = err
@@ -1917,11 +1921,12 @@ func (m WalletSetupModel) enumerateHWIDevicesForSingleSig() tea.Cmd {
 
 // getXpubFromHWIForSingleSig retrieves the xpub from a hardware wallet for single-sig
 func (m WalletSetupModel) getXpubFromHWIForSingleSig(device wallet.HardwareDevice) tea.Cmd {
-	walletMgr := m.walletManager
 	scriptType := m.selectedScriptType
+	testnet := m.isTestnet()
+	coin := m.coinType()
 
 	return func() tea.Msg {
-		hwi := walletMgr.GetHWIClient()
+		hwi := wallet.NewHWIClient(testnet)
 		if hwi == nil || !hwi.IsAvailable() {
 			return HWIXpubMsg{Err: fmt.Errorf("HWI not installed. %s", wallet.HWIInstallInstructions())}
 		}
@@ -1931,15 +1936,15 @@ func (m WalletSetupModel) getXpubFromHWIForSingleSig(device wallet.HardwareDevic
 		var path string
 		switch scriptType {
 		case wallet.AddressTypeLegacy:
-			path = "m/44'/1'/0'" // BIP44 Legacy
+			path = fmt.Sprintf("m/44'/%d'/0'", coin) // BIP44 Legacy
 		case wallet.AddressTypeSegWitNested:
-			path = "m/49'/1'/0'" // BIP49 Nested SegWit
+			path = fmt.Sprintf("m/49'/%d'/0'", coin) // BIP49 Nested SegWit
 		case wallet.AddressTypeSegWitNative:
-			path = "m/84'/1'/0'" // BIP84 Native SegWit
+			path = fmt.Sprintf("m/84'/%d'/0'", coin) // BIP84 Native SegWit
 		case wallet.AddressTypeTaproot:
-			path = "m/86'/1'/0'" // BIP86 Taproot
+			path = fmt.Sprintf("m/86'/%d'/0'", coin) // BIP86 Taproot
 		default:
-			path = "m/84'/1'/0'" // Default to native segwit
+			path = fmt.Sprintf("m/84'/%d'/0'", coin) // Default to native segwit
 		}
 
 		xpub, err := hwi.GetXpub(device, path)
@@ -2044,7 +2049,7 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 	} else {
 		effectivePath := m.multisigCustomDerivPath
 		if effectivePath == "" {
-			effectivePath = wallet.DefaultMultisigAccountPath(m.multisigScriptType, true)
+			effectivePath = wallet.DefaultMultisigAccountPath(m.multisigScriptType, m.isTestnet())
 		}
 		pathBox := styles.BoldText.Render("Derivation Path") + "\n" +
 			styles.NormalText.Render(effectivePath)
@@ -2147,7 +2152,7 @@ func (m WalletSetupModel) handleMultisigChooseType(msg tea.KeyMsg) (tea.Model, t
 			m.showMultisigCustomPath = true
 			prefill := m.multisigCustomDerivPath
 			if prefill == "" {
-				prefill = wallet.DefaultMultisigAccountPath(m.multisigScriptType, true)
+				prefill = wallet.DefaultMultisigAccountPath(m.multisigScriptType, m.isTestnet())
 			}
 			m.customPathInput.SetValue(prefill)
 			return m, m.customPathInput.Focus()
@@ -2177,7 +2182,7 @@ func (m WalletSetupModel) viewMultisigConfirm() string {
 
 	effectivePath := m.multisigCustomDerivPath
 	if effectivePath == "" {
-		effectivePath = wallet.DefaultMultisigAccountPath(m.multisigScriptType, true)
+		effectivePath = wallet.DefaultMultisigAccountPath(m.multisigScriptType, m.isTestnet())
 	}
 
 	summary := styles.InfoBoxStyle.Render(
@@ -2521,7 +2526,7 @@ func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Mode
 				cs, err := wallet.DeriveMultisigCosignerFromMnemonic(
 					seedVal,
 					m.multisigScriptType,
-					true, // testnet
+					m.isTestnet(),
 					m.multisigCustomDerivPath,
 				)
 				if err != nil {
@@ -2628,12 +2633,13 @@ func (m WalletSetupModel) handleMultisigReview(msg tea.KeyMsg) (tea.Model, tea.C
 	case "enter":
 		// Create the multisig wallet
 		m.scrollOffset = 0
-		err := m.walletManager.CreateMultisigWallet(
+		err := m.walletManager.CreateMultisigWalletOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
+			m.network,
 		)
 		if err != nil {
 			m.err = err
@@ -2698,12 +2704,12 @@ func (m WalletSetupModel) enumerateHWIDevicesForSetup() tea.Cmd {
 
 // getXpubFromHWI retrieves the xpub from a hardware wallet at the appropriate path
 func (m WalletSetupModel) getXpubFromHWI(device wallet.HardwareDevice) tea.Cmd {
-	walletMgr := m.walletManager
 	scriptType := m.multisigScriptType
 	customPath := m.multisigCustomDerivPath
+	testnet := m.isTestnet()
 
 	return func() tea.Msg {
-		hwi := walletMgr.GetHWIClient()
+		hwi := wallet.NewHWIClient(testnet)
 		if hwi == nil || !hwi.IsAvailable() {
 			return HWIXpubMsg{Err: fmt.Errorf("HWI not installed. %s", wallet.HWIInstallInstructions())}
 		}
@@ -2713,7 +2719,7 @@ func (m WalletSetupModel) getXpubFromHWI(device wallet.HardwareDevice) tea.Cmd {
 		if customPath != "" {
 			path = customPath
 		} else {
-			path = wallet.DefaultMultisigAccountPath(scriptType, true)
+			path = wallet.DefaultMultisigAccountPath(scriptType, testnet)
 		}
 
 		xpub, err := hwi.GetXpub(device, path)
@@ -2841,12 +2847,17 @@ func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model,
 func (m *WalletSetupModel) createWalletFromDescriptor() error {
 	if m.descriptorIsMultisig {
 		// Create multisig wallet
-		return m.walletManager.CreateMultisigWallet(
+		network := wallet.NetworkTestnet
+		if len(m.multisigCosigners) > 0 {
+			network = wallet.NetworkOfXpub(m.multisigCosigners[0].Xpub)
+		}
+		return m.walletManager.CreateMultisigWalletOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
+			network,
 		)
 	}
 
@@ -2858,7 +2869,7 @@ func (m *WalletSetupModel) createWalletFromDescriptor() error {
 		keyOrigin = cfg.Fingerprint
 	}
 
-	return m.walletManager.CreateHardwareWallet(
+	return m.walletManager.CreateHardwareWalletOnNetwork(
 		m.walletName,
 		m.password,
 		cfg.Xpub,
@@ -2866,12 +2877,27 @@ func (m *WalletSetupModel) createWalletFromDescriptor() error {
 		keyOrigin,
 		cfg.AddressType,
 		"descriptor", // device type
+		wallet.NetworkOfXpub(cfg.Xpub),
 	)
 }
 
 // =============================================================================
 // Network selection
 // =============================================================================
+
+// networkFlow records which setup flow the network step belongs to, so the
+// step can be shared by software, hardware and multisig wallets.
+type networkFlow int
+
+const (
+	networkForSoftware networkFlow = iota
+	networkForHardware
+	networkForMultisig
+)
+
+func (m WalletSetupModel) isTestnet() bool { return m.network != wallet.NetworkMainnet }
+
+func (m WalletSetupModel) coinType() uint32 { return wallet.CoinTypeForNetwork(m.network) }
 
 func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.confirmMainnet {
@@ -2908,6 +2934,17 @@ func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyMsg) (tea.Model, tea.Cm
 
 func (m WalletSetupModel) advanceFromNetwork() (tea.Model, tea.Cmd) {
 	m.cursor = 0
+	switch m.networkFor {
+	case networkForHardware:
+		m.step = StepHardwareWalletConnect
+		m.hwiLoading = true
+		m.hwiError = nil
+		m.hwiDevices = nil
+		return m, tea.Batch(m.spinner.Tick, m.enumerateHWIDevicesForSingleSig())
+	case networkForMultisig:
+		m.step = StepMultisigChooseType
+		return m, nil
+	}
 	if m.isRestore {
 		m.step = StepRestoreEnterPassword
 		return m, m.passwordInput.Focus()

@@ -752,3 +752,13 @@ func (m *MockWalletManager) RestoreWalletOnNetwork(name, password, mnemonic, pas
 	m.CreatedNetwork = network
 	return m.RestoreWallet(name, password, mnemonic)
 }
+
+func (m *MockWalletManager) CreateHardwareWalletOnNetwork(name, password, xpub, fingerprint, keyOrigin string, addrType wallet.AddressType, deviceType, network string) error {
+	m.CreatedNetwork = network
+	return m.CreateHardwareWallet(name, password, xpub, fingerprint, keyOrigin, addrType, deviceType)
+}
+
+func (m *MockWalletManager) CreateMultisigWalletOnNetwork(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType, network string) error {
+	m.CreatedNetwork = network
+	return m.CreateMultisigWallet(name, password, requiredSigs, cosigners, scriptType)
+}

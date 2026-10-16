@@ -63,3 +63,46 @@ func TestNetworkBadge(t *testing.T) {
 		t.Fatal("testnet4 tag missing")
 	}
 }
+
+func TestChooseNetwork_HardwareFlow(t *testing.T) {
+	m := NewWalletSetupModel(&MockWalletManager{}, nil)
+	m.step = StepChooseKeySource
+	m.cursor = 1
+	out, _ := m.handleChooseKeySource(netKey("enter"))
+	m = out.(WalletSetupModel)
+	if m.step != StepChooseNetwork || m.networkFor != networkForHardware {
+		t.Fatalf("step=%v flow=%v", m.step, m.networkFor)
+	}
+	if m.getPreviousStep() != StepChooseKeySource {
+		t.Fatal("back from network should return to key source")
+	}
+	out, _ = m.handleChooseNetwork(netKey("enter"))
+	out, _ = out.(WalletSetupModel).handleChooseNetwork(netKey("y"))
+	m = out.(WalletSetupModel)
+	if m.network != wallet.NetworkMainnet || m.step != StepHardwareWalletConnect {
+		t.Fatalf("network=%s step=%v", m.network, m.step)
+	}
+	if m.coinType() != 0 || m.isTestnet() {
+		t.Fatal("mainnet hardware wallet must use coin type 0")
+	}
+	if m.getPreviousStep() != StepChooseNetwork {
+		t.Fatal("back from device scan should return to network choice")
+	}
+}
+
+func TestChooseNetwork_MultisigFlow(t *testing.T) {
+	m := NewWalletSetupModel(&MockWalletManager{}, nil)
+	m.step, m.networkFor = StepChooseNetwork, networkForMultisig
+	if m.getPreviousStep() != StepConfirmPassword {
+		t.Fatal("back from multisig network should return to password confirm")
+	}
+	out, _ := m.handleChooseNetwork(netKey("down"))
+	out, _ = out.(WalletSetupModel).handleChooseNetwork(netKey("enter"))
+	m = out.(WalletSetupModel)
+	if m.network != wallet.NetworkTestnet || m.step != StepMultisigChooseType {
+		t.Fatalf("network=%s step=%v", m.network, m.step)
+	}
+	if got := wallet.DefaultMultisigAccountPath(wallet.MultisigNativeSegwit, m.isTestnet()); got != "m/48'/1'/0'/2'" {
+		t.Fatalf("testnet multisig path %s", got)
+	}
+}
