@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -16,8 +18,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/BTCBap/hax/internal/api"
-	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
 type TransactionHistoryModel struct {

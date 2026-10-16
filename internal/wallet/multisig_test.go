@@ -357,10 +357,10 @@ func TestMultisigChangeOutputMetadata(t *testing.T) {
 	_ = cosigners // used below in subtests
 
 	tests := []struct {
-		name            string
-		scriptType      MultisigScriptType
-		wantWitness     bool
-		wantRedeem      bool
+		name        string
+		scriptType  MultisigScriptType
+		wantWitness bool
+		wantRedeem  bool
 	}{
 		{"NativeSegwit_P2WSH", MultisigNativeSegwit, true, false},
 		{"NestedSegwit_P2SH-P2WSH", MultisigNestedSegwit, true, true},
@@ -399,8 +399,8 @@ func TestMultisigChangeOutputMetadata(t *testing.T) {
 
 			// Create a minimal PSBT with 2 outputs (recipient + change)
 			tx := wire.NewMsgTx(2)
-			tx.AddTxOut(wire.NewTxOut(50000, []byte{0x00, 0x14, 0x01, 0x02, 0x03}))  // recipient
-			tx.AddTxOut(wire.NewTxOut(40000, []byte{0x00, 0x14, 0x04, 0x05, 0x06}))  // change
+			tx.AddTxOut(wire.NewTxOut(50000, []byte{0x00, 0x14, 0x01, 0x02, 0x03})) // recipient
+			tx.AddTxOut(wire.NewTxOut(40000, []byte{0x00, 0x14, 0x04, 0x05, 0x06})) // change
 			packet, err := psbt.NewFromUnsignedTx(tx)
 			if err != nil {
 				t.Fatalf("Failed to create PSBT: %v", err)
@@ -496,7 +496,7 @@ func TestMultisigScriptTypes(t *testing.T) {
 		expectedPrefix string
 	}{
 		{"NativeSegwit", MultisigNativeSegwit, "tb1q"},
-		{"Legacy", MultisigLegacy, "2"}, // P2SH on testnet
+		{"Legacy", MultisigLegacy, "2"},             // P2SH on testnet
 		{"NestedSegwit", MultisigNestedSegwit, "2"}, // P2SH-P2WSH on testnet
 	}
 

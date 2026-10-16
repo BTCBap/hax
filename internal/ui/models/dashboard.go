@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
-	"github.com/BTCBap/hax/internal/api"
-	"github.com/BTCBap/hax/internal/config"
-	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type MainDashboardModel struct {

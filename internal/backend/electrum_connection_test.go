@@ -452,7 +452,9 @@ func TestRequest_ServerReturnsError(t *testing.T) {
 	go b.readLoop()
 
 	go func() {
-		var req struct{ ID uint64 `json:"id"` }
+		var req struct {
+			ID uint64 `json:"id"`
+		}
 		readJSONLine(t, serverConn, &req)
 		writeJSONLine(t, serverConn, map[string]interface{}{
 			"jsonrpc": "2.0",

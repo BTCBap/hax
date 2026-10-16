@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/harmonica"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/version"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/harmonica"
 )
 
 // SplashModel represents the splash screen

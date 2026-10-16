@@ -316,10 +316,10 @@ func ValidateCosignerXpub(xpub string) (fingerprint string, err error) {
 
 // CosignerValidationResult contains the result of cosigner validation
 type CosignerValidationResult struct {
-	Config   MultisigCosignerConfig
-	Warning  string // Non-fatal warning (e.g., "bare xpub without key origin")
-	Error    error  // Fatal error (e.g., "wrong derivation path for multisig")
-	IsBIP48  bool   // True if derivation path is proper BIP48
+	Config  MultisigCosignerConfig
+	Warning string // Non-fatal warning (e.g., "bare xpub without key origin")
+	Error   error  // Fatal error (e.g., "wrong derivation path for multisig")
+	IsBIP48 bool   // True if derivation path is proper BIP48
 }
 
 // ParseCosignerString parses a cosigner string in format:

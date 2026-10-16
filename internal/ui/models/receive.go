@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/BTCBap/hax/internal/api"
-	"github.com/BTCBap/hax/internal/ui"
-	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type ReceiveModel struct {

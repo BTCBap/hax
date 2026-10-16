@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/BTCBap/hax/internal/wallet"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestNewHelpModel(t *testing.T) {

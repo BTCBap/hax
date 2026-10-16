@@ -30,8 +30,8 @@ type MempoolStats struct {
 
 // UTXO represents an unspent transaction output
 type UTXO struct {
-	TxID   string `json:"txid"`
-	Vout   uint32 `json:"vout"`
+	TxID   string  `json:"txid"`
+	Vout   uint32  `json:"vout"`
 	Value  Satoshi `json:"value"`
 	Status Status  `json:"status"`
 }
@@ -46,15 +46,15 @@ type Status struct {
 
 // Transaction represents a Bitcoin transaction
 type Transaction struct {
-	TxID     string `json:"txid"`
-	Version  int    `json:"version"`
-	Locktime int64  `json:"locktime"`
-	Size     int    `json:"size"`
-	Weight   int    `json:"weight"`
+	TxID     string  `json:"txid"`
+	Version  int     `json:"version"`
+	Locktime int64   `json:"locktime"`
+	Size     int     `json:"size"`
+	Weight   int     `json:"weight"`
 	Fee      Satoshi `json:"fee"`
-	Vin      []Vin  `json:"vin"`
-	Vout     []Vout `json:"vout"`
-	Status   Status `json:"status"`
+	Vin      []Vin   `json:"vin"`
+	Vout     []Vout  `json:"vout"`
+	Status   Status  `json:"status"`
 }
 
 // Vin represents a transaction input
@@ -69,9 +69,9 @@ type Vin struct {
 
 // Vout represents a transaction output
 type Vout struct {
-	ScriptpubkeyAsm     string `json:"scriptpubkey_asm"`
-	ScriptpubkeyType    string `json:"scriptpubkey_type"`
-	ScriptpubkeyAddress string `json:"scriptpubkey_address"`
+	ScriptpubkeyAsm     string  `json:"scriptpubkey_asm"`
+	ScriptpubkeyType    string  `json:"scriptpubkey_type"`
+	ScriptpubkeyAddress string  `json:"scriptpubkey_address"`
 	Value               Satoshi `json:"value"`
 }
 

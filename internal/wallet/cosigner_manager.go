@@ -134,7 +134,7 @@ func (m *WalletManager) ImportCosignerSeed(mnemonic string) (int, error) {
 
 			// Build key origin if missing (use the actual derivation path)
 			if cs.KeyOrigin == "" {
-				pathWithoutM := cs.ActualDerivation[2:] // Remove "m/"
+				pathWithoutM := cs.ActualDerivation[2:]                   // Remove "m/"
 				pathWithoutM = strings.ReplaceAll(pathWithoutM, "'", "h") // Use 'h' notation
 				cs.KeyOrigin = fmt.Sprintf("%s/%s", fingerprint, pathWithoutM)
 			}

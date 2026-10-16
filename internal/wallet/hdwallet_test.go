@@ -151,9 +151,9 @@ func TestValidateAccountPath(t *testing.T) {
 		{"m/44'/0'/0'", false},
 		{"m/48'/1'/0'/2'", false},
 		{"", true},
-		{"84'/1'/0'", true},     // Missing m/ prefix
-		{"m/84'/1'", true},      // Too few components
-		{"m/abc/1'/0'", true},   // Invalid number
+		{"84'/1'/0'", true},   // Missing m/ prefix
+		{"m/84'/1'", true},    // Too few components
+		{"m/abc/1'/0'", true}, // Invalid number
 	}
 	for _, tt := range tests {
 		err := ValidateAccountPath(tt.path)

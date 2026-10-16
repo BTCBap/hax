@@ -88,14 +88,14 @@ func TestParseMultisigDescriptor(t *testing.T) {
 			wantWarnings:   true, // no checksum
 		},
 		{
-			name:        "Invalid format",
-			descriptor:  fmt.Sprintf("wpkh([73c5da0a/84h/1h/0h]%s)", validXpub),
-			wantErr:     true,
+			name:       "Invalid format",
+			descriptor: fmt.Sprintf("wpkh([73c5da0a/84h/1h/0h]%s)", validXpub),
+			wantErr:    true,
 		},
 		{
-			name:        "M greater than N",
-			descriptor:  fmt.Sprintf("wsh(sortedmulti(3,%s,%s))", validXpub, validXpub),
-			wantErr:     true,
+			name:       "M greater than N",
+			descriptor: fmt.Sprintf("wsh(sortedmulti(3,%s,%s))", validXpub, validXpub),
+			wantErr:    true,
 		},
 		{
 			name:       "Empty descriptor",

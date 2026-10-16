@@ -73,13 +73,13 @@ type BackupLabel struct {
 // Compatible with Sparrow's "File > Import > Caravan Multisig" import.
 // Cosigner names are preserved in extendedPublicKeys[].name.
 type MultisigExport struct {
-	Name                 string                `json:"name"`
-	AddressType          string                `json:"addressType"`
-	Network              string                `json:"network"`
-	Client               MultisigExportClient  `json:"client"`
-	Quorum               MultisigExportQuorum  `json:"quorum"`
-	ExtendedPublicKeys   []MultisigExportKey   `json:"extendedPublicKeys"`
-	StartingAddressIndex int                   `json:"startingAddressIndex"`
+	Name                 string               `json:"name"`
+	AddressType          string               `json:"addressType"`
+	Network              string               `json:"network"`
+	Client               MultisigExportClient `json:"client"`
+	Quorum               MultisigExportQuorum `json:"quorum"`
+	ExtendedPublicKeys   []MultisigExportKey  `json:"extendedPublicKeys"`
+	StartingAddressIndex int                  `json:"startingAddressIndex"`
 }
 
 type MultisigExportClient struct {

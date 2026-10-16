@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"github.com/charmbracelet/lipgloss"
 	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // FormatBitcoinAddressColored formats a Bitcoin address with the prefix and suffix
