@@ -362,9 +362,12 @@ func ValidateBitcoinAddress(address string, testnet bool) error {
 		network = &chaincfg.MainNetParams
 	}
 
-	_, err := btcutil.DecodeAddress(address, network)
+	addr, err := btcutil.DecodeAddress(address, network)
 	if err != nil {
 		return fmt.Errorf("invalid Bitcoin address: %w", err)
+	}
+	if !addr.IsForNet(network) {
+		return fmt.Errorf("invalid Bitcoin address: not a %s address", network.Name)
 	}
 	return nil
 }

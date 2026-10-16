@@ -405,6 +405,10 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 			if msg.String() == "enter" && m.nameInput.Value() != "" {
 				walletName := m.nameInput.Value()
+				if err := wallet.ValidateWalletName(walletName); err != nil {
+					m.err = err
+					return m, tea.Batch(cmds...)
+				}
 
 				// Check if wallet already exists
 				if m.walletManager.WalletExists(walletName) {
@@ -466,6 +470,11 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput, cmd = m.passwordInput.Update(msg)
 			cmds = append(cmds, cmd)
 			if msg.String() == "enter" && m.passwordInput.Value() != "" {
+				if err := wallet.ValidatePassword(m.passwordInput.Value()); err != nil {
+					m.err = err
+					return m, tea.Batch(cmds...)
+				}
+				m.err = nil
 				m.password = m.passwordInput.Value()
 				m.step = StepConfirmPassword
 				cmds = append(cmds, m.confirmPasswordInput.Focus())
@@ -528,6 +537,10 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 			if msg.String() == "enter" && m.nameInput.Value() != "" {
 				walletName := m.nameInput.Value()
+				if err := wallet.ValidateWalletName(walletName); err != nil {
+					m.err = err
+					return m, tea.Batch(cmds...)
+				}
 
 				// Check if wallet already exists
 				if m.walletManager.WalletExists(walletName) {
@@ -563,6 +576,11 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput, cmd = m.passwordInput.Update(msg)
 			cmds = append(cmds, cmd)
 			if msg.String() == "enter" && m.passwordInput.Value() != "" {
+				if err := wallet.ValidatePassword(m.passwordInput.Value()); err != nil {
+					m.err = err
+					return m, tea.Batch(cmds...)
+				}
+				m.err = nil
 				m.password = m.passwordInput.Value()
 				m.step = StepRestoreConfirmPassword
 				cmds = append(cmds, m.confirmPasswordInput.Focus())
@@ -2760,6 +2778,10 @@ func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model,
 		walletName := strings.TrimSpace(m.nameInput.Value())
 		if walletName == "" {
 			m.err = fmt.Errorf("please enter a wallet name")
+			return m, nil
+		}
+		if err := wallet.ValidateWalletName(walletName); err != nil {
+			m.err = err
 			return m, nil
 		}
 

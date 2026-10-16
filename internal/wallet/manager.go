@@ -170,6 +170,12 @@ func (m *WalletManager) getGapLimit() int {
 
 // CreateWallet creates a new wallet with a generated mnemonic
 func (m *WalletManager) CreateWallet(name string, password string, wordCount int) (string, error) {
+	if err := ValidateWalletName(name); err != nil {
+		return "", err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
 	// Check if wallet already exists
 	if m.WalletExists(name) {
 		return "", fmt.Errorf("wallet '%s' already exists", name)
@@ -210,8 +216,20 @@ func (m *WalletManager) CreateWallet(name string, password string, wordCount int
 	return mnemonic, nil
 }
 
-// RestoreWallet creates a wallet from an existing mnemonic
+// RestoreWallet creates a wallet from an existing mnemonic (no BIP39 passphrase).
 func (m *WalletManager) RestoreWallet(name string, password string, mnemonic string) error {
+	return m.RestoreWalletWithPassphrase(name, password, mnemonic, "")
+}
+
+// RestoreWalletWithPassphrase creates a wallet from an existing mnemonic and an
+// optional BIP39 passphrase, which is honored on every unlock.
+func (m *WalletManager) RestoreWalletWithPassphrase(name, password, mnemonic, passphrase string) error {
+	if err := ValidateWalletName(name); err != nil {
+		return err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
 	// Check if wallet already exists
 	if m.WalletExists(name) {
 		return fmt.Errorf("wallet '%s' already exists", name)
@@ -224,12 +242,13 @@ func (m *WalletManager) RestoreWallet(name string, password string, mnemonic str
 
 	// Create wallet data
 	walletData := &WalletData{
-		Version:   1,
-		Name:      name,
-		Mnemonic:  mnemonic,
-		CreatedAt: time.Now().Unix(),
-		Network:   "testnet",
-		Accounts:  make([]AccountData, 0),
+		Version:    1,
+		Name:       name,
+		Mnemonic:   mnemonic,
+		Passphrase: passphrase,
+		CreatedAt:  time.Now().Unix(),
+		Network:    "testnet",
+		Accounts:   make([]AccountData, 0),
 	}
 
 	// Save to disk
@@ -501,7 +520,7 @@ func (m *WalletManager) UnlockWallet(name string, password string) error {
 		m.password = password
 		m.unlocked = true
 	} else {
-		seed, err := MnemonicToSeed(data.Mnemonic, "")
+		seed, err := seedFromWalletData(data)
 		if err != nil {
 			m.state.SetError(fmt.Errorf("failed to derive seed: %w", err))
 			return fmt.Errorf("failed to derive seed: %w", err)
@@ -877,4 +896,10 @@ func (m *WalletManager) getWalletFingerprint() string {
 	}
 
 	return ""
+}
+
+// seedFromWalletData derives the BIP39 seed for a software wallet, honoring the
+// optional BIP39 passphrase stored inside the encrypted wallet file.
+func seedFromWalletData(data *WalletData) ([]byte, error) {
+	return MnemonicToSeed(data.Mnemonic, data.Passphrase)
 }

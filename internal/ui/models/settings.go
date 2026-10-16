@@ -210,17 +210,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showMnemonic = false
 				m.mnemonic = ""
 				return m, nil
-			case "c":
-				// Copy mnemonic to clipboard
-				err := clipboard.WriteAll(m.mnemonic)
-				if err == nil {
-					m.showCopied = true
-					m.copyMessage = "MNEMONIC COPIED!"
-					m.copiedTime = time.Now()
-					cmds = append(cmds, m.animateTick())
-				}
-				return m, tea.Batch(cmds...)
 			}
+			// Copying the seed phrase to the clipboard is intentionally not
+			// supported: clipboards are readable by other apps and often synced.
 			return m, nil
 		}
 
@@ -1195,7 +1187,6 @@ func (m SettingsModel) viewMnemonic() string {
 	}
 
 	help := styles.RenderHelp(
-		styles.HK("c", "copy"),
 		styles.HK("esc", "hide & go back"),
 	)
 

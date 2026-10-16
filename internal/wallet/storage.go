@@ -26,9 +26,11 @@ const (
 
 // WalletData represents the data stored in a wallet file
 type WalletData struct {
-	Version           int               `json:"version"`
-	Name              string            `json:"name"`
-	Mnemonic          string            `json:"mnemonic"` // Encrypted (empty for watch-only multisig)
+	Version  int    `json:"version"`
+	Name     string `json:"name"`
+	Mnemonic string `json:"mnemonic"` // Encrypted (empty for watch-only multisig)
+	// Optional BIP39 passphrase ("25th word"). Stored only inside the encrypted file.
+	Passphrase        string            `json:"passphrase,omitempty"`
 	CreatedAt         int64             `json:"created_at"`
 	Network           string            `json:"network"` // "mainnet" or "testnet"
 	Accounts          []AccountData     `json:"accounts"`
@@ -168,6 +170,10 @@ func NewWalletStorage(walletDir string) (*WalletStorage, error) {
 
 // SaveWallet encrypts and saves a wallet to disk
 func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password string) error {
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return err
+	}
 	// Generate salt for key derivation
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
@@ -204,7 +210,6 @@ func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password
 	}
 
 	// Write to file with restricted permissions
-	walletPath := filepath.Join(s.walletDir, walletName+".wallet")
 	if err := os.WriteFile(walletPath, fileData, 0600); err != nil {
 		return fmt.Errorf("failed to write wallet file: %w", err)
 	}
@@ -214,7 +219,10 @@ func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password
 
 // LoadWallet decrypts and loads a wallet from disk
 func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletData, error) {
-	walletPath := filepath.Join(s.walletDir, walletName+".wallet")
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return nil, err
+	}
 
 	// Read wallet file
 	fileData, err := os.ReadFile(walletPath)
@@ -248,8 +256,11 @@ func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletD
 
 // WalletExists checks if a wallet file exists
 func (s *WalletStorage) WalletExists(walletName string) bool {
-	walletPath := filepath.Join(s.walletDir, walletName+".wallet")
-	_, err := os.Stat(walletPath)
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(walletPath)
 	return err == nil
 }
 
@@ -273,11 +284,28 @@ func (s *WalletStorage) ListWallets() ([]string, error) {
 
 // DeleteWallet removes a wallet file
 func (s *WalletStorage) DeleteWallet(walletName string) error {
-	walletPath := filepath.Join(s.walletDir, walletName+".wallet")
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(walletPath); err != nil {
 		return fmt.Errorf("failed to delete wallet: %w", err)
 	}
 	return nil
+}
+
+// walletPath returns the on-disk path for a wallet, rejecting any name that
+// could escape the wallet directory.
+func (s *WalletStorage) walletPath(walletName string) (string, error) {
+	if err := ValidateWalletName(walletName); err != nil {
+		return "", err
+	}
+	p := filepath.Join(s.walletDir, walletName+".wallet")
+	rel, err := filepath.Rel(s.walletDir, p)
+	if err != nil || rel != filepath.Base(p) {
+		return "", fmt.Errorf("invalid wallet name %q", walletName)
+	}
+	return p, nil
 }
 
 // encrypt encrypts data using AES-GCM
