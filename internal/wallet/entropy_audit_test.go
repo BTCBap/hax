@@ -94,7 +94,7 @@ func TestNoMathRandInProductionCode(t *testing.T) {
 		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return err
 		}
-		b, err := os.ReadFile(p)
+		b, err := os.ReadFile(p) //nolint:gosec // walking our own source tree
 		if err != nil {
 			return err
 		}

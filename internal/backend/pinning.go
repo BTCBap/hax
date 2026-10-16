@@ -115,10 +115,9 @@ func (s *PinStore) Check(server string, state tls.ConnectionState) error {
 		return s.save(pins)
 	}
 	if want != got {
-		return fmt.Errorf("%w for %s\n  pinned:    %s\n  presented: %s\n"+
-			"This can mean the server rotated its key, or someone is intercepting the connection.\n"+
-			"Refusing to connect. If you have verified the change out of band, remove the %q entry from %s.",
-			ErrCertPinMismatch, server, want, got, server, s.path)
+		return fmt.Errorf("%w for %s (pinned %s, presented %s): this may be a key rotation "+
+			"or an interception; refusing to connect. If you verified the change out of band, "+
+			"remove the %q entry from %s", ErrCertPinMismatch, server, want, got, server, s.path)
 	}
 	return nil
 }

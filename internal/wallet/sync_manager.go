@@ -53,7 +53,7 @@ func (m *WalletManager) migrateMultisigPaths() {
 
 	// Save wallet if we migrated any paths
 	if migrated && m.hasKey() {
-		m.saveWalletTracked(m.data.Name, m.data)
+		_ = m.saveWalletTracked(m.data.Name, m.data) // best-effort cache persist; retried on next save
 	}
 }
 
@@ -175,7 +175,7 @@ func (m *WalletManager) scanAddressesWithContext(ctx context.Context) {
 	// Save wallet to persist discovered addresses (hold lock during save)
 	m.dataMu.RLock()
 	if m.data != nil && m.hasKey() {
-		m.saveWalletTracked(m.data.Name, m.data)
+		_ = m.saveWalletTracked(m.data.Name, m.data) // best-effort cache persist; retried on next save
 	}
 	m.dataMu.RUnlock()
 }
@@ -541,7 +541,7 @@ func (m *WalletManager) persistCache() {
 	// (saving to local file is fast, so blocking is acceptable)
 	walletName := m.data.Name
 	walletData := m.data
-	m.saveWalletTracked(walletName, walletData)
+	_ = m.saveWalletTracked(walletName, walletData) // best-effort cache persist; retried on next save
 	m.dataMu.Unlock()
 }
 

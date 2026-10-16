@@ -426,7 +426,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
 				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
 					tx := m.filteredTransactions[absoluteIndex]
-					openTransactionInBrowser(walletNetwork(m.walletManager), tx.TxID)
+					_ = openTransactionInBrowser(walletNetwork(m.walletManager), tx.TxID)
 				}
 			}
 

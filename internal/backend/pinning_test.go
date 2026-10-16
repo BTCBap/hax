@@ -97,7 +97,7 @@ func TestVerifyConnection_HandshakeFailsOnChange(t *testing.T) {
 			VerifyConnection: verifyConnection("srv:50002"),
 		})
 		if err == nil {
-			c.Close()
+			_ = c.Close()
 		}
 		return err
 	}
