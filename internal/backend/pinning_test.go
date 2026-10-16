@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -51,7 +52,7 @@ func TestPinStore_TOFUThenHardFail(t *testing.T) {
 	if err := s.Check("h:50002", a); err != nil {
 		t.Fatalf("first use: %v", err)
 	}
-	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Fatalf("pin file perms: %v %v", fi, err)
 	}
 	if err := s.Check("h:50002", a); err != nil {
