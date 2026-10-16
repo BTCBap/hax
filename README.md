@@ -110,7 +110,7 @@ hax
 
 On first run, hax asks you to pick a backend (Electrum or Bitcoin Core RPC). Then you can create or restore a wallet:
 
-1. Create a wallet, write the seed phrase down on paper, and verify it.
+1. Create a wallet, write the seed phrase down on paper. Never store it digitally.
 2. Choose an address type (native SegWit is the default).
 3. Fund it from a testnet4 faucet, e.g. [mempool.space/testnet4/faucet](https://mempool.space/testnet4/faucet).
 4. Use `r` to receive, `s` to send, `h` for history, `u` for UTXOs, `t` for settings, and `?` for all key bindings.
