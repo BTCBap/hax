@@ -21,6 +21,23 @@ func (m *WalletManager) CreateMultisigWallet(
 	cosigners []MultisigCosignerConfig,
 	scriptType MultisigScriptType,
 ) error {
+	return m.CreateMultisigWalletOnNetwork(name, password, requiredSigs, cosigners, scriptType, NetworkTestnet)
+}
+
+// CreateMultisigWalletOnNetwork creates a watch-only multisig wallet for
+// network. Every cosigner xpub must belong to that network.
+func (m *WalletManager) CreateMultisigWalletOnNetwork(
+	name string,
+	password string,
+	requiredSigs int,
+	cosigners []MultisigCosignerConfig,
+	scriptType MultisigScriptType,
+	network string,
+) error {
+	params, err := ParamsForNetwork(network)
+	if err != nil {
+		return err
+	}
 	// Validate inputs
 	if name == "" {
 		return fmt.Errorf("wallet name cannot be empty")
@@ -45,9 +62,12 @@ func (m *WalletManager) CreateMultisigWallet(
 			return fmt.Errorf("cosigner %d: xpub cannot be empty", i+1)
 		}
 		// Try to parse the xpub to validate it
-		_, err := hdkeychain.NewKeyFromString(cs.Xpub)
+		key, err := hdkeychain.NewKeyFromString(cs.Xpub)
 		if err != nil {
 			return fmt.Errorf("cosigner %d: invalid xpub: %w", i+1, err)
+		}
+		if !key.IsForNet(params) {
+			return fmt.Errorf("cosigner %d: xpub is for a different network (%s)", i+1, expectedXpubHint(network))
 		}
 	}
 
@@ -57,7 +77,7 @@ func (m *WalletManager) CreateMultisigWallet(
 		Name:      name,
 		Mnemonic:  "", // Empty for watch-only multisig
 		CreatedAt: time.Now().Unix(),
-		Network:   "testnet",
+		Network:   network,
 		Accounts:  make([]AccountData, 0),
 		Multisig: &MultisigWalletConfig{
 			M:          requiredSigs,
@@ -245,6 +265,9 @@ func (m *WalletManager) ExportColdcardMultisig() (string, error) {
 
 	config := m.data.Multisig
 	coinType := uint32(1) // testnet
+	if m.data.Network == NetworkMainnet {
+		coinType = 0
+	}
 	scriptType := MultisigScriptType(config.ScriptType)
 
 	var format string

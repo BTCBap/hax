@@ -324,6 +324,25 @@ func (m *WalletManager) CreateHardwareWallet(
 	addrType AddressType,
 	deviceType string,
 ) error {
+	return m.CreateHardwareWalletOnNetwork(name, password, xpub, fingerprint, keyOrigin, addrType, deviceType, NetworkTestnet)
+}
+
+// CreateHardwareWalletOnNetwork creates a hardware-backed watch-only wallet
+// for network. The xpub must belong to that network (xpub vs tpub).
+func (m *WalletManager) CreateHardwareWalletOnNetwork(
+	name string,
+	password string,
+	xpub string,
+	fingerprint string,
+	keyOrigin string,
+	addrType AddressType,
+	deviceType string,
+	network string,
+) error {
+	params, err := ParamsForNetwork(network)
+	if err != nil {
+		return err
+	}
 	// Validate inputs
 	if name == "" {
 		return fmt.Errorf("wallet name cannot be empty")
@@ -339,8 +358,8 @@ func (m *WalletManager) CreateHardwareWallet(
 	if err != nil {
 		return fmt.Errorf("invalid xpub: %w", err)
 	}
-	if !xkey.IsForNet(&TestNet4Params) {
-		return fmt.Errorf("xpub is for a different network than this wallet (testnet4 expects tpub)")
+	if !xkey.IsForNet(params) {
+		return fmt.Errorf("xpub is for a different network than this wallet (%s)", expectedXpubHint(network))
 	}
 
 	var addrTypeStr string
@@ -372,7 +391,7 @@ func (m *WalletManager) CreateHardwareWallet(
 		Name:           name,
 		Mnemonic:       "", // Empty for watch-only
 		CreatedAt:      time.Now().Unix(),
-		Network:        "testnet",
+		Network:        network,
 		Accounts:       make([]AccountData, 0),
 		HardwareWallet: hwConfig,
 	}
