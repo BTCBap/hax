@@ -975,9 +975,14 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FeeEstimatesMsg:
 		if msg.Err != nil {
-			m.err = msg.Err
+			m.feeEstimates = nil
+			m.err = fmt.Errorf("fee estimates unavailable: %w", msg.Err)
+		} else if msg.Estimates == nil {
+			m.feeEstimates = nil
+			m.err = fmt.Errorf("fee estimates unavailable")
 		} else {
 			m.feeEstimates = msg.Estimates
+			m.err = nil
 			m.updateFeeEstimate()
 		}
 
@@ -1691,6 +1696,11 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editingCustom = true
 			m.customFeeInput.Focus()
 			return m, textinput.Blink
+		}
+
+		if m.feeLevel != FeeLevelCustom && m.getFeeRateForLevel(m.feeLevel) <= 0 {
+			m.err = fmt.Errorf("fee estimates unavailable — enter a custom fee rate (c) or retry")
+			return m, nil
 		}
 
 		// If sendAll is enabled, enforce deterministic MAX preconditions.
@@ -2803,10 +2813,15 @@ func (m SendModel) viewFeeSelection() string {
 			}
 		}
 
-		estimatedFee := int64(float64(m.estimatedSize) * feeRate)
-
-		optionText := fmt.Sprintf("%s%s\n    %s • %s sat/vB • ~%d sats total",
-			cursor, opt.name, opt.desc, formatFeeRate(feeRate), estimatedFee)
+		var optionText string
+		if feeRate <= 0 {
+			optionText = fmt.Sprintf("%s%s\n    %s • unavailable",
+				cursor, opt.name, opt.desc)
+		} else {
+			estimatedFee := int64(float64(m.estimatedSize) * feeRate)
+			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • ~%d sats total",
+				cursor, opt.name, opt.desc, formatFeeRate(feeRate), estimatedFee)
+		}
 
 		if i == m.cursor {
 			menu += styles.SelectedItemStyle.Render(optionText) + "\n\n"
@@ -3834,8 +3849,9 @@ func (m SendModel) getFeeRate() float64 {
 	return m.getFeeRateForLevel(m.feeLevel)
 }
 
-// getFeeRateForLevel returns fee rate for a given level
-// For preset levels, minimum is 0.1 sat/vB; for custom, minimum is 0.1 sat/vB
+// getFeeRateForLevel returns fee rate for a given level.
+// Preset levels return 0 when estimates are missing or that target is
+// unavailable — callers must not invent a rate. Custom rates are returned as-is.
 func (m SendModel) getFeeRateForLevel(level FeeLevel) float64 {
 	// Handle custom fee rate (supports sub-1 sat/vB)
 	if level == FeeLevelCustom {
@@ -3846,25 +3862,30 @@ func (m SendModel) getFeeRateForLevel(level FeeLevel) float64 {
 		level = FeeLevelMedium
 	}
 
+	if m.feeEstimates == nil {
+		return 0
+	}
+
 	var feeRate float64
-	if m.feeEstimates != nil {
-		switch level {
-		case FeeLevelHigh:
-			feeRate = m.feeEstimates.FastestFee
-		case FeeLevelMedium:
-			feeRate = m.feeEstimates.HalfHourFee
-		case FeeLevelLow:
-			feeRate = m.feeEstimates.HourFee
-		default:
-			feeRate = m.feeEstimates.HalfHourFee
-		}
+	switch level {
+	case FeeLevelHigh:
+		feeRate = m.feeEstimates.FastestFee
+	case FeeLevelMedium:
+		feeRate = m.feeEstimates.HalfHourFee
+	case FeeLevelLow:
+		feeRate = m.feeEstimates.HourFee
+	default:
+		feeRate = m.feeEstimates.HalfHourFee
 	}
 
-	// Ensure minimum 0.1 sat/vB for preset levels
+	// Missing/unavailable target (left as 0 by the backend).
+	if feeRate <= 0 {
+		return 0
+	}
+	// Floor extremely small positive estimates at the common min-relay rate.
 	if feeRate < 0.1 {
-		feeRate = 0.1
+		return 0.1
 	}
-
 	return feeRate
 }
 

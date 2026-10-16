@@ -474,6 +474,7 @@ func TestSend_FeeEstimatesMsg_Success(t *testing.T) {
 
 func TestSend_FeeEstimatesMsg_Error(t *testing.T) {
 	m := newTestSend(t)
+	m.feeEstimates = testFeeEstimates()
 
 	model, _ := m.Update(FeeEstimatesMsg{Err: fmt.Errorf("network error")})
 	updated := asSendModel(t, model)
@@ -481,8 +482,14 @@ func TestSend_FeeEstimatesMsg_Error(t *testing.T) {
 	if updated.err == nil {
 		t.Fatal("expected error to be set")
 	}
+	if !strings.Contains(updated.err.Error(), "unavailable") {
+		t.Errorf("expected unavailable wrapping, got %q", updated.err.Error())
+	}
 	if !strings.Contains(updated.err.Error(), "network error") {
 		t.Errorf("expected network error, got %q", updated.err.Error())
+	}
+	if updated.feeEstimates != nil {
+		t.Fatal("expected fee estimates cleared on error")
 	}
 }
 
@@ -2600,9 +2607,55 @@ func TestSend_GetFeeRateForLevel_NoEstimates(t *testing.T) {
 	m.feeEstimates = nil
 
 	got := m.getFeeRateForLevel(FeeLevelMedium)
-	// Minimum 0.1 sat/vB enforced even without estimates
-	if got != 0.1 {
-		t.Errorf("expected minimum 0.1 without fee estimates, got %f", got)
+	// Unavailable estimates must not invent a rate
+	if got != 0 {
+		t.Errorf("expected 0 (unavailable) without fee estimates, got %f", got)
+	}
+}
+
+func TestSend_GetFeeRateForLevel_ZeroTargetUnavailable(t *testing.T) {
+	m := newTestSend(t)
+	m.feeEstimates = &api.FeeEstimates{
+		FastestFee:  20,
+		HalfHourFee: 0, // unavailable
+		HourFee:     5,
+	}
+
+	if got := m.getFeeRateForLevel(FeeLevelMedium); got != 0 {
+		t.Errorf("expected 0 for unavailable medium target, got %f", got)
+	}
+	if got := m.getFeeRateForLevel(FeeLevelHigh); got != 20 {
+		t.Errorf("expected 20 for high, got %f", got)
+	}
+}
+
+func TestSend_FeeSelection_EnterUnavailableRequiresCustom(t *testing.T) {
+	m := newTestSend(t)
+	m.step = SendStepFee
+	m.feeLevel = FeeLevelMedium
+	m.cursor = 1
+	m.feeEstimates = nil
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := asSendModel(t, model)
+	if updated.err == nil || !strings.Contains(updated.err.Error(), "unavailable") {
+		t.Fatalf("expected unavailable error, got %v", updated.err)
+	}
+	if updated.step != SendStepFee {
+		t.Fatalf("expected to stay on fee step, got %v", updated.step)
+	}
+}
+
+func TestSend_ViewFeeSelection_ShowsUnavailable(t *testing.T) {
+	m := newTestSend(t)
+	m.width = 80
+	m.height = 40
+	m.step = SendStepFee
+	m.feeEstimates = nil
+
+	view := m.View()
+	if !strings.Contains(view, "unavailable") {
+		t.Fatalf("expected unavailable in fee selection view, got:\n%s", view)
 	}
 }
 
@@ -2858,6 +2911,7 @@ func TestSend_FeeSelection_EnterResetsMaxSpendRetryFlag(t *testing.T) {
 	m := newTestSend(t)
 	m.walletManager = NewMockWalletManager()
 	advanceToFee(&m)
+	m.feeEstimates = testFeeEstimates()
 	m.sendAll = true
 	m.sendAllRetried = true
 	m.recipients = []Recipient{

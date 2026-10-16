@@ -61,6 +61,7 @@ Out of scope for now:
 - Active network shown in the UI, mainnet highlighted
 - Encrypted wallet files at rest
 - PSBT-based signing flow
+- Fee estimates only from the configured Electrum or Core backend (no third-party HTTP fee APIs); failed estimates surface as unavailable rather than invented rates
 - Existing automated tests across wallet, backend, and UI packages
 - Public disclosure guidance in `SECURITY.md`
 

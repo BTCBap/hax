@@ -240,13 +240,14 @@ func TestRPCBackend_GetFeeEstimates_NoEstimate(t *testing.T) {
 	b := newTestRPCBackend(t, server)
 
 	fees, err := b.GetFeeEstimates()
-	if err != nil {
-		t.Fatalf("GetFeeEstimates failed: %v", err)
+	if err == nil {
+		t.Fatal("expected error when estimatesmartfee has no data")
 	}
-
-	// Should fall back to 1 sat/vB
-	if fees.FastestFee != 1.0 {
-		t.Fatalf("expected FastestFee 1 (fallback), got %f", fees.FastestFee)
+	if !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("expected unavailable error, got %v", err)
+	}
+	if fees != nil {
+		t.Fatalf("expected nil fees on failure, got %+v", fees)
 	}
 }
 

@@ -344,7 +344,9 @@ func (b *RPCBackend) GetBlockHeight() (int64, error) {
 	return height, nil
 }
 
-// GetFeeEstimates retrieves current fee rate estimates
+// GetFeeEstimates retrieves fee rate estimates via Bitcoin Core estimatesmartfee.
+// Failed targets are left unavailable; if every target fails an error is returned
+// instead of silently inventing 1 sat/vB.
 func (b *RPCBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
 	if !b.IsConnected() {
 		if err := b.Connect(); err != nil {
@@ -354,12 +356,12 @@ func (b *RPCBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
 
 	// Target blocks: 1 (fastest), 3 (half hour), 6 (hour), 144 (economy), 504 (minimum)
 	targets := []int{1, 3, 6, 144, 504}
-	fees := make([]float64, len(targets))
+	rates := make([]float64, len(targets))
+	ok := make([]bool, len(targets))
 
 	for i, target := range targets {
 		result, err := b.callRPC("estimatesmartfee", []interface{}{target})
 		if err != nil {
-			fees[i] = 1
 			continue
 		}
 
@@ -368,28 +370,26 @@ func (b *RPCBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
 			Errors  []string `json:"errors"`
 		}
 		if err := json.Unmarshal(result, &estimate); err != nil {
-			fees[i] = 1
 			continue
 		}
 
 		if len(estimate.Errors) > 0 || estimate.FeeRate <= 0 {
-			fees[i] = 1
-		} else {
-			// Convert BTC/kvB to sat/vB: BTC/kvB * 1e8 / 1000 = sat/vB
-			fees[i] = estimate.FeeRate * 1e8 / 1000
-			if fees[i] < 0.1 {
-				fees[i] = 0.1
-			}
+			continue
 		}
+
+		// Convert BTC/kvB to sat/vB: BTC/kvB * 1e8 / 1000 = sat/vB
+		satPerVB := estimate.FeeRate * 1e8 / 1000
+		if satPerVB <= 0 {
+			continue
+		}
+		if satPerVB < 0.1 {
+			satPerVB = 0.1
+		}
+		rates[i] = satPerVB
+		ok[i] = true
 	}
 
-	return &api.FeeEstimates{
-		FastestFee:  fees[0],
-		HalfHourFee: fees[1],
-		HourFee:     fees[2],
-		EconomyFee:  fees[3],
-		MinimumFee:  fees[4],
-	}, nil
+	return assembleFeeEstimates(rates, ok)
 }
 
 // BroadcastTransaction broadcasts a raw transaction to the network

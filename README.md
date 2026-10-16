@@ -54,6 +54,7 @@ The full threat model is in [docs/threat-model.md](docs/threat-model.md).
 | **Does not protect against** | A compromised host (malware, keyloggers, memory scraping); a malicious Electrum server's view of your addresses (use your own node or Tor); weak passwords |
 | **Trust boundaries** | Backends are untrusted for correctness of wallet meaning. Imported PSBTs and descriptors are untrusted input. Hardware wallets are a separate trust domain, so confirm on the device. |
 | **Key material** | The seed is generated from `crypto/rand` (128 or 256 bits, BIP39 checksum) and never written to the clipboard or logs. The wallet password is not kept after unlock; only the derived AES key is held, as a byte slice that is zeroed on lock and exit. Signing happens locally or on the hardware device. |
+| **Fee estimates** | Taken only from your configured backend: Electrum `blockchain.estimatefee` (over the same TLS/Tor connection) or Bitcoin Core `estimatesmartfee`. hax does **not** call mempool.space or other third-party HTTP fee APIs. If estimates fail, the UI shows **unavailable** instead of inventing a rate. |
 
 Known gaps are tracked in [TODO.md](TODO.md) and the issue tracker. They include Go's limits on wiping immutable strings (the mnemonic is still held as a `string` while unlocked), idle auto-lock, and a memory-hard KDF.
 
@@ -131,6 +132,8 @@ All state lives in `~/.hax/`:
 | `~/.hax/*_labels_bip329.jsonl`, `*_koinly.csv` | Exports (`0600`) |
 
 `config.json` is not encrypted. If you use Bitcoin Core RPC, your RPC credentials are stored there in plaintext (mode `0600`). Prefer a dedicated RPC user with minimal permissions.
+
+Network fee estimates use only your backend connection. Explorer links (e.g. opening a transaction on mempool.space in your browser) are separate and optional; they are not used for fee estimation.
 
 ## Networks
 
