@@ -59,7 +59,7 @@ func NewUTXOsModel(walletManager WalletService, configManager *config.ConfigMana
 	columns := []table.Column{
 		{Title: "Date", Width: 14},
 		{Title: "Output", Width: 20},
-		{Title: "Label", Width: 15},
+		{Title: "Label", Width: 14}, // 14+20+14+14 cells + 8 padding = the 70-cell box
 		{Title: "Value", Width: 14},
 	}
 

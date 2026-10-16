@@ -15,11 +15,10 @@ In scope:
 - Address derivation and transaction construction
 - PSBT import, export, sign, finalize, and broadcast flows
 - Hardware wallet interaction through HWI
-- Network-specific correctness for testnet4
+- Network-specific correctness for mainnet and testnet4
 
 Out of scope for now:
 
-- Mainnet operational safety
 - Supply-chain hardening for release artifacts
 - Protection against a fully compromised local machine
 - Third-party firmware flaws in hardware wallets
