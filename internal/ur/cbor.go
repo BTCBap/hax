@@ -13,15 +13,15 @@ import (
 
 // CBOR major types
 const (
-	cborUint     = 0 << 5 // Major type 0: unsigned integer
-	cborBytes    = 2 << 5 // Major type 2: byte string
-	cborText     = 3 << 5 // Major type 3: text string
-	cborArray    = 4 << 5 // Major type 4: array
-	cborMap      = 5 << 5 // Major type 5: map
-	cborTag      = 6 << 5 // Major type 6: semantic tag
-	cborSpecial  = 7 << 5 // Major type 7: special (bool, null, etc.)
-	cborFalse    = cborSpecial | 20
-	cborTrue     = cborSpecial | 21
+	cborUint    = 0 << 5 // Major type 0: unsigned integer
+	cborBytes   = 2 << 5 // Major type 2: byte string
+	cborText    = 3 << 5 // Major type 3: text string
+	cborArray   = 4 << 5 // Major type 4: array
+	cborMap     = 5 << 5 // Major type 5: map
+	cborTag     = 6 << 5 // Major type 6: semantic tag
+	cborSpecial = 7 << 5 // Major type 7: special (bool, null, etc.)
+	cborFalse   = cborSpecial | 20
+	cborTrue    = cborSpecial | 21
 )
 
 // cborBuf is a simple CBOR encoder that builds into a byte slice.
@@ -46,13 +46,25 @@ func (c *cborBuf) writeHead(major byte, val uint64) {
 	}
 }
 
-func (c *cborBuf) writeUint(val uint64)      { c.writeHead(cborUint, val) }
-func (c *cborBuf) writeBytes(b []byte)        { c.writeHead(cborBytes, uint64(len(b))); c.data = append(c.data, b...) }
-func (c *cborBuf) writeText(s string)         { c.writeHead(cborText, uint64(len(s))); c.data = append(c.data, s...) }
-func (c *cborBuf) writeArrayHeader(n int)     { c.writeHead(cborArray, uint64(n)) }
-func (c *cborBuf) writeMapHeader(n int)       { c.writeHead(cborMap, uint64(n)) }
-func (c *cborBuf) writeTag(tag uint64)        { c.writeHead(cborTag, tag) }
-func (c *cborBuf) writeBool(val bool)         { if val { c.data = append(c.data, cborTrue) } else { c.data = append(c.data, cborFalse) } }
+func (c *cborBuf) writeUint(val uint64) { c.writeHead(cborUint, val) }
+func (c *cborBuf) writeBytes(b []byte) {
+	c.writeHead(cborBytes, uint64(len(b)))
+	c.data = append(c.data, b...)
+}
+func (c *cborBuf) writeText(s string) {
+	c.writeHead(cborText, uint64(len(s)))
+	c.data = append(c.data, s...)
+}
+func (c *cborBuf) writeArrayHeader(n int) { c.writeHead(cborArray, uint64(n)) } //nolint:gosec // n is always a len()
+func (c *cborBuf) writeMapHeader(n int)   { c.writeHead(cborMap, uint64(n)) }   //nolint:gosec // n is always a len()
+func (c *cborBuf) writeTag(tag uint64)    { c.writeHead(cborTag, tag) }
+func (c *cborBuf) writeBool(val bool) {
+	if val {
+		c.data = append(c.data, cborTrue)
+	} else {
+		c.data = append(c.data, cborFalse)
+	}
+}
 
 // BCR-2020-010 CBOR tag numbers for crypto-output
 const (
@@ -81,11 +93,11 @@ type DescriptorInfo struct {
 // KeyInfo holds per-key data for UR encoding.
 type KeyInfo struct {
 	PublicKey      []byte   // 33-byte compressed pubkey
-	ChainCode     []byte   // 32-byte chain code
-	ParentFP      uint32   // 4-byte parent fingerprint
-	MasterFP      uint32   // 4-byte master fingerprint
+	ChainCode      []byte   // 32-byte chain code
+	ParentFP       uint32   // 4-byte parent fingerprint
+	MasterFP       uint32   // 4-byte master fingerprint
 	DerivationPath []uint32 // Path components (with hardened bit 0x80000000 set where applicable)
-	Name          string   // Cosigner label (CBOR key 9)
+	Name           string   // Cosigner label (CBOR key 9)
 }
 
 // EncodeCryptoOutput produces the CBOR bytes for a crypto-output.
@@ -161,15 +173,16 @@ func encodeMultisigOutput(buf *cborBuf, info DescriptorInfo) ([]byte, error) {
 
 // encodeCryptoHDKey writes a crypto-hdkey CBOR structure.
 // BCR-2020-007 defines the map keys:
-//   1: is-master (bool)
-//   2: is-private (bool)
-//   3: key-data (bytes) - 33 bytes for public
-//   4: chain-code (bytes) - 32 bytes
-//   5: use-info (crypto-coininfo)
-//   6: origin (crypto-keypath) - derivation from master
-//   7: children (crypto-keypath) - expected child derivation
-//   8: parent-fingerprint (uint32)
-//   9: name (text) - human-readable label
+//
+//	1: is-master (bool)
+//	2: is-private (bool)
+//	3: key-data (bytes) - 33 bytes for public
+//	4: chain-code (bytes) - 32 bytes
+//	5: use-info (crypto-coininfo)
+//	6: origin (crypto-keypath) - derivation from master
+//	7: children (crypto-keypath) - expected child derivation
+//	8: parent-fingerprint (uint32)
+//	9: name (text) - human-readable label
 func encodeCryptoHDKey(buf *cborBuf, key KeyInfo, network int, isMaster bool) {
 	// Count map entries
 	count := 0

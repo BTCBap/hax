@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 func TestGetAddressVisualState(t *testing.T) {

@@ -1,57 +1,50 @@
 # Release Verification
 
-This document describes how to verify `hax` release artifacts once binaries are published.
+Every tagged release (`vX.Y.Z`) is built by `.github/workflows/release.yml` with GoReleaser and publishes:
 
-For now, `hax` is still source-first. These instructions are here so the verification story is ready before artifacts are promoted as a normal install path.
+| Asset | Purpose |
+|---|---|
+| `hax_<ver>_<os>_<arch>.tar.gz` / `.zip` | Binaries + README, LICENSE, SECURITY |
+| `checksums.txt` | SHA-256 of every archive |
+| `checksums.txt.sig`, `checksums.txt.pem` | Keyless [Sigstore](https://www.sigstore.dev/) signature and certificate over the checksum manifest |
+| `*.sbom.json` | SPDX SBOM per archive (syft) |
+| GitHub attestation | SLSA build provenance for the archives |
 
-## Local Checksum Generation
-
-Generate local cross-platform build outputs and a checksum manifest:
-
-```bash
-make checksums
-```
-
-This writes binaries and `checksums.txt` into `build/`.
-
-## Verify A Downloaded Artifact
-
-After a real release is published, download:
-
-- the artifact you want
-- the matching `checksums.txt`
-
-Then verify it from the directory containing both files.
-
-On Linux:
+## 1. Verify the signature on `checksums.txt`
 
 ```bash
-sha256sum -c checksums.txt --ignore-missing
+VERSION=vX.Y.Z
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature   checksums.txt.sig \
+  --certificate-identity "https://github.com/BTCBap/hax/.github/workflows/release.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
 ```
 
-On macOS:
+`Verified OK` proves the manifest was produced by this repository's release workflow for that tag. No long-lived maintainer key is involved.
+
+## 2. Verify your archive
 
 ```bash
-shasum -a 256 -c checksums.txt
+sha256sum --ignore-missing -c checksums.txt   # Linux
+shasum -a 256 -c checksums.txt                # macOS (ignore "No such file" lines)
 ```
 
-Expected result:
+## 3. Verify build provenance (optional)
 
-- the selected artifact reports `OK`
-- the checksum matches the published manifest exactly
+```bash
+gh attestation verify hax_<ver>_linux_amd64.tar.gz --repo BTCBap/hax
+```
 
-## Current Limits
+## 4. Reproduce the build (optional)
 
-- Beta releases are not signed
-- Beta releases are not attested
-- Checksums help detect accidental corruption or mismatch
-- Checksums alone do not replace a stronger signing or attestation story
+Builds use `CGO_ENABLED=0`, `-trimpath`, `-buildid=`, and commit-derived timestamps. With the Go version from `go.mod`:
 
-## Before Treating Artifacts As Trusted
+```bash
+git checkout ${VERSION}
+goreleaser release --snapshot --clean --skip=sign,sbom
+sha256sum dist/*.tar.gz dist/*.zip   # compare against the published checksums.txt
+```
 
-The project should still complete these steps:
-
-- publish real tagged artifacts
-- publish the matching checksum manifest
-- test the released artifacts on target platforms
-- revisit whether unsigned beta artifacts remain acceptable
+Snapshot builds use a `-snapshot` version string, so file names (and the embedded version) differ from a tagged build. To compare byte-for-byte, build the tag itself with `goreleaser build --clean` and compare the binaries.

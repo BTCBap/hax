@@ -122,7 +122,7 @@ func TestEncodeCryptoOutputSingleSig(t *testing.T) {
 		IsMultisig: false,
 		Keys: []KeyInfo{
 			{
-				PublicKey:  pubkey,
+				PublicKey: pubkey,
 				ChainCode: chaincode,
 				ParentFP:  0x78412e3a,
 				MasterFP:  0xe8f7c0d2,
@@ -176,7 +176,7 @@ func TestEncodeCryptoOutputMultisig(t *testing.T) {
 		Threshold:  2,
 		Keys: []KeyInfo{
 			{
-				PublicKey:  pubkey1,
+				PublicKey: pubkey1,
 				ChainCode: chaincode1,
 				ParentFP:  0x78412e3a,
 				MasterFP:  0xe8f7c0d2,
@@ -189,7 +189,7 @@ func TestEncodeCryptoOutputMultisig(t *testing.T) {
 				Name: "Alice",
 			},
 			{
-				PublicKey:  pubkey2,
+				PublicKey: pubkey2,
 				ChainCode: chaincode2,
 				ParentFP:  0x1234abcd,
 				MasterFP:  0x0f056943,
@@ -202,7 +202,7 @@ func TestEncodeCryptoOutputMultisig(t *testing.T) {
 				Name: "Bob",
 			},
 			{
-				PublicKey:  pubkey3,
+				PublicKey: pubkey3,
 				ChainCode: chaincode3,
 				ParentFP:  0xdeadbeef,
 				MasterFP:  0xaabbccdd,
@@ -275,15 +275,15 @@ func TestCBORTagValues(t *testing.T) {
 	}
 
 	expectedTags := map[string]uint64{
-		"CryptoHDKey":      tagCryptoHDKey,
-		"CryptoKeypath":    tagCryptoKeypath,
-		"CryptoCoinInfo":   tagCryptoCoinInfo,
-		"ScriptSH":         tagScriptSH,
-		"ScriptWSH":        tagScriptWSH,
-		"ScriptPKH":        tagScriptPKH,
-		"ScriptWPKH":       tagScriptWPKH,
+		"CryptoHDKey":       tagCryptoHDKey,
+		"CryptoKeypath":     tagCryptoKeypath,
+		"CryptoCoinInfo":    tagCryptoCoinInfo,
+		"ScriptSH":          tagScriptSH,
+		"ScriptWSH":         tagScriptWSH,
+		"ScriptPKH":         tagScriptPKH,
+		"ScriptWPKH":        tagScriptWPKH,
 		"ScriptSortedMulti": tagScriptSortedMulti,
-		"ScriptTR":         tagScriptTR,
+		"ScriptTR":          tagScriptTR,
 	}
 
 	for _, tt := range tests {

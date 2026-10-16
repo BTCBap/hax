@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hax/internal/config"
+	"github.com/BTCBap/hax/internal/config"
 )
 
 // newTestRootModel creates a RootModel with minimal dependencies for testing.

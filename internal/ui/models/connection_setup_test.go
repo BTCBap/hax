@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hax/internal/config"
+	"github.com/BTCBap/hax/internal/config"
 )
 
 func newTestConnectionSetupModel(t *testing.T, returnToSettings bool) ConnectionSetupModel {

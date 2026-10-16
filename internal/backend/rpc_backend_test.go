@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // mockRPCServer creates a test HTTP server that responds to JSON-RPC requests.

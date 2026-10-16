@@ -1,11 +1,11 @@
 package models
 
 import (
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/ui/alert"
+	"github.com/BTCBap/hax/internal/wallet"
 	tea "github.com/charmbracelet/bubbletea"
-	"hax/internal/api"
-	"hax/internal/backend"
-	"hax/internal/ui/alert"
-	"hax/internal/wallet"
 )
 
 // BalanceChangeMsg is sent after calculating total wallet balance change

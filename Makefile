@@ -11,17 +11,17 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build paths
 BINARY_NAME := hax
 BUILD_DIR := ./build
-CMD_PATH := ./cmd/wallet
+CMD_PATH := ./cmd/hax
 
 # Go build settings
 GO := go
 GOFLAGS := -trimpath
 LDFLAGS := -s -w \
-	-X 'hax/internal/version.Version=$(VERSION)' \
-	-X 'hax/internal/version.Prerelease=$(PRERELEASE)' \
-	-X 'hax/internal/version.GitCommit=$(GIT_COMMIT)' \
-	-X 'hax/internal/version.GitBranch=$(GIT_BRANCH)' \
-	-X 'hax/internal/version.BuildDate=$(BUILD_DATE)'
+	-X 'github.com/BTCBap/hax/internal/version.Version=$(VERSION)' \
+	-X 'github.com/BTCBap/hax/internal/version.Prerelease=$(PRERELEASE)' \
+	-X 'github.com/BTCBap/hax/internal/version.GitCommit=$(GIT_COMMIT)' \
+	-X 'github.com/BTCBap/hax/internal/version.GitBranch=$(GIT_BRANCH)' \
+	-X 'github.com/BTCBap/hax/internal/version.BuildDate=$(BUILD_DATE)'
 
 .PHONY: all build build-release build-all checksums clean run test version help
 

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"hax/internal/api"
-	"hax/internal/backend"
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 )

@@ -9,10 +9,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hax/internal/backend"
-	"hax/internal/config"
-	"hax/internal/ui/models"
-	"hax/internal/wallet"
+	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui/models"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func main() {

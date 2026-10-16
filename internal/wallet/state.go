@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // SyncStatus represents the current wallet sync state

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // AddressCacheEntry holds cached data for a single address

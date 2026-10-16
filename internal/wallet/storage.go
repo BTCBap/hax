@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 
 	"golang.org/x/crypto/pbkdf2"
 )

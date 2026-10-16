@@ -1,4 +1,4 @@
-module hax
+module github.com/BTCBap/hax
 
 go 1.26.9
 

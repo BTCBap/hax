@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"hax/internal/ur"
+	"github.com/BTCBap/hax/internal/ur"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 )

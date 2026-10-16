@@ -3,7 +3,7 @@ package wallet
 import (
 	"testing"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/txscript"

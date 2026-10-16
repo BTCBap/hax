@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 func newTestReceive(t *testing.T) (ReceiveModel, *MockWalletManager) {

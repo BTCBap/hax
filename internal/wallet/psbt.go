@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"

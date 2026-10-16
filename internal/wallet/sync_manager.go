@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"hax/internal/api"
+	"github.com/BTCBap/hax/internal/api"
 )
 
 // RefreshOptions controls which parts of the cache refresh to perform

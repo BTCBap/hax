@@ -11,10 +11,10 @@ var TestNet4Params = chaincfg.Params{
 	Net:  0x1C163F28, // Testnet4 magic bytes
 
 	// Address encoding
-	PubKeyHashAddrID:        0x6f, // Same as testnet3: starts with m or n
-	ScriptHashAddrID:        0xc4, // Same as testnet3: starts with 2
-	Bech32HRPSegwit:         "tb",  // Same as testnet3: starts with tb1
-	PrivateKeyID:            0xef, // Same as testnet3
+	PubKeyHashAddrID: 0x6f, // Same as testnet3: starts with m or n
+	ScriptHashAddrID: 0xc4, // Same as testnet3: starts with 2
+	Bech32HRPSegwit:  "tb", // Same as testnet3: starts with tb1
+	PrivateKeyID:     0xef, // Same as testnet3
 
 	// BIP32 hierarchical deterministic extended keys
 	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x83, 0x94}, // Same as testnet3: tprv
@@ -38,14 +38,14 @@ var TestNet4Params = chaincfg.Params{
 
 	// Block target timespan and interval
 	TargetTimespan:           14 * 24 * 60 * 60, // 2 weeks
-	TargetTimePerBlock:       10 * 60,            // 10 minutes
-	RetargetAdjustmentFactor: 4,                  // 25% less, 400% more
+	TargetTimePerBlock:       10 * 60,           // 10 minutes
+	RetargetAdjustmentFactor: 4,                 // 25% less, 400% more
 
 	// Difficulty
-	ReduceMinDifficulty:      true,
-	MinDiffReductionTime:     20 * 60, // 20 minutes
-	GenerateSupported:        false,
-	PowLimitBits:             0x1d00ffff,
+	ReduceMinDifficulty:  true,
+	MinDiffReductionTime: 20 * 60, // 20 minutes
+	GenerateSupported:    false,
+	PowLimitBits:         0x1d00ffff,
 
 	// Rule change deployment thresholds
 	RuleChangeActivationThreshold: 1512, // 75% of MinerConfirmationWindow

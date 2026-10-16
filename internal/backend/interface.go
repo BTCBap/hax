@@ -1,6 +1,6 @@
 package backend
 
-import "hax/internal/api"
+import "github.com/BTCBap/hax/internal/api"
 
 // BackendType identifies the backend implementation
 type BackendType string
