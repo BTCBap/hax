@@ -8,8 +8,10 @@ Set Height 820
 Set FontSize 15
 Set Padding 24
 Set Theme "Catppuccin Mocha"
+# No terminal cursor in the recording: it is not part of any hax screen.
+Set CursorBlink false
 Hide
-Type "export PS1=; clear" Enter
+Type "export PS1=; tput civis; clear" Enter
 Show
 Hide
 Type@0ms "clear; cat /tmp/hax-screens/dashboard.ansi" Enter
