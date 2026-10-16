@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -178,7 +179,7 @@ func TestExpandPath(t *testing.T) {
 	}{
 		{"tilde prefix", "~/Documents/test.psbt", filepath.Join(home, "Documents/test.psbt"), false},
 		{"tilde only", "~", home, false},
-		{"absolute path", "/tmp/test.psbt", "/tmp/test.psbt", false},
+		{"absolute path", "/tmp/test.psbt", filepath.FromSlash("/tmp/test.psbt"), false},
 		{"relative path", "test.psbt", "test.psbt", false},
 		{"empty path", "", "", true},
 	}
@@ -3080,7 +3081,8 @@ func TestSend_SavePSBTToFile(t *testing.T) {
 
 	// Verify permissions
 	info, _ := os.Stat(filePath)
-	if info.Mode().Perm() != 0600 {
+	// Windows has no POSIX permission bits; os.Stat reports 0666 there.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Errorf("expected permissions 0600, got %o", info.Mode().Perm())
 	}
 }
