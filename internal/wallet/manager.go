@@ -50,6 +50,8 @@ type WalletManager struct {
 	persistWg sync.WaitGroup
 
 	gapLimit int
+
+	serverResolver ServerResolver
 }
 
 // NewWalletManager creates a new wallet manager with the specified backend.
@@ -590,17 +592,16 @@ func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 
 	// Hard fail if the server is on another chain. If the server is
 	// unreachable the check is deferred to the first sync connection.
+	// A server saved for the other network is replaced by this network's
+	// default server.
 	m.resetNetworkVerified()
-	if m.backend != nil {
-		if cerr := m.backend.Connect(); cerr == nil {
-			if _, err := checkBackendNetwork(m.backend, data.Network); err != nil {
-				Wipe(key)
-				m.state.SetError(err)
-				return err
-			}
-			m.netVerified = true
-		}
+	verified, err := m.alignBackendNetwork(data.Network)
+	if err != nil {
+		Wipe(key)
+		m.state.SetError(err)
+		return err
 	}
+	m.netVerified = verified
 
 	m.setKey(salt, key)
 	m.wallet = hd

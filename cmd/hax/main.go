@@ -64,6 +64,15 @@ func main() {
 	}
 	defer walletManager.LockWallet()
 
+	// Opening a wallet whose network differs from the saved server's network
+	// falls back to that network's default server for this session.
+	walletManager.SetServerResolver(func(network string) (backend.BitcoinBackend, error) {
+		if cfg != nil && cfg.Backend != nil && backend.NormalizeNetwork(cfg.Backend.Network) == network {
+			return backend.NewBackend(cfg.Backend)
+		}
+		return backend.NewDefaultBackend(network)
+	})
+
 	if cfg != nil && cfg.GapLimit > 0 {
 		walletManager.SetGapLimit(cfg.GapLimit)
 	}
