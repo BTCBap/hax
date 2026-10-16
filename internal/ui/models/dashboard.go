@@ -372,9 +372,7 @@ func (m MainDashboardModel) View() string {
 		errMsg := "Error"
 		if state.LastError != nil {
 			errMsg = state.LastError.Error()
-			if len(errMsg) > 30 {
-				errMsg = errMsg[:30] + "..."
-			}
+			errMsg = truncateRunes(errMsg, 33, "...")
 		}
 		statusIndicator = styles.StatusErrorStyle.Render("● " + errMsg)
 	}
