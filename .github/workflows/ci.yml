@@ -35,6 +35,9 @@ jobs:
       - name: go test
         if: runner.os != 'Linux'
         run: go test ./...
+      - name: golden UI snapshots
+        if: runner.os == 'Linux'
+        run: go test -tags golden ./internal/ui/models/ -run TestGolden
       - name: Coverage summary
         if: runner.os == 'Linux'
         run: go tool cover -func=coverage.out | tail -n 1 | tee -a "$GITHUB_STEP_SUMMARY"
