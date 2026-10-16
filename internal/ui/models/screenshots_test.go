@@ -45,8 +45,37 @@ func TestScreenshots(t *testing.T) {
 	mock.GetWalletNameFn = func() string { return "demo-testnet4" }
 	mock.GetWalletTypeFn = func() string { return "Software" }
 	mock.GetCachedBalanceFn = func() (api.Satoshi, bool) { return 2_150_000, true }
+	demoTxs := []api.Transaction{
+		{
+			TxID:   "aabbccdd1234567890",
+			Vin:    []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "external_addr", Value: 2_200_000}}},
+			Vout:   []api.Vout{{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}},
+			Status: api.Status{Confirmed: true, BlockHeight: 98_300, BlockTime: 1760000000},
+		},
+		{
+			TxID: "eeff00112233445566",
+			Vin:  []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}}},
+			Vout: []api.Vout{
+				{ScriptpubkeyAddress: "external_dest", Value: 49_000},
+				{ScriptpubkeyAddress: "tb1q_our_change", Value: 2_150_000},
+			},
+			Status: api.Status{Confirmed: true, BlockHeight: 98_410, BlockTime: 1760090000},
+		},
+	}
+	mock.GetAccountsFn = func() []wallet.AccountData {
+		return []wallet.AccountData{{Addresses: []wallet.AddressData{
+			{Address: "tb1q_our_addr"}, {Address: "tb1q_our_change", Change: true},
+		}}}
+	}
 	mock.GetStateFn = func() wallet.WalletStateSnapshot {
-		return wallet.WalletStateSnapshot{Status: wallet.SyncStatusSynced, Balance: 2_150_000, BlockHeight: 98_412}
+		return wallet.WalletStateSnapshot{
+			Status:       wallet.SyncStatusSynced,
+			Balance:      2_150_000,
+			BlockHeight:  98_412,
+			Transactions: demoTxs,
+			UTXOs:        []api.UTXO{{TxID: "eeff00112233445566", Vout: 1, Value: 2_150_000, Status: api.Status{Confirmed: true}}},
+			FeeEstimates: &api.FeeEstimates{FastestFee: 12, HalfHourFee: 8, HourFee: 5, EconomyFee: 2, MinimumFee: 1},
+		}
 	}
 	d := NewMainDashboardModel(mock, nil)
 	d.width, d.height = w, h

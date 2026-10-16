@@ -44,8 +44,13 @@ type SettingsModel struct {
 	showCosignerList      bool            // Show list of cosigners with status
 	showCosignerSeedInput bool            // Show seed input for importing
 	cosignerSeedInput     textinput.Model // Text input for seed phrase
-	cosignerImportError   string          // Error message from import attempt
-	cosignerImportSuccess string          // Success message after import
+
+	// Password prompt for scanning other local wallets for cosigner seeds.
+	// The current wallet's password is never retained, so we ask for it.
+	showCosignerScanPassword bool
+	cosignerScanPassword     textinput.Model
+	cosignerImportError      string // Error message from import attempt
+	cosignerImportSuccess    string // Success message after import
 
 	// Cosigner editing
 	showCosignerEdit         bool            // Show edit screen for a cosigner
@@ -103,7 +108,15 @@ func NewSettingsModel(walletManager WalletService, configManager *config.ConfigM
 	fingerprintInput.CharLimit = 8
 	fingerprintInput.Width = 20
 
+	scanPw := textinput.New()
+	scanPw.Placeholder = "Password for other local wallets"
+	scanPw.EchoMode = textinput.EchoPassword
+	scanPw.EchoCharacter = '•'
+	scanPw.CharLimit = 100
+	scanPw.Width = 40
+
 	return SettingsModel{
+		cosignerScanPassword:     scanPw,
 		walletManager:            walletManager,
 		configManager:            configManager,
 		displayUnit:              displayUnit,
@@ -234,32 +247,13 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cosignerImportError = ""
 				return m, nil
 			case "s", "S":
-				// Scan local wallets for matching seeds
-				// This uses the same password as the current wallet
-				matches, err := m.walletManager.ScanLocalWalletsForCosigners(m.walletManager.GetPassword())
-				if err != nil {
-					m.cosignerImportError = fmt.Sprintf("Scan failed: %v", err)
-					return m, nil
-				}
-				if len(matches) == 0 {
-					m.cosignerImportError = "No matching seeds found in other local wallets"
-					return m, nil
-				}
-				// Import each matched seed
-				imported := 0
-				for _, match := range matches {
-					_, err := m.walletManager.ImportCosignerFromLocalWallet(match.WalletName, m.walletManager.GetPassword())
-					if err == nil {
-						imported++
-					}
-				}
-				if imported > 0 {
-					m.cosignerImportSuccess = fmt.Sprintf("Imported seeds from %d local wallet(s)!", imported)
-					m.cosignerImportError = ""
-				} else {
-					m.cosignerImportError = "Found matches but failed to import"
-				}
-				return m, nil
+				// Ask for the password of the other local wallets to scan.
+				m.showCosignerList = false
+				m.showCosignerScanPassword = true
+				m.cosignerScanPassword.SetValue("")
+				m.cosignerImportError = ""
+				m.cosignerImportSuccess = ""
+				return m, m.cosignerScanPassword.Focus()
 			case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 				// Edit cosigner by number
 				index := int(msg.String()[0] - '1')
@@ -418,6 +412,29 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, nil
+		}
+
+		// Handle password prompt for scanning local wallets
+		if m.showCosignerScanPassword {
+			switch msg.String() {
+			case "esc":
+				m.showCosignerScanPassword = false
+				m.showCosignerList = true
+				m.cosignerScanPassword.SetValue("")
+				return m, nil
+			case "enter":
+				pw := m.cosignerScanPassword.Value()
+				m.cosignerScanPassword.SetValue("")
+				m.cosignerScanPassword.Blur()
+				m.showCosignerScanPassword = false
+				m.showCosignerList = true
+				m.scanAndImportCosigners(pw)
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.cosignerScanPassword, cmd = m.cosignerScanPassword.Update(msg)
+				return m, cmd
+			}
 		}
 
 		// Handle cosigner seed input
@@ -690,6 +707,10 @@ func (m SettingsModel) View() string {
 	// If showing mnemonic, show that screen
 	if m.showMnemonic {
 		return m.viewMnemonic()
+	}
+
+	if m.showCosignerScanPassword {
+		return m.viewCosignerScanPassword()
 	}
 
 	// If showing cosigner list, show that screen
@@ -1298,31 +1319,6 @@ func (m SettingsModel) viewCosignerList() string {
 	}
 	summary := styles.DimText.Render(summaryText)
 
-	// Scan for potential local wallet matches (only if not all cosigners have seeds)
-	potentialMatches := ""
-	if localCount < len(cosigners) {
-		password := m.walletManager.GetPassword()
-		if password != "" {
-			matches, err := m.walletManager.ScanLocalWalletsForCosigners(password)
-			if err == nil && len(matches) > 0 {
-				var matchLines []string
-				for _, match := range matches {
-					line := fmt.Sprintf("  💡 '%s' can sign for Cosigner %d (path: %s)",
-						match.WalletName, match.CosignerIndex+1, match.DerivationPath)
-					matchLines = append(matchLines, lipgloss.NewStyle().Foreground(styles.PastelYellow).Render(line))
-				}
-				potentialMatches = styles.BoxStyle.
-					Width(styles.ClampWidth(78, m.width)).
-					BorderForeground(styles.PastelYellow).
-					Padding(0, 2).
-					Render(
-						lipgloss.NewStyle().Bold(true).Foreground(styles.PastelYellow).Render("🔍 Found matching seeds in local wallets:") + "\n" +
-							strings.Join(matchLines, "\n") + "\n" +
-							styles.DimText.Render("  Press 's' to auto-import all matches"))
-			}
-		}
-	}
-
 	// Success/error messages
 	statusMsg := ""
 	if m.cosignerImportSuccess != "" {
@@ -1344,8 +1340,7 @@ func (m SettingsModel) viewCosignerList() string {
 
 	fixedHeader := "\n" + title + "\n" + subtitle
 
-	scrollContent := cosignerList +
-		potentialMatches + "\n" +
+	scrollContent := cosignerList + "\n" +
 		summary + "\n" +
 		statusMsg
 
@@ -1550,4 +1545,46 @@ func (m SettingsModel) viewSingleSigSeedInput() string {
 		"",
 		help,
 	)
+}
+
+// scanAndImportCosigners scans other local wallets (decrypted with password)
+// for seeds matching this multisig's cosigners and imports them.
+func (m *SettingsModel) scanAndImportCosigners(password string) {
+	if password == "" {
+		m.cosignerImportError = "Password required to scan local wallets"
+		return
+	}
+	matches, err := m.walletManager.ScanLocalWalletsForCosigners(password)
+	if err != nil {
+		m.cosignerImportError = fmt.Sprintf("Scan failed: %v", err)
+		return
+	}
+	if len(matches) == 0 {
+		m.cosignerImportError = "No matching seeds found in local wallets with that password"
+		return
+	}
+	imported := 0
+	for _, match := range matches {
+		if _, err := m.walletManager.ImportCosignerFromLocalWallet(match.WalletName, password); err == nil {
+			imported++
+		}
+	}
+	if imported > 0 {
+		m.cosignerImportSuccess = fmt.Sprintf("Imported seeds from %d local wallet(s)!", imported)
+		m.cosignerImportError = ""
+	} else {
+		m.cosignerImportError = "Found matches but failed to import"
+	}
+}
+
+func (m SettingsModel) viewCosignerScanPassword() string {
+	title := styles.TitleStyle.Render("Scan Local Wallets")
+	info := styles.DimText.Render("Enter the password of the local wallets to scan for matching cosigner seeds.\nWallets with a different password are skipped.")
+	box := styles.BoxStyle.
+		Width(styles.ClampWidth(70, m.width)).
+		BorderForeground(styles.ElectricBlue).
+		Padding(1, 2).
+		Render(m.cosignerScanPassword.View())
+	help := styles.RenderHelp(styles.HK("enter", "scan"), styles.HK("esc", "cancel"))
+	return lipgloss.JoinVertical(lipgloss.Left, "", title, info, "", box, help)
 }

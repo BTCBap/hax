@@ -657,7 +657,7 @@ func (m *WalletManager) BroadcastPSBT(result *PSBTResult) (string, error) {
 		m.dataMu.Unlock()
 
 		m.dataMu.RLock()
-		if saveErr := m.saveWalletTracked(m.data.Name, m.data, m.password); saveErr != nil {
+		if saveErr := m.saveWalletTracked(m.data.Name, m.data); saveErr != nil {
 			log.Printf("[WALLET] BroadcastPSBT: failed to persist change address state: %v", saveErr)
 		}
 		m.dataMu.RUnlock()

@@ -5,6 +5,7 @@ package models
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -18,6 +19,8 @@ func TestMain(m *testing.M) {
 	// Force ASCII color profile for deterministic golden file output.
 	// Without this, ANSI escape codes vary between local and CI environments.
 	lipgloss.SetColorProfile(termenv.Ascii)
+	// Pin the local zone so rendered timestamps match on every machine.
+	time.Local = time.UTC
 	os.Exit(m.Run())
 }
 

@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"github.com/BTCBap/hax/internal/wallet"
 	"os"
 	"os/exec"
 	"runtime"
@@ -425,7 +426,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
 				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
 					tx := m.filteredTransactions[absoluteIndex]
-					openTransactionInBrowser(tx.TxID)
+					_ = openTransactionInBrowser(walletNetwork(m.walletManager), tx.TxID)
 				}
 			}
 
@@ -790,9 +791,9 @@ func (m *TransactionHistoryModel) updateTableData() {
 		label := m.walletManager.GetTransactionLabel(tx.TxID)
 		if label == "" {
 			label = "-" // Show dash if no label
-		} else if len(label) > m.columnWidths[5] {
-			// Truncate label to fit column width
-			label = label[:m.columnWidths[5]-3] + "..."
+		} else {
+			// Truncate label to fit column width without splitting runes
+			label = truncateRunes(label, m.columnWidths[5], "...")
 		}
 
 		rows = append(rows, table.Row{
@@ -1331,8 +1332,8 @@ func formatConfirmations(txBlockHeight, chainHeight int64, confirmed bool) strin
 	}
 }
 
-func openTransactionInBrowser(txID string) error {
-	url := fmt.Sprintf("https://mempool.space/testnet4/tx/%s", txID)
+func openTransactionInBrowser(network, txID string) error {
+	url := wallet.ExplorerTxURL(network, txID)
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {

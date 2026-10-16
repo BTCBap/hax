@@ -17,6 +17,7 @@ type MockWalletManager struct {
 	GetWalletNameFn        func() string
 	GetWalletTypeFn        func() string
 	GetNetworkFn           func() string
+	ValidateAddressFn      func(string) error
 	GetCreatedAtFn         func() int64
 	IsHardwareWalletFn     func() bool
 	GetHardwareWalletCfgFn func() *wallet.HardwareWalletConfig
@@ -46,7 +47,6 @@ type MockWalletManager struct {
 	GetAccountsFn          func() []wallet.AccountData
 	GetExtendedPublicKeyFn func(uint32) (string, error)
 	GetMnemonicFn          func() (string, error)
-	GetPasswordFn          func() string
 
 	// Addresses
 	GetNewAddressFn           func(uint32) (string, error)
@@ -339,13 +339,6 @@ func (m *MockWalletManager) GetMnemonic() (string, error) {
 		return m.GetMnemonicFn()
 	}
 	return "mock mnemonic words", nil
-}
-
-func (m *MockWalletManager) GetPassword() string {
-	if m.GetPasswordFn != nil {
-		return m.GetPasswordFn()
-	}
-	return "test-password"
 }
 
 // --- Addresses ---
@@ -737,3 +730,14 @@ func (m *MockWalletManager) ExportColdcardMultisig() (string, error) {
 
 // Compile-time interface check
 var _ WalletService = (*MockWalletManager)(nil)
+
+func (m *MockWalletManager) ValidateAddress(addr string) error {
+	if m.ValidateAddressFn != nil {
+		return m.ValidateAddressFn(addr)
+	}
+	network := m.GetNetwork()
+	if network == "" {
+		network = wallet.NetworkTestnet
+	}
+	return wallet.ValidateAddressForNetwork(addr, network)
+}

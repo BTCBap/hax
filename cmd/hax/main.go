@@ -44,6 +44,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Trust-on-first-use pinning for Electrum TLS servers.
+	backend.SetDefaultPinStore(filepath.Join(walletDir, "known_servers.json"))
+
 	var b backend.BitcoinBackend
 	cfg, err := configManager.Load()
 	if err == nil && cfg != nil && cfg.Backend != nil {

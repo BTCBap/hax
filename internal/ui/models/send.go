@@ -1292,7 +1292,7 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		}
 
 		// Validate address
-		if err := wallet.ValidateBitcoinAddress(addr, true); err != nil {
+		if err := wallet.ValidateAddressForNetwork(addr, walletNetwork(m.walletManager)); err != nil {
 			m.err = err
 			return true, nil
 		}
@@ -1322,16 +1322,16 @@ func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 
 		// Parse amount
 		if m.usesBTC {
-			btc, err := strconv.ParseFloat(amtStr, 64)
-			if err != nil || btc <= 0 {
-				m.err = fmt.Errorf("invalid BTC amount")
+			sats, err := api.ParseBTC(amtStr)
+			if err != nil {
+				m.err = fmt.Errorf("invalid BTC amount: %v", err)
 				return true, nil
 			}
-			m.amountBTC = btc
-			m.amountSats = api.SatoshiFromBTC(btc)
+			m.amountSats = sats
+			m.amountBTC = sats.ToBTC()
 		} else {
-			sats, err := strconv.ParseInt(amtStr, 10, 64)
-			if err != nil || sats <= 0 {
+			sats, err := strconv.ParseInt(strings.TrimSpace(amtStr), 10, 64)
+			if err != nil || sats <= 0 || api.Satoshi(sats) > api.MaxMoney {
 				m.err = fmt.Errorf("invalid satoshi amount")
 				return true, nil
 			}
@@ -2122,7 +2122,7 @@ func (m *SendModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		// Open transaction in browser on mempool.space
 		if m.txID != "" {
-			_ = openTransactionInBrowser(m.txID)
+			_ = openTransactionInBrowser(walletNetwork(m.walletManager), m.txID)
 		}
 		return m, nil
 
@@ -2925,7 +2925,7 @@ func (m SendModel) buildReviewWarnings(totalRecipientAmount, displayFee api.Sato
 
 func (m SendModel) buildReviewScrollable() (string, string, string) {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction")
+	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction") + "  " + renderNetworkBadge(walletNetwork(m.walletManager))
 
 	// Responsive box width for all review sections
 	boxWidth := m.width - 4
@@ -3217,7 +3217,7 @@ func (m SendModel) viewComplete() string {
 
 	info := styles.InfoBoxStyle.Width(completeBoxWidth).Render(
 		"🔍 Track your transaction:\n\n" +
-			fmt.Sprintf("https://mempool.space/testnet4/tx/%s", m.txID))
+			wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID))
 
 	help := styles.RenderHelp(
 		styles.HK("c", "copy txid"),
