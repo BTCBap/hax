@@ -34,7 +34,7 @@ The shipped binary is `hax`.
 ## Build And Run
 
 Prerequisites:
-- Go 1.25.4 or newer
+- Go 1.26.9 or newer
 - A terminal with Unicode support
 
 From source:
