@@ -55,8 +55,8 @@ func (c *cborBuf) writeText(s string) {
 	c.writeHead(cborText, uint64(len(s)))
 	c.data = append(c.data, s...)
 }
-func (c *cborBuf) writeArrayHeader(n int) { c.writeHead(cborArray, uint64(n)) }
-func (c *cborBuf) writeMapHeader(n int)   { c.writeHead(cborMap, uint64(n)) }
+func (c *cborBuf) writeArrayHeader(n int) { c.writeHead(cborArray, uint64(n)) } //nolint:gosec // n is always a len()
+func (c *cborBuf) writeMapHeader(n int)   { c.writeHead(cborMap, uint64(n)) } //nolint:gosec // n is always a len()
 func (c *cborBuf) writeTag(tag uint64)    { c.writeHead(cborTag, tag) }
 func (c *cborBuf) writeBool(val bool) {
 	if val {
