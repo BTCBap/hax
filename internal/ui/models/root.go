@@ -97,6 +97,11 @@ type RootModel struct {
 	suppressWheelActive   bool
 	suppressWheelMaxUntil time.Time
 	suppressWheelToken    int
+
+	// Auto-lock: time of the last key or mouse input while unlocked.
+	lastActivity     time.Time
+	autoLockOverride time.Duration // tests only; <0 disables
+	listenerStarted  bool
 }
 
 const (
@@ -216,6 +221,7 @@ func (m RootModel) Init() tea.Cmd {
 	if m.splashModel != nil {
 		cmds = append(cmds, m.splashModel.Init())
 	}
+	cmds = append(cmds, scheduleIdleCheck())
 
 	return tea.Batch(cmds...)
 }
@@ -225,7 +231,19 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		m.lastActivity = time.Now()
+	}
+
 	switch msg := msg.(type) {
+	case idleCheckMsg:
+		if m.shouldAutoLock(time.Time(msg)) {
+			locked, cmd := m.autoLock()
+			return locked, tea.Batch(cmd, scheduleIdleCheck())
+		}
+		return m, scheduleIdleCheck()
+
 	case tea.KeyMsg:
 		m.suppressWheelActive = true
 		m.suppressWheelMaxUntil = time.Now().Add(wheelSuppressMaxWindow)
@@ -278,8 +296,15 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mainDashboardModel == nil {
 				m.mainDashboardModel = NewMainDashboardModel(m.walletManager, m.configManager)
 				isNewModel = true
-				debugLog("[ROOT] Starting notification listener for dashboard")
-				cmds = append(cmds, StartListeningWithSubscriptions(m.walletManager))
+				m.lastActivity = time.Now()
+				// One listener per process; it keeps re-arming itself, so
+				// re-creating the dashboard after an auto-lock must not
+				// start a second one.
+				if !m.listenerStarted {
+					m.listenerStarted = true
+					debugLog("[ROOT] Starting notification listener for dashboard")
+					cmds = append(cmds, StartListeningWithSubscriptions(m.walletManager))
+				}
 			}
 		case StateReceive:
 			m.receiveModel = NewReceiveModel(m.walletManager)
