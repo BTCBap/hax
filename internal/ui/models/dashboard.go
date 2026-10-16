@@ -417,27 +417,20 @@ func (m MainDashboardModel) viewGrid() string {
 		balanceDisplay = styles.DimText.Render("Balance: ") + styles.BalanceValueStyle.Render(balanceFormatted)
 	}
 
-	// Script type and UTXO count
+	// Script type, followed by the TESTNET4 tag on test-network wallets.
+	// Mainnet wallets show no network label.
 	scriptType, _, _ := m.walletManager.GetScriptType()
-	scriptName := scriptTypeDisplayName(scriptType)
-	isLoading := state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing
-	var walletMeta string
-	if isLoading {
-		walletMeta = styles.DimText.Render(scriptName)
-	} else {
-		utxoCount := len(state.UTXOs)
-		utxoLabel := "UTXOs"
-		if utxoCount == 1 {
-			utxoLabel = "UTXO"
-		}
-		walletMeta = styles.DimText.Render(fmt.Sprintf("%s · %d %s", scriptName, utxoCount, utxoLabel))
+	walletMeta := styles.DimText.Render(scriptTypeDisplayName(scriptType))
+	if b := renderNetworkBadge(walletNetwork(m.walletManager)); b != "" {
+		walletMeta += "  " + b
 	}
+	isLoading := state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing
 
 	// Build wallet info box content
 	walletInfoContent := walletTitle + "\n" +
 		statusIndicator + "\n\n" +
 		balanceDisplay + "\n\n" +
-		withBadge(walletMeta, walletNetwork(m.walletManager), "\n")
+		walletMeta
 
 	// --- Recent Activity Box ---
 	var recentActivityContent string
@@ -770,14 +763,6 @@ func renderNetworkBadge(network string) string {
 		Background(styles.Amber).
 		Padding(0, 1).
 		Render("TESTNET4")
-}
-
-// withBadge appends the network badge after s, if there is one.
-func withBadge(s, network, sep string) string {
-	if b := renderNetworkBadge(network); b != "" {
-		return s + sep + b
-	}
-	return s
 }
 
 // walletNetwork returns the active wallet's network, defaulting to testnet4

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/alert"
 	"github.com/BTCBap/hax/internal/ui/styles"
@@ -260,6 +261,8 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.contentViewport.Width = msg.Width
 		m.contentViewport.Height = msg.Height
+	case BackendChosenMsg:
+		return m, m.applySavedBackend()
 	case NavigateMsg:
 		if msg.Target == StateWalletSetup && m.state == StateSplash {
 			if m.configManager != nil && m.configManager.IsFirstRun() {
@@ -280,7 +283,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Target {
 		case StateConnectionSetup:
 			returnToSettings := prevState == StateSettings
-			m.connectionSetupModel = NewConnectionSetupModel(m.configManager, returnToSettings)
+			cs := NewConnectionSetupModel(m.configManager, returnToSettings)
+			cs.returnToUnlock = prevState == StateUnlock
+			m.connectionSetupModel = cs
 			isNewModel = true
 		case StateWalletSetup:
 			if m.walletSetupModel == nil {
@@ -748,4 +753,23 @@ func renderScrollableView(height, scrollOffset int, header, content, footer stri
 	}
 
 	return header + indicator + "\n" + visible + "\n" + footer
+}
+
+// applySavedBackend switches the wallet manager to the backend saved in
+// config, then returns to the unlock screen. Errors are left for the next
+// unlock attempt to report.
+func (m RootModel) applySavedBackend() tea.Cmd {
+	wm, cm := m.walletManager, m.configManager
+	return func() tea.Msg {
+		if wm != nil && cm != nil {
+			if cfg, err := cm.Load(); err == nil && cfg != nil && cfg.Backend != nil {
+				if b, err := backend.NewBackend(cfg.Backend); err == nil {
+					if err := wm.SetBackend(b); err != nil {
+						log.Printf("apply backend: %v", err)
+					}
+				}
+			}
+		}
+		return NavigateMsg{Target: StateUnlock}
+	}
 }

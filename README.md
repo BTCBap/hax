@@ -5,7 +5,7 @@
 <h1 align="center">hax</h1>
 
 <p align="center">
-  A terminal Bitcoin wallet for <b>testnet4</b>: PSBT-first, hardware-wallet aware, multisig capable.
+  A terminal Bitcoin wallet for mainnet and testnet4: PSBT-first, hardware-wallet aware, multisig capable.
 </p>
 
 <p align="center">
@@ -14,11 +14,10 @@
   <a href="https://pkg.go.dev/github.com/BTCBap/hax"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/BTCBap/hax.svg"></a>
   <a href="https://goreportcard.com/report/github.com/BTCBap/hax"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/BTCBap/hax"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Network: testnet4" src="https://img.shields.io/badge/network-testnet4-orange.svg">
 </p>
 
 > [!WARNING]
-> **hax is beta software.** It supports mainnet and testnet4, and has not been independently audited. Every screen shows the active network; mainnet is flagged in red. Practice on testnet4 first, and only put on mainnet what you can afford to lose.
+> **hax is beta software** and has not been independently audited. Try it on testnet4 first.
 
 <p align="center">
   <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
@@ -43,20 +42,6 @@
 | ![Send review](docs/images/send.png) | ![UTXOs](docs/images/utxos.png) |
 | **History** | **Help** |
 | ![History](docs/images/history.png) | ![Help](docs/images/help.png) |
-
-## Security model
-
-The full threat model is in [docs/threat-model.md](docs/threat-model.md).
-
-| | |
-|---|---|
-| **Protects against** | Theft of wallet files at rest (needs the password); wrong-network addresses (strict decoding against the wallet's own network, mainnet or testnet4, no fallback); Electrum server impersonation after first connect (TLS public-key pinning); silent fee/change surprises (review-step warnings); tampered release artifacts (signed checksums + provenance) |
-| **Does not protect against** | A compromised host (malware, keyloggers, memory scraping); a malicious Electrum server's view of your addresses (use your own node or Tor); weak passwords |
-| **Trust boundaries** | Backends are untrusted for correctness of wallet meaning. Imported PSBTs and descriptors are untrusted input. Hardware wallets are a separate trust domain, so confirm on the device. |
-| **Key material** | The seed is generated from `crypto/rand` (128 or 256 bits, BIP39 checksum) and never written to the clipboard or logs. The wallet password is not kept after unlock; only the derived AES key is held, as a byte slice that is zeroed on lock and exit. Signing happens locally or on the hardware device. |
-| **Fee estimates** | Taken only from your configured backend: Electrum `blockchain.estimatefee` (over the same TLS/Tor connection) or Bitcoin Core `estimatesmartfee`. hax does **not** call mempool.space or other third-party HTTP fee APIs. If estimates fail, the UI shows **unavailable** instead of inventing a rate. |
-
-Known gaps are tracked in [TODO.md](TODO.md) and the issue tracker. They include Go's limits on wiping immutable strings (the mnemonic is still held as a `string` while unlocked), idle auto-lock, and a memory-hard KDF.
 
 ## Install
 
@@ -83,8 +68,6 @@ sha256sum --ignore-missing -c checksums.txt     # macOS: shasum -a 256 -c checks
 gh attestation verify hax_*_linux_amd64.tar.gz --repo BTCBap/hax
 ```
 
-See [docs/release-verification.md](docs/release-verification.md) for details.
-
 ### `go install`
 
 ```bash
@@ -103,7 +86,7 @@ make test
 make build-release  # -trimpath, version info injected
 ```
 
-Releases are built with GoReleaser using `-trimpath`, an empty build ID, and commit-derived timestamps. Rebuilding a tag with the same Go version should produce identical archives.
+Release builds are reproducible; see [docs/release-verification.md](docs/release-verification.md).
 
 ## Usage
 
@@ -115,7 +98,7 @@ On first run, hax asks you to pick a backend (Electrum or Bitcoin Core RPC). The
 
 1. Create a wallet, write the seed phrase down on paper. Never store it digitally.
 2. Choose an address type (native SegWit is the default).
-3. Fund it from a testnet4 faucet, e.g. [mempool.space/testnet4/faucet](https://mempool.space/testnet4/faucet).
+3. Pick mainnet or testnet4. For testnet4 coins, use a faucet such as [mempool.space/testnet4/faucet](https://mempool.space/testnet4/faucet).
 4. Use `r` to receive, `s` to send, `h` for history, `u` for UTXOs, `t` for settings, and `?` for all key bindings.
 
 Set `DEBUG=1` to write a debug log. Never share debug logs publicly without reviewing them first.
@@ -127,25 +110,21 @@ All state lives in `~/.hax/`:
 | Path | Contents |
 |---|---|
 | `~/.hax/<name>.wallet` | Encrypted wallet (seed, optional passphrase, accounts, labels, cache) |
-| `~/.hax/known_servers.json` | Electrum TLS pins: SHA-256 of each server's public key, recorded on first connect (`0600`) |
+| `~/.hax/known_servers.json` | Trusted Electrum server keys |
 | `~/.hax/config.json` | Backend selection, display unit, gap limit, recent servers |
 | `~/.hax/*_labels_bip329.jsonl`, `*_koinly.csv` | Exports (`0600`) |
 
 `config.json` is not encrypted. If you use Bitcoin Core RPC, your RPC credentials are stored there in plaintext (mode `0600`). Prefer a dedicated RPC user with minimal permissions.
 
-Network fee estimates use only your backend connection. Explorer links (e.g. opening a transaction on mempool.space in your browser) are separate and optional; they are not used for fee estimation.
+Fee estimates come only from your configured backend (Electrum or Bitcoin Core).
 
-## Networks
+## Security
 
-Each wallet records its network: mainnet or [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94). Testnet4 wallets carry a **TESTNET4** tag on the dashboard and on the send review screen. Mainnet wallets have no tag. A recipient address has to decode under that network's params. `tb1…` is rejected on a mainnet wallet and `bc1…` on a testnet4 wallet, and nothing falls back to another network. Creating a mainnet wallet asks for one extra confirmation.
-
-## Electrum certificate pinning
-
-On the first TLS connection to an Electrum server, hax verifies the certificate chain as usual and records the SHA-256 of the server's public key in `~/.hax/known_servers.json`. Later connections still verify the chain and also require that key to match. If the key changes, hax refuses to connect and shows both fingerprints. A changed key can be a legitimate rotation or an interception. If you have confirmed it out of band, delete that server's entry to re-pin.
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Please report security issues privately as described in [SECURITY.md](SECURITY.md), not in public issues.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## License
 
