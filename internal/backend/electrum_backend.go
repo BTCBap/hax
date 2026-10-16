@@ -87,7 +87,7 @@ func NewElectrumBackend(config *BackendConfig) (*ElectrumBackend, error) {
 	}
 
 	if config.Electrum == nil {
-		return nil, fmt.Errorf("Electrum configuration is required")
+		return nil, fmt.Errorf("electrum configuration is required")
 	}
 
 	return &ElectrumBackend{

@@ -7,7 +7,6 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,7 +19,6 @@ type ReceiveModel struct {
 	height int
 
 	walletManager   WalletService
-	addresses       []wallet.AddressData
 	selectedAddress string
 	derivationPath  string
 	currentIndex    uint32      // Current address index being viewed

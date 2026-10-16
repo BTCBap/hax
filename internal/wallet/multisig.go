@@ -293,20 +293,20 @@ func (m *WalletManager) ExportColdcardMultisig() (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Name: %s\n", m.data.Name))
-	sb.WriteString(fmt.Sprintf("Policy: %d of %d\n", config.M, config.N))
-	sb.WriteString(fmt.Sprintf("Format: %s\n", format))
+	fmt.Fprintf(&sb, "Name: %s\n", m.data.Name)
+	fmt.Fprintf(&sb, "Policy: %d of %d\n", config.M, config.N)
+	fmt.Fprintf(&sb, "Format: %s\n", format)
 	sb.WriteString("\n")
 	// Use Coldcard h notation for hardened
 	ccPath := strings.ReplaceAll(derivPath, "'", "h")
-	sb.WriteString(fmt.Sprintf("Derivation: %s\n", ccPath))
+	fmt.Fprintf(&sb, "Derivation: %s\n", ccPath)
 
 	for _, cs := range config.Cosigners {
 		fp := cs.Fingerprint
 		if fp == "" {
 			fp = "00000000"
 		}
-		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(fp), cs.Xpub))
+		fmt.Fprintf(&sb, "%s: %s\n", strings.ToUpper(fp), cs.Xpub)
 	}
 
 	return sb.String(), nil

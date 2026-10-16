@@ -972,28 +972,6 @@ func (m *WalletManager) GetMnemonic() (string, error) {
 	return m.data.Mnemonic, nil
 }
 
-// getWalletFingerprint returns the master fingerprint for the current wallet
-func (m *WalletManager) getWalletFingerprint() string {
-	if m.data == nil {
-		return ""
-	}
-
-	// For hardware wallets, use the stored fingerprint
-	if m.data.HardwareWallet != nil && m.data.HardwareWallet.Fingerprint != "" {
-		return m.data.HardwareWallet.Fingerprint
-	}
-
-	// For software wallets, derive from the wallet
-	if m.wallet != nil {
-		fp, err := m.wallet.GetMasterFingerprintHex()
-		if err == nil {
-			return fp
-		}
-	}
-
-	return ""
-}
-
 // seedFromWalletData derives the BIP39 seed for a software wallet, honoring the
 // optional BIP39 passphrase stored inside the encrypted wallet file.
 func seedFromWalletData(data *WalletData) ([]byte, error) {

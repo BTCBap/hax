@@ -89,8 +89,6 @@ type RootModel struct {
 	testnet       bool
 	err           error
 
-	notifyStopChan chan struct{}
-
 	contentViewport viewport.Model
 
 	// Prevent inertial wheel carryover across screen transitions.

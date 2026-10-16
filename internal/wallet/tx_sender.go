@@ -105,7 +105,7 @@ func (m *WalletManager) CreatePSBTBatchTransaction(accountIndex uint32, recipien
 	// Convert recipients to outputs
 	outputs := make([]TxOutput, len(recipients))
 	for i, r := range recipients {
-		outputs[i] = TxOutput{Address: r.Address, Amount: r.Amount}
+		outputs[i] = TxOutput(r)
 	}
 
 	scriptType, multisigM, multisigN := m.GetScriptType()

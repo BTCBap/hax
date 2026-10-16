@@ -1,11 +1,9 @@
 package wallet
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
 	"sort"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -335,22 +333,6 @@ func selectLargestFirst(available []UTXOWithPath, outputs []TxOutput, feeRate fl
 
 	return nil, 0, fmt.Errorf("insufficient funds: have %d sats, need %d sats (output: %d + fee: %d)",
 		totalInput, needed, totalOutput, finalFee)
-}
-
-// shuffleUTXOs randomizes UTXO order for privacy
-func shuffleUTXOs(utxos []UTXOWithPath) []UTXOWithPath {
-	result := make([]UTXOWithPath, len(utxos))
-	copy(result, utxos)
-
-	for i := len(result) - 1; i > 0; i-- {
-		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
-		if err != nil {
-			return result
-		}
-		j := int(jBig.Int64())
-		result[i], result[j] = result[j], result[i]
-	}
-	return result
 }
 
 // ValidateBitcoinAddress validates a Bitcoin address

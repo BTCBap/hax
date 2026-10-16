@@ -603,58 +603,6 @@ func (m SendModel) exportCurrentPSBT() tea.Cmd {
 	}
 }
 
-// exportRawHex creates a signed transaction and exports it as raw hex
-func (m SendModel) exportRawHex() tea.Cmd {
-	// Calculate fee rate BEFORE creating closure to avoid stale capture issues
-	feeRate := m.getFeeRateForLevel(m.feeLevel)
-
-	// Collect UTXOs before closure
-	var selectedUTXOs []api.UTXO
-	for i, selected := range m.utxoSelected {
-		if selected && i < len(m.utxos) {
-			selectedUTXOs = append(selectedUTXOs, m.utxos[i])
-		}
-	}
-
-	// Convert recipients to wallet.TxRecipient
-	recipients := make([]wallet.TxRecipient, len(m.recipients))
-	for i, r := range m.recipients {
-		recipients[i] = wallet.TxRecipient{
-			Address: r.Address,
-			Amount:  r.Amount,
-		}
-	}
-
-	// Capture values needed for the closure
-	walletMgr := m.walletManager
-
-	return func() tea.Msg {
-		// Create the PSBT
-		psbtResult, err := walletMgr.CreatePSBTBatchTransaction(
-			0,             // Account 0 (default account)
-			recipients,    // All recipients
-			feeRate,       // Fee rate in sat/vB (supports fractional)
-			selectedUTXOs, // User-selected UTXOs (coin control)
-		)
-		if err != nil {
-			return RawHexExportMsg{Err: fmt.Errorf("failed to create transaction: %w", err)}
-		}
-
-		// Sign the PSBT with our keys
-		if err := walletMgr.SignPSBTTransaction(psbtResult); err != nil {
-			return RawHexExportMsg{Err: fmt.Errorf("failed to sign transaction: %w", err)}
-		}
-
-		// Finalize and get raw hex
-		rawHex, err := walletMgr.FinalizePSBTTransaction(psbtResult)
-		if err != nil {
-			return RawHexExportMsg{Err: fmt.Errorf("failed to finalize transaction: %w", err)}
-		}
-
-		return RawHexExportMsg{Hex: rawHex, Err: nil}
-	}
-}
-
 // expandPath expands ~ to home directory and cleans the path.
 // Returns an error if home directory cannot be determined.
 func expandPath(path string) (string, error) {
@@ -709,11 +657,7 @@ func validatePSBTFilePath(path string, forExport bool) error {
 		if !info.IsDir() {
 			return fmt.Errorf("not a directory: %s", dir)
 		}
-		// Check if file already exists (warn, don't block)
-		if _, err := os.Stat(path); err == nil {
-			// File exists - will be overwritten
-			// This is acceptable for PSBT workflow
-		}
+		// An existing file is overwritten; that is expected in the PSBT workflow.
 	} else {
 		// For import, check file exists and is readable
 		info, err := os.Stat(path)
@@ -2471,64 +2415,6 @@ func (m *SendModel) calculateFeeWithRate(feeRate float64) {
 	m.estimatedFee = api.Satoshi(math.Ceil(float64(m.estimatedSize) * feeRate))
 }
 
-// recalculateSendAllAmount updates the send amount to use all available funds
-// minus the fee calculated with the currently selected fee rate.
-// Called when transitioning from Fee selection to Review if sendAll is true.
-func (m *SendModel) recalculateSendAllAmount() {
-	if len(m.recipients) == 0 {
-		return
-	}
-
-	// Get selected fee rate
-	feeRate := m.getFeeRateForLevel(m.feeLevel)
-
-	// Count selected UTXOs and their total value
-	numInputs := 0
-	var totalInput api.Satoshi
-	for i, selected := range m.utxoSelected {
-		if selected && i < len(m.utxos) {
-			numInputs++
-			totalInput += m.utxos[i].Value
-		}
-	}
-
-	// If no UTXOs explicitly selected, use all available
-	if numInputs == 0 {
-		numInputs = len(m.utxos)
-		for _, utxo := range m.utxos {
-			totalInput += utxo.Value
-		}
-	}
-
-	if numInputs == 0 || totalInput == 0 {
-		return
-	}
-
-	// For send-all: 1 output (recipient), no change
-	vSize := m.estimateTxVSize(numInputs, 1)
-	fee := api.Satoshi(math.Ceil(float64(vSize) * feeRate))
-
-	// Max amount is total input minus fee
-	maxAmount := totalInput - fee
-	if maxAmount <= 0 {
-		m.err = fmt.Errorf("balance too low to cover fees at %.2f sat/vB", feeRate)
-		m.sendAll = false
-		return
-	}
-
-	// Update the first recipient's amount (send-all only works with single recipient)
-	m.recipients[0].Amount = maxAmount
-	m.amountSats = maxAmount
-	m.amountBTC = maxAmount.ToBTC()
-
-	// Update the amount input display
-	if m.usesBTC {
-		m.amountInput.SetValue(fmt.Sprintf("%.8f", m.amountBTC))
-	} else {
-		m.amountInput.SetValue(fmt.Sprintf("%d", maxAmount))
-	}
-}
-
 func (m SendModel) View() string {
 	_ = m.width
 
@@ -4037,10 +3923,6 @@ func (m SendModel) renderScrollableViewport(header, content, footer string) stri
 	if m.height <= 0 {
 		return header + "\n" + content + "\n" + footer
 	}
-	availableHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer) - 2
-	if availableHeight < 1 {
-		availableHeight = 1
-	}
 
 	view := m.scrollViewport.View()
 	if view == "" {
@@ -4054,25 +3936,6 @@ func (m SendModel) renderScrollableViewport(header, content, footer string) stri
 	}
 
 	return header + indicator + "\n" + view + "\n" + footer
-}
-
-// renderScrollable delegates to the package-level renderScrollableView.
-func (m SendModel) renderScrollable(header, content, footer string) string {
-	return renderScrollableView(m.height, m.scrollOffset, header, content, footer)
-}
-
-// scrollDown moves the scroll offset down by n lines
-func (m *SendModel) scrollDown(n int) {
-	m.scrollOffset += n
-	// No upper clamp here — renderScrollable clamps at render time
-}
-
-// scrollUp moves the scroll offset up by n lines
-func (m *SendModel) scrollUp(n int) {
-	m.scrollOffset -= n
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
-	}
 }
 
 // validateBTCAmount validates Bitcoin amount input (max 8 decimal places)

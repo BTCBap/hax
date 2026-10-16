@@ -56,7 +56,7 @@ func (m *WalletManager) ExportLabelsBIP329() (string, error) {
 		return "", fmt.Errorf("wallet is locked")
 	}
 
-	if m.data.TransactionLabels == nil || len(m.data.TransactionLabels) == 0 {
+	if len(m.data.TransactionLabels) == 0 {
 		return "", fmt.Errorf("no transaction labels to export")
 	}
 
@@ -239,7 +239,7 @@ func (m *WalletManager) ExportKoinly(transactions []api.Transaction) (string, er
 		description = strings.ReplaceAll(description, ",", " ")
 		description = strings.ReplaceAll(description, "\"", "'")
 
-		sb.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+		fmt.Fprintf(&sb, "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 			timestamp,
 			sentAmount,
 			sentCurrency,
@@ -249,8 +249,7 @@ func (m *WalletManager) ExportKoinly(transactions []api.Transaction) (string, er
 			feeCurrency,
 			label,
 			description,
-			tx.TxID,
-		))
+			tx.TxID)
 	}
 
 	return sb.String(), nil

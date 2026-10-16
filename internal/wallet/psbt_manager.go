@@ -760,8 +760,8 @@ func (m *WalletManager) DisplayAddressOnDevice(addr, derivPath string) error {
 		isTestnetAddr := strings.HasPrefix(addr, "tb1") || strings.HasPrefix(addr, "2") || strings.HasPrefix(addr, "m") || strings.HasPrefix(addr, "n")
 		isMainnetAddr := strings.HasPrefix(displayed, "bc1") || strings.HasPrefix(displayed, "1") || strings.HasPrefix(displayed, "3")
 		if isTestnetAddr && isMainnetAddr {
-			return fmt.Errorf("device is in mainnet mode but wallet uses testnet. " +
-				"Address was shown on device — verify the derivation path matches.")
+			return fmt.Errorf("device is in mainnet mode but wallet uses testnet; " +
+				"the address was shown on the device, so verify the derivation path matches")
 		}
 		return fmt.Errorf("address mismatch: device showed %s but expected %s", displayed, addr)
 	}

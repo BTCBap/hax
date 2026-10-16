@@ -70,14 +70,6 @@ func StartListeningWithSubscriptions(walletManager WalletService) tea.Cmd {
 	}
 }
 
-// emitStateChanged returns a Cmd that emits StateChangedMsg with current state.
-// This broadcasts the unified state to all screens for synchronization.
-func emitStateChanged(walletManager WalletService) tea.Cmd {
-	return func() tea.Msg {
-		return StateChangedMsg{State: walletManager.GetState()}
-	}
-}
-
 // asyncRefreshAndEmitState performs cache refresh and emits the updated state.
 // Runs inside a tea.Cmd goroutine — no additional goroutine needed.
 func asyncRefreshAndEmitState(walletManager WalletService) tea.Cmd {

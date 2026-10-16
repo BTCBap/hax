@@ -479,11 +479,8 @@ func TestMultisigInsufficientSignatures(t *testing.T) {
 		t.Fatalf("Expected 1 signature added, got %d", sigsAdded)
 	}
 
-	// Verify PSBT is not yet complete
-	if IsPSBTComplete(result.Packet) {
-		// IsPSBTComplete checks for any sigs, not M-of-N threshold
-		// So it may report true with 1 sig — that's by design (it's a simple check)
-	}
+	// IsPSBTComplete only checks for any signature, not the M-of-N
+	// threshold, so it isn't asserted here.
 
 	// Verify we only have 1 partial signature
 	if len(result.Packet.Inputs[0].PartialSigs) != 1 {

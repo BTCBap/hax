@@ -41,8 +41,8 @@ func DescriptorChecksum(desc string) string {
 	}
 
 	var c uint64 = 1
-	var cls int = 0
-	var clscount int = 0
+	var cls = 0
+	var clscount = 0
 
 	for _, ch := range desc {
 		pos := strings.IndexRune(inputCharset, ch)

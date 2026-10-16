@@ -466,7 +466,7 @@ func HWIInstallInstructions() string {
 	b.WriteString("Hardware Wallet Interface (HWI) is not installed.\n\n")
 	b.WriteString(platform + ":\n")
 	for i, step := range steps {
-		b.WriteString(fmt.Sprintf("  %d. %s\n", i+1, step.Command))
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, step.Command)
 	}
 	if note != "" {
 		b.WriteString("\n" + note + "\n")

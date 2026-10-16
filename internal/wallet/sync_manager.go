@@ -133,13 +133,6 @@ func (m *WalletManager) syncStateFromCache() {
 	}
 }
 
-// scanAddresses scans wallet addresses to determine which are used
-// Uses gap limit (20) - scans until 20 consecutive unused addresses are found
-// Deprecated: Use scanAddressesWithContext for cancellation support
-func (m *WalletManager) scanAddresses() {
-	m.scanAddressesWithContext(context.Background())
-}
-
 // scanAddressesWithContext scans wallet addresses with context cancellation support
 // Uses gap limit (20) - scans until 20 consecutive unused addresses are found
 func (m *WalletManager) scanAddressesWithContext(ctx context.Context) {
