@@ -17,6 +17,7 @@ type MockWalletManager struct {
 	GetWalletNameFn        func() string
 	GetWalletTypeFn        func() string
 	GetNetworkFn           func() string
+	CreatedNetwork         string // last network passed to *OnNetwork
 	ValidateAddressFn      func(string) error
 	GetCreatedAtFn         func() int64
 	IsHardwareWalletFn     func() bool
@@ -740,4 +741,14 @@ func (m *MockWalletManager) ValidateAddress(addr string) error {
 		network = wallet.NetworkTestnet
 	}
 	return wallet.ValidateAddressForNetwork(addr, network)
+}
+
+func (m *MockWalletManager) CreateWalletOnNetwork(name, password string, wordCount int, network string) (string, error) {
+	m.CreatedNetwork = network
+	return m.CreateWallet(name, password, wordCount)
+}
+
+func (m *MockWalletManager) RestoreWalletOnNetwork(name, password, mnemonic, passphrase, network string) error {
+	m.CreatedNetwork = network
+	return m.RestoreWallet(name, password, mnemonic)
 }

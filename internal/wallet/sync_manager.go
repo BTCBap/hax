@@ -437,6 +437,10 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 			m.state.SetError(fmt.Errorf("connection failed: %w", err))
 			return
 		}
+		if err := m.ensureNetworkVerified(); err != nil {
+			m.state.SetError(err)
+			return
+		}
 	}
 
 	// Get block height first
@@ -580,6 +584,9 @@ func (m *WalletManager) QuickRefreshBalance() error {
 	// Connect if needed (usually already connected)
 	if err := m.backend.Connect(); err != nil {
 		return fmt.Errorf("connection failed: %w", err)
+	}
+	if err := m.ensureNetworkVerified(); err != nil {
+		return err
 	}
 
 	// Get block height (fast)
