@@ -601,21 +601,16 @@ func (m MainDashboardModel) renderRecentTransactions(txs []api.Transaction, unit
 			direction = styles.DimText.Render("⟲")
 		}
 
-		// Compact confirmation indicator with progress symbols
-		// ◔ = 25% (1 conf), ◑ = 50% (2-3 conf), ◕ = 75% (4-5 conf)
+		// Compact confirmation indicator. Glyphs are limited to ones that
+		// render one cell wide in common terminal fonts; wider fallback
+		// glyphs pushed the box border out of line.
 		confIndicator := ""
 		if !tx.Status.Confirmed {
-			confIndicator = styles.WarningText.Render(" ⏳")
+			confIndicator = styles.WarningText.Render(" ○ pending")
 		} else if blockHeight > 0 && tx.Status.BlockHeight > 0 {
 			confirmations := blockHeight - tx.Status.BlockHeight + 1
 			if confirmations >= 1 && confirmations < 6 {
-				symbol := "◔" // 1 confirmation
-				if confirmations >= 2 && confirmations <= 3 {
-					symbol = "◑" // 2-3 confirmations
-				} else if confirmations >= 4 {
-					symbol = "◕" // 4-5 confirmations
-				}
-				confIndicator = styles.DimText.Render(fmt.Sprintf(" %s %d/6", symbol, confirmations))
+				confIndicator = styles.DimText.Render(fmt.Sprintf(" ○ %d/6", confirmations))
 			}
 			// For 6+ confirmations, no indicator needed (fully confirmed)
 		}
