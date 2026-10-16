@@ -10,6 +10,14 @@
 - [x] Add screenshot and social preview image
 - [x] Verify the current publish branch builds and tests locally (`make build`, `make test`)
 
+## Security Hardening
+
+- [x] Wipe secrets from memory after use; idle auto-lock
+- [x] Electrum certificate pinning (trust on first use)
+- [x] BIP39 passphrase entry on create/restore
+- [x] Argon2id wallet KDF with a versioned file format (v1 PBKDF2 files upgrade on unlock)
+- [ ] Set a TLS minimum version on Electrum connections
+
 ## Next
 
 - [ ] Run an unfunded clean-environment smoke test for create, restore, unlock, receive, UI navigation, and PSBT import/export

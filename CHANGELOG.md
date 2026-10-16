@@ -11,8 +11,10 @@ This is a lightweight project changelog, not a strict release ledger.
 - Taproot (P2TR) address support with BIP86 derivation
 - Multisig wallet infrastructure (BIP48 derivation, P2SH/P2SH-P2WSH/P2WSH)
 - Semantic versioning with build-time injection
+- Argon2id (RFC 9106: 64 MiB, t=3, p=4) key derivation for wallet files, in a versioned v2 file format whose KDF parameters and salt are authenticated as AES-GCM additional data
 
 ### Changed
+- Existing PBKDF2 (v1) wallet files are upgraded to Argon2id automatically on the next successful unlock
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`
 - Repository TODOs now distinguish public beta work from v1 production gates
 - Public launch stance is source-first until release verification is in place

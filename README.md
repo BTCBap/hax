@@ -32,7 +32,7 @@
 - **Coin control:** Branch-and-Bound selection, send-all, batch payments, and dust and fee-anomaly warnings at review
 - **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC
 - **BIP-329 labels**, transaction history, and Koinly CSV export
-- **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory
+- **Encrypted at rest:** AES-256-GCM with an Argon2id-derived key (64 MiB, t=3, p=4). Files are `0600` in a `0700` directory
 
 | Dashboard | Receive |
 |---|---|
