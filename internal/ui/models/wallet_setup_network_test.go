@@ -39,7 +39,7 @@ func TestChooseNetwork_MainnetNeedsConfirm(t *testing.T) {
 	out, _ = m.handleChooseNetwork(netKey("enter"))
 	out, _ = out.(WalletSetupModel).handleChooseNetwork(netKey("y"))
 	m = out.(WalletSetupModel)
-	if m.network != wallet.NetworkMainnet || m.step != StepChooseWordCount {
+	if m.network != wallet.NetworkMainnet || m.step != StepEnterPassphrase {
 		t.Fatalf("confirm: network=%s step=%v", m.network, m.step)
 	}
 }

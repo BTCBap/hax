@@ -23,6 +23,8 @@ const (
 	StepEnterName
 	StepEnterPassword
 	StepConfirmPassword
+	StepEnterPassphrase   // optional BIP39 passphrase (create, software seed)
+	StepConfirmPassphrase // confirm BIP39 passphrase
 	StepChooseScriptType
 	StepChooseWordCount
 	StepShowMnemonic
@@ -37,6 +39,8 @@ const (
 	StepRestoreChooseScriptType
 	StepRestoreEnterPassword
 	StepRestoreConfirmPassword
+	StepRestoreEnterPassphrase   // optional BIP39 passphrase (restore from seed)
+	StepRestoreConfirmPassphrase // confirm BIP39 passphrase
 	StepRestoreChooseFile
 	StepRestoreFilePassword
 
@@ -72,15 +76,18 @@ type WalletSetupModel struct {
 	configManager *config.ConfigManager
 
 	// UI components
-	progressBar          progress.Model
-	nameInput            textinput.Model
-	passwordInput        textinput.Model
-	confirmPasswordInput textinput.Model
-	mnemonicInput        textinput.Model
+	progressBar            progress.Model
+	nameInput              textinput.Model
+	passwordInput          textinput.Model
+	confirmPasswordInput   textinput.Model
+	passphraseInput        textinput.Model
+	confirmPassphraseInput textinput.Model
+	mnemonicInput          textinput.Model
 
 	// Data
 	walletName           string
 	password             string
+	passphrase           string // BIP39 passphrase (empty = none); wiped after use
 	wordCount            int
 	network              string // wallet.NetworkTestnet or wallet.NetworkMainnet
 	confirmMainnet       bool   // mainnet warning shown, awaiting y/n
@@ -181,6 +188,16 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	confirmPasswordInput.EchoMode = textinput.EchoPassword
 	confirmPasswordInput.CharLimit = 100
 
+	passphraseInput := textinput.New()
+	passphraseInput.Placeholder = "optional"
+	passphraseInput.EchoMode = textinput.EchoPassword
+	passphraseInput.CharLimit = 256
+
+	confirmPassphraseInput := textinput.New()
+	confirmPassphraseInput.Placeholder = "Confirm passphrase"
+	confirmPassphraseInput.EchoMode = textinput.EchoPassword
+	confirmPassphraseInput.CharLimit = 256
+
 	mnemonicInput := textinput.New()
 	mnemonicInput.Placeholder = "word1 word2 word3 ..."
 	mnemonicInput.Width = 80
@@ -239,21 +256,23 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	}
 
 	return WalletSetupModel{
-		step:                 startStep,
-		cursor:               0,
-		walletManager:        walletManager,
-		configManager:        configManager,
-		progressBar:          prog,
-		nameInput:            nameInput,
-		passwordInput:        passwordInput,
-		confirmPasswordInput: confirmPasswordInput,
-		mnemonicInput:        mnemonicInput,
-		wordCount:            12, // Default to 12 words
-		network:              wallet.NetworkTestnet,
-		hasLastWallet:        hasLastWallet,
-		lastWalletName:       lastWalletName,
-		selectedWallet:       lastWalletName, // Pre-select the last wallet
-		existingWallets:      existingWallets,
+		step:                   startStep,
+		cursor:                 0,
+		walletManager:          walletManager,
+		configManager:          configManager,
+		progressBar:            prog,
+		nameInput:              nameInput,
+		passwordInput:          passwordInput,
+		confirmPasswordInput:   confirmPasswordInput,
+		passphraseInput:        passphraseInput,
+		confirmPassphraseInput: confirmPassphraseInput,
+		mnemonicInput:          mnemonicInput,
+		wordCount:              12, // Default to 12 words
+		network:                wallet.NetworkTestnet,
+		hasLastWallet:          hasLastWallet,
+		lastWalletName:         lastWalletName,
+		selectedWallet:         lastWalletName, // Pre-select the last wallet
+		existingWallets:        existingWallets,
 		// Multisig defaults
 		multisigM:             2,
 		multisigN:             3,
@@ -397,8 +416,22 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Clear errors when navigating back
 			m.hwiError = nil
 			m.err = nil
-			// Go back to previous step with proper navigation
-			m.step = m.getPreviousStep()
+			prev := m.getPreviousStep()
+			// Wipe BIP39 passphrase when leaving / re-entering passphrase steps
+			switch m.step {
+			case StepEnterPassphrase, StepRestoreEnterPassphrase:
+				m.wipePassphrase()
+			case StepConfirmPassphrase, StepRestoreConfirmPassphrase:
+				m.confirmPassphraseInput.SetValue("")
+				if prev != StepEnterPassphrase && prev != StepRestoreEnterPassphrase {
+					m.wipePassphrase()
+				}
+			case StepChooseWordCount:
+				if prev == StepEnterPassphrase || prev == StepConfirmPassphrase {
+					m.wipePassphrase()
+				}
+			}
+			m.step = prev
 			return m, nil
 		}
 
@@ -430,6 +463,33 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				m.step = StepEnterPassword
 				cmds = append(cmds, m.passwordInput.Focus())
+			}
+
+		case StepEnterPassphrase:
+			m.passphraseInput, cmd = m.passphraseInput.Update(msg)
+			cmds = append(cmds, cmd)
+			if msg.String() == "enter" {
+				m.err = nil
+				m.passphrase = m.passphraseInput.Value()
+				m.confirmPassphraseInput.SetValue("")
+				m.step = StepConfirmPassphrase
+				cmds = append(cmds, m.confirmPassphraseInput.Focus())
+			}
+
+		case StepConfirmPassphrase:
+			m.confirmPassphraseInput, cmd = m.confirmPassphraseInput.Update(msg)
+			cmds = append(cmds, cmd)
+			if msg.String() == "enter" {
+				if m.confirmPassphraseInput.Value() == m.passphrase {
+					m.err = nil
+					m.confirmPassphraseInput.SetValue("")
+					m.passphraseInput.SetValue("")
+					m.step = StepChooseWordCount
+					m.cursor = 0
+				} else {
+					m.err = fmt.Errorf("passphrases do not match")
+					m.confirmPassphraseInput.SetValue("")
+				}
 			}
 
 		case StepChooseWordCount:
@@ -579,8 +639,36 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Batch(cmds...)
 				}
 				m.err = nil
-				m.step = StepRestoreChooseScriptType
-				m.cursor = 2 // Default to Native SegWit (recommended)
+				m.wipePassphrase()
+				m.step = StepRestoreEnterPassphrase
+				cmds = append(cmds, m.passphraseInput.Focus())
+			}
+
+		case StepRestoreEnterPassphrase:
+			m.passphraseInput, cmd = m.passphraseInput.Update(msg)
+			cmds = append(cmds, cmd)
+			if msg.String() == "enter" {
+				m.err = nil
+				m.passphrase = m.passphraseInput.Value()
+				m.confirmPassphraseInput.SetValue("")
+				m.step = StepRestoreConfirmPassphrase
+				cmds = append(cmds, m.confirmPassphraseInput.Focus())
+			}
+
+		case StepRestoreConfirmPassphrase:
+			m.confirmPassphraseInput, cmd = m.confirmPassphraseInput.Update(msg)
+			cmds = append(cmds, cmd)
+			if msg.String() == "enter" {
+				if m.confirmPassphraseInput.Value() == m.passphrase {
+					m.err = nil
+					m.confirmPassphraseInput.SetValue("")
+					m.passphraseInput.SetValue("")
+					m.step = StepRestoreChooseScriptType
+					m.cursor = 2 // Default to Native SegWit (recommended)
+				} else {
+					m.err = fmt.Errorf("passphrases do not match")
+					m.confirmPassphraseInput.SetValue("")
+				}
 			}
 
 		case StepRestoreChooseScriptType:
@@ -605,8 +693,8 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 			if msg.String() == "enter" {
 				if m.confirmPasswordInput.Value() == m.password {
-					// Restore the wallet
-					err := m.walletManager.RestoreWalletOnNetwork(m.walletName, m.password, m.restoreMnemonic, "", m.network)
+					// Restore the wallet (BIP39 passphrase already collected; empty = none)
+					err := m.walletManager.RestoreWalletOnNetwork(m.walletName, m.password, m.restoreMnemonic, m.passphrase, m.network)
 					if err != nil {
 						m.err = fmt.Errorf("failed to restore wallet: %w", err)
 						return m, tea.Batch(cmds...)
@@ -628,6 +716,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Save this wallet as last used (for auto-login)
 					m.saveLastWalletName(m.walletName)
+					m.wipePassphrase()
 
 					// Navigate to dashboard
 					return m, func() tea.Msg {
@@ -898,14 +987,15 @@ func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.
 			m.wordCount = 24
 		}
 
-		// Generate wallet
-		mnemonic, err := m.walletManager.CreateWalletOnNetwork(m.walletName, m.password, m.wordCount, m.network)
+		// Generate wallet (BIP39 passphrase already collected; empty = none)
+		mnemonic, err := m.walletManager.CreateWalletOnNetwork(m.walletName, m.password, m.wordCount, m.network, m.passphrase)
 		if err != nil {
 			m.err = err
 			return m, nil
 		}
 
 		m.generatedMnemonic = mnemonic
+		m.wipePassphrase()
 		m.step = StepShowMnemonic
 		m.cursor = 0
 	}
@@ -1024,8 +1114,12 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 			return StepConfirmPassword
 		}
 		return StepChooseKeySource
-	case StepChooseWordCount:
+	case StepEnterPassphrase:
 		return StepChooseNetwork
+	case StepConfirmPassphrase:
+		return StepEnterPassphrase
+	case StepChooseWordCount:
+		return StepEnterPassphrase
 	case StepShowMnemonic:
 		return StepChooseWordCount
 
@@ -1060,8 +1154,12 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 		return StepRestoreChooseMethod
 	case StepRestoreEnterMnemonic:
 		return StepRestoreEnterName
-	case StepRestoreChooseScriptType:
+	case StepRestoreEnterPassphrase:
 		return StepRestoreEnterMnemonic
+	case StepRestoreConfirmPassphrase:
+		return StepRestoreEnterPassphrase
+	case StepRestoreChooseScriptType:
+		return StepRestoreConfirmPassphrase
 	case StepRestoreEnterPassword:
 		return StepChooseNetwork
 	case StepRestoreConfirmPassword:
@@ -1096,18 +1194,22 @@ func (m WalletSetupModel) getStepProgress() float64 {
 		return 0.60
 	case StepChooseNetwork:
 		return 0.75
+	case StepEnterPassphrase, StepConfirmPassphrase:
+		return 0.78
 	case StepChooseWordCount:
 		return 0.80
 	case StepShowMnemonic:
 		return 1.0
 
-	// Restore wallet flow from seed (5 steps)
+	// Restore wallet flow from seed
 	case StepRestoreChooseMethod:
 		return 0.0
 	case StepRestoreEnterName:
 		return 0.20
 	case StepRestoreEnterMnemonic:
-		return 0.40
+		return 0.35
+	case StepRestoreEnterPassphrase, StepRestoreConfirmPassphrase:
+		return 0.45
 	case StepRestoreChooseScriptType:
 		return 0.60
 	case StepRestoreEnterPassword, StepRestoreConfirmPassword:
@@ -1161,22 +1263,26 @@ func (m WalletSetupModel) renderProgressBar() string {
 		if m.isRestore {
 			stepNum = 3
 		}
+	case StepEnterPassphrase, StepConfirmPassphrase:
+		stepNum, totalSteps = 4, 5
 	case StepChooseWordCount:
 		stepNum, totalSteps = 4, 5
 	case StepShowMnemonic:
 		stepNum, totalSteps = 5, 5
 
-	// Restore wallet flow from seed (5 steps)
+	// Restore wallet flow from seed
 	case StepRestoreEnterName:
-		stepNum, totalSteps = 1, 5
+		stepNum, totalSteps = 1, 6
 	case StepRestoreEnterMnemonic:
-		stepNum, totalSteps = 2, 5
+		stepNum, totalSteps = 2, 6
+	case StepRestoreEnterPassphrase, StepRestoreConfirmPassphrase:
+		stepNum, totalSteps = 3, 6
 	case StepRestoreChooseScriptType:
-		stepNum, totalSteps = 3, 5
+		stepNum, totalSteps = 4, 6
 	case StepRestoreEnterPassword:
-		stepNum, totalSteps = 4, 5
+		stepNum, totalSteps = 5, 6
 	case StepRestoreConfirmPassword:
-		stepNum, totalSteps = 5, 5
+		stepNum, totalSteps = 6, 6
 
 	// Multisig flow (5 steps)
 	case StepMultisigChooseType:
@@ -1227,6 +1333,10 @@ func (m WalletSetupModel) View() string {
 		content.WriteString(m.viewEnterPassword())
 	case StepConfirmPassword:
 		content.WriteString(m.viewConfirmPassword())
+	case StepEnterPassphrase:
+		content.WriteString(m.viewEnterPassphrase(false))
+	case StepConfirmPassphrase:
+		content.WriteString(m.viewConfirmPassphrase(false))
 	case StepChooseScriptType:
 		content.WriteString(m.viewChooseScriptType())
 	case StepChooseWordCount:
@@ -1269,6 +1379,10 @@ func (m WalletSetupModel) View() string {
 		content.WriteString(m.viewRestoreEnterName())
 	case StepRestoreEnterMnemonic:
 		content.WriteString(m.viewRestoreEnterMnemonic())
+	case StepRestoreEnterPassphrase:
+		content.WriteString(m.viewEnterPassphrase(true))
+	case StepRestoreConfirmPassphrase:
+		content.WriteString(m.viewConfirmPassphrase(true))
 	case StepRestoreChooseScriptType:
 		content.WriteString(m.viewRestoreChooseScriptType())
 	case StepRestoreEnterPassword:
@@ -1413,6 +1527,65 @@ func (m WalletSetupModel) viewConfirmPassword() string {
 		help
 
 	return styles.CenterHorizontal(content, m.width)
+}
+
+// viewEnterPassphrase renders the optional BIP39 passphrase step.
+// restore=true uses restore-flow step numbering in the title.
+func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
+	var title string
+	if restore {
+		title = styles.TitleStyle.Render("Restore from Seed [3/6]")
+	}
+	info := styles.DimText.Render(
+		"Optional BIP39 passphrase. Leave empty for none.\n" +
+			"A wrong passphrase unlocks a different wallet.\n" +
+			"Stored only inside the encrypted wallet file.")
+	instruction := styles.NormalText.Render("BIP39 passphrase (optional):")
+	help := styles.RenderHelp(
+		styles.HK("enter", "continue"),
+		styles.HK("esc", "back"),
+	)
+
+	var content string
+	if title != "" {
+		content = title + "\n"
+	}
+	content += info + "\n\n" +
+		instruction + "\n" +
+		m.passphraseInput.View() + "\n" +
+		help
+
+	return styles.CenterHorizontal(content, m.width)
+}
+
+func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
+	var title string
+	if restore {
+		title = styles.TitleStyle.Render("Restore from Seed [3/6]")
+	}
+	instruction := styles.NormalText.Render("Confirm BIP39 passphrase:")
+	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
+
+	var content string
+	if title != "" {
+		content = title + "\n"
+	}
+	content += instruction + "\n" +
+		m.confirmPassphraseInput.View() + "\n" +
+		help
+
+	return styles.CenterHorizontal(content, m.width)
+}
+
+// wipePassphrase clears BIP39 passphrase material from the UI model (best-effort).
+func (m *WalletSetupModel) wipePassphrase() {
+	if m.passphrase != "" {
+		b := []byte(m.passphrase)
+		wallet.Wipe(b)
+		m.passphrase = ""
+	}
+	m.passphraseInput.SetValue("")
+	m.confirmPassphraseInput.SetValue("")
 }
 
 func (m WalletSetupModel) viewChooseScriptType() string {
@@ -2953,8 +3126,9 @@ func (m WalletSetupModel) advanceFromNetwork() (tea.Model, tea.Cmd) {
 		m.step = StepRestoreEnterPassword
 		return m, m.passwordInput.Focus()
 	}
-	m.step = StepChooseWordCount
-	return m, nil
+	m.wipePassphrase()
+	m.step = StepEnterPassphrase
+	return m, m.passphraseInput.Focus()
 }
 
 func (m WalletSetupModel) viewChooseNetwork() string {

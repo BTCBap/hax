@@ -50,14 +50,14 @@ func TestCreateAndRestoreOnNetwork_Persisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateWalletOnNetwork("main1", "correct horse battery", 12, NetworkMainnet); err != nil {
+	if _, err := m.CreateWalletOnNetwork("main1", "correct horse battery", 12, NetworkMainnet, ""); err != nil {
 		t.Fatal(err)
 	}
 	mn := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 	if err := m.RestoreWalletOnNetwork("t4", "correct horse battery", mn, "", NetworkTestnet); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateWalletOnNetwork("bad", "correct horse battery", 12, "regtest"); err == nil {
+	if _, err := m.CreateWalletOnNetwork("bad", "correct horse battery", 12, "regtest", ""); err == nil {
 		t.Fatal("unknown network accepted")
 	}
 	for name, want := range map[string]string{"main1": NetworkMainnet, "t4": NetworkTestnet} {
