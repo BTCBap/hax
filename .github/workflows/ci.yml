@@ -92,4 +92,4 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --snapshot --clean --skip=sign,sbom
+          args: release --snapshot --clean --skip=sign

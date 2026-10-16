@@ -48,10 +48,6 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-# SPDX SBOM per archive (requires syft).
-sboms:
-  - artifacts: archive
-
 # Keyless Sigstore signature over checksums.txt (GitHub OIDC identity).
 signs:
   - cmd: cosign

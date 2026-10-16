@@ -54,7 +54,7 @@ Only the latest release and `main` get security fixes.
 
 ## Verifying releases
 
-Release archives come with a cosign-signed `checksums.txt`, SBOMs, and SLSA provenance. See [docs/release-verification.md](docs/release-verification.md).
+Release archives come with a cosign-signed `checksums.txt` and SLSA provenance. See [docs/release-verification.md](docs/release-verification.md).
 
 ## Privacy notes
 
