@@ -1322,16 +1322,16 @@ func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 
 		// Parse amount
 		if m.usesBTC {
-			btc, err := strconv.ParseFloat(amtStr, 64)
-			if err != nil || btc <= 0 {
-				m.err = fmt.Errorf("invalid BTC amount")
+			sats, err := api.ParseBTC(amtStr)
+			if err != nil {
+				m.err = fmt.Errorf("invalid BTC amount: %v", err)
 				return true, nil
 			}
-			m.amountBTC = btc
-			m.amountSats = api.SatoshiFromBTC(btc)
+			m.amountSats = sats
+			m.amountBTC = sats.ToBTC()
 		} else {
-			sats, err := strconv.ParseInt(amtStr, 10, 64)
-			if err != nil || sats <= 0 {
+			sats, err := strconv.ParseInt(strings.TrimSpace(amtStr), 10, 64)
+			if err != nil || sats <= 0 || api.Satoshi(sats) > api.MaxMoney {
 				m.err = fmt.Errorf("invalid satoshi amount")
 				return true, nil
 			}
