@@ -6,7 +6,7 @@ Every tagged release (`vX.Y.Z`) is built by `.github/workflows/release.yml` with
 |---|---|
 | `hax_<ver>_<os>_<arch>.tar.gz` / `.zip` | Binaries + README, LICENSE, SECURITY |
 | `checksums.txt` | SHA-256 of every archive |
-| `checksums.txt.sig`, `checksums.txt.pem` | Keyless [Sigstore](https://www.sigstore.dev/) signature and certificate over the checksum manifest |
+| `checksums.txt.sigstore.json` | Keyless [Sigstore](https://www.sigstore.dev/) bundle (signature and certificate) over the checksum manifest |
 | `*.sbom.json` | SPDX SBOM per archive (syft) |
 | GitHub attestation | SLSA build provenance for the archives |
 
@@ -15,8 +15,7 @@ Every tagged release (`vX.Y.Z`) is built by `.github/workflows/release.yml` with
 ```bash
 VERSION=vX.Y.Z
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature   checksums.txt.sig \
+  --bundle checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/BTCBap/hax/.github/workflows/release.yml@refs/tags/${VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt

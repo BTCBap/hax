@@ -47,7 +47,7 @@
 
 ### Release binaries (recommended)
 
-Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore signature and certificate for it, an SPDX SBOM per archive, and a SLSA build-provenance attestation.
+Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore bundle for it, an SPDX SBOM per archive, and a SLSA build-provenance attestation.
 
 Verify before running:
 
@@ -55,8 +55,7 @@ Verify before running:
 VERSION=v0.1.0   # the release you downloaded
 # 1. Verify the checksum manifest was signed by this repo's release workflow
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature   checksums.txt.sig \
+  --bundle checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/BTCBap/hax/.github/workflows/release.yml@refs/tags/${VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
