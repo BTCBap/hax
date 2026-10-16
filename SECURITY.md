@@ -43,7 +43,6 @@ Out of scope:
 - Attacks that require a fully compromised host
 - Social engineering
 - Bugs in third-party hardware wallet firmware or HWI, unless hax triggers them
-- Mainnet-only scenarios, while hax is testnet4-only
 
 ## Supported versions
 

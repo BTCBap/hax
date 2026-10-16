@@ -24,7 +24,7 @@ go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 goreleaser release --snapshot --clean --skip=sign,sbom   # local release dry run
 ```
 
-Run against testnet4 only. Use a throwaway `HOME` to keep test wallets isolated:
+Develop and test against testnet4; never use real funds for manual testing. Use a throwaway `HOME` to keep test wallets isolated:
 
 ```bash
 HOME=$(mktemp -d) ./hax

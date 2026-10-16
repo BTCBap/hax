@@ -18,7 +18,7 @@
 </p>
 
 > [!WARNING]
-> **hax is beta software and runs on testnet4 only.** It has not been independently audited. Do not use it with mainnet keys, and do not import a seed phrase that has ever held real bitcoin.
+> **hax is beta software.** It supports mainnet and testnet4, and has not been independently audited. Every screen shows the active network; mainnet is flagged in red. Practice on testnet4 first, and only put on mainnet what you can afford to lose.
 
 <p align="center">
   <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
