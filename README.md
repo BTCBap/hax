@@ -132,7 +132,7 @@ All state lives in `~/.hax/`:
 
 ## Networks
 
-Each wallet records its network: mainnet or [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94). The dashboard and send review show it at all times, and mainnet appears as a red **MAINNET** badge. A recipient address has to decode under that network's params. `tb1…` is rejected on a mainnet wallet and `bc1…` on a testnet4 wallet, and nothing falls back to another network. Testnet coins have no value, so practice there first.
+Each wallet records its network: mainnet or [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94). Testnet4 wallets carry a **TESTNET4** tag on the dashboard and on the send review screen. Mainnet wallets have no tag. A recipient address has to decode under that network's params. `tb1…` is rejected on a mainnet wallet and `bc1…` on a testnet4 wallet, and nothing falls back to another network. Creating a mainnet wallet asks for one extra confirmation.
 
 ## Electrum certificate pinning
 
