@@ -790,9 +790,9 @@ func (m *TransactionHistoryModel) updateTableData() {
 		label := m.walletManager.GetTransactionLabel(tx.TxID)
 		if label == "" {
 			label = "-" // Show dash if no label
-		} else if len(label) > m.columnWidths[5] {
-			// Truncate label to fit column width
-			label = label[:m.columnWidths[5]-3] + "..."
+		} else {
+			// Truncate label to fit column width without splitting runes
+			label = truncateRunes(label, m.columnWidths[5], "...")
 		}
 
 		rows = append(rows, table.Row{
