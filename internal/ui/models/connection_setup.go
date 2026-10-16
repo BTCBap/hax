@@ -88,7 +88,14 @@ type ConnectionSetupModel struct {
 
 	// Return navigation
 	returnToSettings bool
+	// returnToUnlock is set when the unlock screen sent the user here to
+	// pick a server that matches the wallet's network.
+	returnToUnlock bool
 }
+
+// BackendChosenMsg asks the root model to apply the saved backend config to
+// the wallet manager and return to the unlock screen.
+type BackendChosenMsg struct{}
 
 // NewConnectionSetupModel creates a new connection setup model
 func NewConnectionSetupModel(configManager *config.ConfigManager, returnToSettings bool) ConnectionSetupModel {
@@ -183,6 +190,9 @@ func (m ConnectionSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.step == StepChooseBackend {
 				if m.returnToSettings {
 					return m, Navigate(StateSettings)
+				}
+				if m.returnToUnlock {
+					return m, Navigate(StateUnlock)
 				}
 				return m, tea.Quit
 			}
@@ -449,6 +459,9 @@ func (m ConnectionSetupModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case "enter":
 		if m.returnToSettings {
 			return m, Navigate(StateSettings)
+		}
+		if m.returnToUnlock {
+			return m, func() tea.Msg { return BackendChosenMsg{} }
 		}
 		return m, Navigate(StateWalletSetup)
 	}

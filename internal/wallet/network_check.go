@@ -33,7 +33,7 @@ func checkBackendNetwork(b backend.BitcoinBackend, network string) (bool, error)
 	}
 	if got != *params.GenesisHash {
 		return false, fmt.Errorf("%w: wallet is %s but the server's genesis block is %s. "+
-			"Switch to a %s server in connection settings",
+			"Choose a %s server",
 			ErrNetworkMismatch, NetworkDisplayName(network), describeGenesis(got.String()), NetworkDisplayName(network))
 	}
 	return true, nil
@@ -77,61 +77,23 @@ func (m *WalletManager) resetNetworkVerified() {
 	m.netMu.Unlock()
 }
 
-// ServerResolver returns a backend for the default server of network. It is
-// used when the saved server belongs to a different network than the wallet
-// being opened (for example a testnet4 server and a mainnet wallet).
-type ServerResolver func(network string) (backend.BitcoinBackend, error)
-
-// SetServerResolver installs the fallback used by alignBackendNetwork.
-func (m *WalletManager) SetServerResolver(r ServerResolver) {
-	m.serverResolver = r
-}
-
-// switchToDefaultServer replaces the current backend with the resolver's
-// default server for network. Only call while no sync is running.
-func (m *WalletManager) switchToDefaultServer(network string) error {
-	if m.serverResolver == nil {
-		return fmt.Errorf("no default server available for %s", NetworkDisplayName(network))
-	}
-	b, err := m.serverResolver(network)
-	if err != nil {
-		return fmt.Errorf("could not open default %s server: %w", NetworkDisplayName(network), err)
-	}
-	if m.backend != nil {
-		_ = m.backend.Disconnect()
-	}
-	m.backend = b
-	return nil
-}
-
-// alignBackendNetwork makes sure the backend serves network before a wallet
-// is opened. A server configured for another network is swapped for that
-// network's default; a server whose genesis block disagrees with its
-// configuration is swapped too. Unreachable servers defer the check.
+// alignBackendNetwork checks that the backend serves network before a
+// wallet is opened. A server configured for another network, or whose genesis
+// block disagrees with the wallet's network, is rejected with
+// ErrNetworkMismatch so the user can pick a matching server. hax never
+// switches servers on its own. Unreachable servers defer the genesis check.
 func (m *WalletManager) alignBackendNetwork(network string) (verified bool, err error) {
 	network = backend.NormalizeNetwork(network)
-	if m.backend == nil || backend.ConfiguredNetwork(m.backend) != network {
-		if m.serverResolver != nil {
-			if err := m.switchToDefaultServer(network); err != nil {
-				return false, err
-			}
-		}
-	}
 	if m.backend == nil {
 		return false, nil
+	}
+	if cfgNet := backend.ConfiguredNetwork(m.backend); cfgNet != "" && cfgNet != network {
+		return false, fmt.Errorf("%w: wallet is %s but the selected server is configured for %s. "+
+			"Choose a %s server",
+			ErrNetworkMismatch, NetworkDisplayName(network), NetworkDisplayName(cfgNet), NetworkDisplayName(network))
 	}
 	if err := m.backend.Connect(); err != nil {
 		return false, nil
 	}
-	ok, err := checkBackendNetwork(m.backend, network)
-	if errors.Is(err, ErrNetworkMismatch) && m.serverResolver != nil {
-		if serr := m.switchToDefaultServer(network); serr != nil {
-			return false, err
-		}
-		if cerr := m.backend.Connect(); cerr != nil {
-			return false, nil
-		}
-		ok, err = checkBackendNetwork(m.backend, network)
-	}
-	return ok, err
+	return checkBackendNetwork(m.backend, network)
 }

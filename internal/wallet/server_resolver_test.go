@@ -1,9 +1,9 @@
 package wallet
 
 import (
+	"errors"
 	"testing"
 
-	"github.com/BTCBap/hax/internal/backend"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 )
@@ -23,45 +23,32 @@ func TestAlignBackendNetwork(t *testing.T) {
 	mainG := *chaincfg.MainNetParams.GenesisHash
 	t4G := *TestNet4Params.GenesisHash
 	cases := []struct {
-		name        string
-		start       *netBackend
-		wallet      string
-		wantResolve string
+		name     string
+		start    *netBackend
+		wallet   string
+		mismatch bool
 	}{
-		{"testnet server, mainnet wallet", newNetBackend("testnet", t4G), NetworkMainnet, NetworkMainnet},
-		{"mainnet server, testnet wallet", newNetBackend("mainnet", mainG), NetworkTestnet, NetworkTestnet},
-		{"matching server kept", newNetBackend("testnet", t4G), NetworkTestnet, ""},
-		{"mislabelled server replaced", newNetBackend("testnet", mainG), NetworkTestnet, NetworkTestnet},
+		{"testnet server, mainnet wallet", newNetBackend("testnet", t4G), NetworkMainnet, true},
+		{"mainnet server, testnet wallet", newNetBackend("mainnet", mainG), NetworkTestnet, true},
+		{"mislabelled server rejected", newNetBackend("testnet", mainG), NetworkTestnet, true},
+		{"matching testnet server", newNetBackend("testnet", t4G), NetworkTestnet, false},
+		{"matching mainnet server", newNetBackend("mainnet", mainG), NetworkMainnet, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m := &WalletManager{backend: c.start}
-			resolved := ""
-			m.SetServerResolver(func(network string) (backend.BitcoinBackend, error) {
-				resolved = network
-				g := t4G
-				if network == NetworkMainnet {
-					g = mainG
-				}
-				return newNetBackend(network, g), nil
-			})
+			start := c.start
+			m := &WalletManager{backend: start}
 			ok, err := m.alignBackendNetwork(c.wallet)
-			if err != nil || !ok {
+			if c.mismatch {
+				if !errors.Is(err, ErrNetworkMismatch) || ok {
+					t.Fatalf("want mismatch, got ok=%v err=%v", ok, err)
+				}
+			} else if err != nil || !ok {
 				t.Fatalf("align: ok=%v err=%v", ok, err)
 			}
-			if resolved != c.wantResolve {
-				t.Fatalf("resolved %q, want %q", resolved, c.wantResolve)
-			}
-			if got := backend.ConfiguredNetwork(m.backend); got != c.wallet {
-				t.Fatalf("backend network %q, want %q", got, c.wallet)
+			if m.backend != start {
+				t.Fatal("backend was switched automatically")
 			}
 		})
-	}
-}
-
-func TestAlignBackendNetwork_NoResolverStillRejectsMismatch(t *testing.T) {
-	m := &WalletManager{backend: newNetBackend("testnet", *TestNet4Params.GenesisHash)}
-	if _, err := m.alignBackendNetwork(NetworkMainnet); err == nil {
-		t.Fatal("expected mismatch error without a resolver")
 	}
 }

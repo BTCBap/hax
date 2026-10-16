@@ -1,11 +1,13 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -230,6 +232,10 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "ctrl+s":
+			if m.networkMismatch() {
+				return m, Navigate(StateConnectionSetup)
+			}
 		case "esc":
 			if len(m.walletList) > 1 && m.passwordInput.Focused() {
 				// Go back to wallet selection
@@ -443,10 +449,23 @@ func (m UnlockModel) renderHelp() string {
 	if len(m.walletList) > 1 {
 		escDesc = "back"
 	}
+	if m.networkMismatch() {
+		return styles.RenderHelp(
+			styles.HK("ctrl+s", "choose server"),
+			styles.HK("enter", "unlock"),
+			styles.HK("esc", escDesc),
+		)
+	}
 	return styles.RenderHelp(
 		styles.HK("enter", "unlock"),
 		styles.HK("esc", escDesc),
 	)
+}
+
+// networkMismatch reports whether the last unlock failed because the
+// selected server serves a different network than the wallet.
+func (m UnlockModel) networkMismatch() bool {
+	return errors.Is(m.err, wallet.ErrNetworkMismatch)
 }
 
 func (m UnlockModel) getGlowColor() lipgloss.Color {
