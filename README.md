@@ -1,97 +1,142 @@
-# hax
-
-A free terminal Bitcoin wallet for testnet4, built with Go and Bubble Tea.
-
 <p align="center">
-  <img src="hax-logo.jpg" alt="hax logo" width="280">
+  <img src="hax-logo.jpg" alt="hax" width="200">
 </p>
 
-The shipped binary is `hax`.
+<h1 align="center">hax</h1>
 
-`hax` is for testnet4 right now. It is meant for trying wallet flows, PSBTs, and terminal-native Bitcoin UX without pretending to be a production wallet yet.
+<p align="center">
+  A terminal Bitcoin wallet for <b>testnet4</b>: PSBT-first, hardware-wallet aware, multisig capable.
+</p>
 
-![hax dashboard preview](screenshot1.png)
-![hax demo preview](docs/assets/hax-demo.gif)
+<p align="center">
+  <a href="https://github.com/BTCBap/hax/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/BTCBap/hax/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/BTCBap/hax/releases"><img alt="Release" src="https://img.shields.io/github/v/release/BTCBap/hax?include_prereleases&sort=semver"></a>
+  <a href="https://pkg.go.dev/github.com/BTCBap/hax"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/BTCBap/hax.svg"></a>
+  <a href="https://goreportcard.com/report/github.com/BTCBap/hax"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/BTCBap/hax"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Network: testnet4" src="https://img.shields.io/badge/network-testnet4-orange.svg">
+</p>
 
-## What It Is
+> [!WARNING]
+> **hax is beta software and runs on testnet4 only.** It has not been independently audited. Do not use it with mainnet keys, and do not import a seed phrase that has ever held real bitcoin.
 
-- Testnet4 only
-- Free and source-first
-- Good for trying wallet creation, restore, send, receive, and PSBT flows
-- Not ready for mainnet or serious money yet
+<p align="center">
+  <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
+</p>
 
-## Current Features
+## Features
 
-- HD software wallets with BIP32, BIP39, BIP44, BIP49, BIP84, and BIP86 support
-- Taproot, native SegWit, nested SegWit, and legacy receive/send flows
-- Multisig wallet setup and descriptor export
-- PSBT creation, import, export, signing, and broadcast flows
-- Hardware wallet support through HWI
-- Coin control, send-all, labels, transaction history, and QR-based receive flows
-- Electrum and Bitcoin Core backend support
-- Local encrypted wallet storage using AES-256-GCM with PBKDF2-derived keys
+- **HD wallets:** BIP32/BIP39 with BIP44 (legacy), BIP49 (nested SegWit), BIP84 (native SegWit), and BIP86 (Taproot) accounts
+- **Optional BIP39 passphrase**, stored only inside the encrypted wallet file
+- **PSBT (BIP174)** create, import, export, sign, finalize, and broadcast, including animated QR (UR / BBQr) for air-gapped signers
+- **Hardware wallets** through [HWI](https://github.com/bitcoin-core/HWI): Coldcard, Trezor, Ledger, BitBox02, Jade, KeepKey. Includes on-device address verification
+- **Multisig:** BIP48 P2WSH / P2SH-P2WSH / P2SH, with Sparrow-compatible descriptor import/export
+- **Coin control:** Branch-and-Bound selection, send-all, batch payments, and dust and fee-anomaly warnings at review
+- **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC
+- **BIP-329 labels**, transaction history, and Koinly CSV export
+- **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory
 
-## Build And Run
+| Dashboard | Receive |
+|---|---|
+| ![Dashboard](docs/images/dashboard.png) | ![Receive](docs/images/receive.png) |
+| **History** | **Help** |
+| ![History](docs/images/history.png) | ![Help](docs/images/help.png) |
 
-Prerequisites:
-- Go 1.26.9 or newer
-- A terminal with Unicode support
+## Security model
 
-From source:
+The full threat model is in [docs/threat-model.md](docs/threat-model.md).
+
+| | |
+|---|---|
+| **Protects against** | Theft of wallet files at rest (needs the password); wrong-network addresses (strict decoding against testnet4 params); silent fee/change surprises (review-step warnings); tampered release artifacts (signed checksums + provenance) |
+| **Does not protect against** | A compromised host (malware, keyloggers, memory scraping); a malicious Electrum server's view of your addresses (use your own node or Tor); weak passwords |
+| **Trust boundaries** | Backends are untrusted for correctness of wallet meaning. Imported PSBTs and descriptors are untrusted input. Hardware wallets are a separate trust domain, so confirm on the device. |
+| **Key material** | The seed is generated from `crypto/rand` and never written to the clipboard or logs. Signing happens locally or on the hardware device. |
+
+Known gaps before any mainnet consideration are tracked in [TODO.md](TODO.md) and the issue tracker. They include in-memory secret lifetime, Electrum certificate pinning, and a memory-hard KDF.
+
+## Install
+
+### Release binaries (recommended)
+
+Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore signature and certificate for it, an SPDX SBOM per archive, and a SLSA build-provenance attestation.
+
+Verify before running:
+
+```bash
+VERSION=v0.1.0   # the release you downloaded
+# 1. Verify the checksum manifest was signed by this repo's release workflow
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature   checksums.txt.sig \
+  --certificate-identity "https://github.com/BTCBap/hax/.github/workflows/release.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+
+# 2. Verify your archive against the manifest
+sha256sum --ignore-missing -c checksums.txt     # macOS: shasum -a 256 -c checksums.txt
+
+# 3. (optional) Verify build provenance
+gh attestation verify hax_*_linux_amd64.tar.gz --repo BTCBap/hax
+```
+
+See [docs/release-verification.md](docs/release-verification.md) for details.
+
+### `go install`
+
+```bash
+go install github.com/BTCBap/hax/cmd/hax@latest
+```
+
+### Build from source
+
+Requires Go 1.26.9+ and a Unicode-capable terminal.
 
 ```bash
 git clone https://github.com/BTCBap/hax.git
 cd hax
-make build
-./hax
+make build          # ./hax
+make test
+make build-release  # -trimpath, version info injected
 ```
 
-Useful commands:
+Releases are built with GoReleaser using `-trimpath`, an empty build ID, and commit-derived timestamps. Rebuilding a tag with the same Go version should produce identical archives.
+
+## Usage
 
 ```bash
-make test
-make build-release
-make build-all
-make checksums
-DEBUG=1 ./hax
+hax
 ```
 
-Wallet files are stored in `~/.hax/`.
+On first run, hax asks you to pick a backend (Electrum or Bitcoin Core RPC). Then you can create or restore a wallet:
 
-## Current State
+1. Create a wallet, write the seed phrase down on paper, and verify it.
+2. Choose an address type (native SegWit is the default).
+3. Fund it from a testnet4 faucet, e.g. [mempool.space/testnet4/faucet](https://mempool.space/testnet4/faucet).
+4. Use `r` to receive, `s` to send, `h` for history, `u` for UTXOs, `t` for settings, and `?` for all key bindings.
 
-- The source repo is the main way to use it right now
-- Official tagged binaries can come later
-- Hardware wallet and multisig paths still need more real-world testing
-- Mainnet support is a later goal, not current scope
+Set `DEBUG=1` to write a debug log. Never share debug logs publicly without reviewing them first.
 
-If you want the deeper beta notes and validation docs, start in [docs/public-beta-checklist.md](docs/public-beta-checklist.md).
-The short roadmap lives in [TODO.md](TODO.md).
+## Configuration
 
-## First-Time Use
+All state lives in `~/.hax/`:
 
-1. Launch the app.
-2. Create a new wallet or restore an existing seed phrase.
-3. Set a wallet name and password.
-4. Back up the recovery material before funding the wallet.
-5. Use a testnet4 faucet before trying send, PSBT, or hardware wallet flows.
+| Path | Contents |
+|---|---|
+| `~/.hax/<name>.wallet` | Encrypted wallet (seed, optional passphrase, accounts, labels, cache) |
+| `~/.hax/config.json` | Backend selection, display unit, gap limit, recent servers |
+| `~/.hax/*_labels_bip329.jsonl`, `*_koinly.csv` | Exports (`0600`) |
 
-## Security
+`config.json` is not encrypted. If you use Bitcoin Core RPC, your RPC credentials are stored there in plaintext (mode `0600`). Prefer a dedicated RPC user with minimal permissions.
 
-Security reporting guidance lives in [SECURITY.md](SECURITY.md).
+## Testnet4
 
-Threat-model notes live in [docs/threat-model.md](docs/threat-model.md).
-
-## Media Assets
-
-- Dashboard preview: [screenshot1.png](screenshot1.png)
-- Demo GIF: [docs/assets/hax-demo.gif](docs/assets/hax-demo.gif)
-- Social preview source: [docs/assets/social-preview.svg](docs/assets/social-preview.svg)
+hax targets [testnet4](https://github.com/bitcoin/bips/blob/master/bip-0094.mediawiki) (BIP94) only. Testnet coins have no value. Addresses use `tb1…` / `m…` / `n…` / `2…` and are checked strictly against testnet4 params. Mainnet support is explicitly out of scope until the gaps above are closed.
 
 ## Contributing
 
-Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Please report security issues privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE)

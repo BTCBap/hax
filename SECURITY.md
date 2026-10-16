@@ -1,44 +1,54 @@
 # Security Policy
 
-`hax` is a testnet4 wallet and still experimental.
+hax is experimental software for **Bitcoin testnet4**. Do not use it with keys or seed phrases that control real bitcoin.
 
-Use testnet funds only.
+## Reporting a vulnerability
 
-## Reporting A Vulnerability
+**Please do not open public issues, discussions, or PRs for security problems.**
 
-Please do not open a public issue with exploit details.
+Report privately through GitHub's **[Private Vulnerability Reporting](https://github.com/BTCBap/hax/security/advisories/new)** (Security tab → "Report a vulnerability").
 
-Preferred path:
+Please include:
 
-1. Use GitHub Private Vulnerability Reporting for the repository, if it is enabled.
-2. If that is not enabled yet, do not post exploit details publicly. Open a minimal issue asking for a private contact path without including the vulnerability details.
+- Affected version / commit and platform
+- A description of the issue and its impact
+- Reproduction steps or a proof of concept (testnet4 or regtest only)
+- Any suggested fix
 
-Include:
+Expected timeline (best effort, single maintainer):
 
-- A clear description of the issue
-- Affected version or commit
-- Reproduction steps
-- Expected impact
-- Any proof-of-concept material that helps verify the report
+| Step | Target |
+|---|---|
+| Acknowledgement | 72 hours |
+| Initial assessment | 7 days |
+| Fix or mitigation | Depends on severity; critical key-material issues are prioritized |
+| Disclosure | Coordinated with the reporter, normally within 90 days, via a GitHub Security Advisory (and CVE where applicable) |
 
-## Response Expectations
-
-Response times are best effort.
-
-Before broader public sharing, GitHub Private Vulnerability Reporting should be enabled for the repo.
+Reporters are credited unless they ask not to be.
 
 ## Scope
 
-High-priority issues include:
+High priority:
 
-- Wallet encryption or key-material exposure
-- PSBT signing or transaction-construction flaws
-- Address derivation or network-mixup bugs
-- Unsafe backup or recovery behavior
-- Remote-code execution or command-injection bugs
+- Exposure of seed, private keys, passphrase, or wallet password (disk, memory, logs, clipboard, terminal)
+- Wallet file encryption or KDF weaknesses
+- Address derivation, network mix-ups, or wrong-network acceptance
+- PSBT construction or signing flaws, and hidden fee or change manipulation
+- Backend responses that can silently change wallet meaning
+- Path traversal, command injection (e.g. HWI invocation), or arbitrary file write
+- Release supply chain: build, signing, or provenance
 
-Out of scope for now:
+Out of scope:
 
+- Attacks that require a fully compromised host
 - Social engineering
-- Denial-of-service from hostile local environments
-- Bugs in third-party wallet firmware or external services unless `hax` is the trigger
+- Bugs in third-party hardware wallet firmware or HWI, unless hax triggers them
+- Mainnet-only scenarios, while hax is testnet4-only
+
+## Supported versions
+
+Only the latest release and `main` get security fixes.
+
+## Verifying releases
+
+Release archives come with a cosign-signed `checksums.txt`, SBOMs, and SLSA provenance. See [docs/release-verification.md](docs/release-verification.md).

@@ -1,57 +1,61 @@
-# Contributing
+# Contributing to hax
 
-`hax` is a testnet4 wallet project.
+Thanks for your interest. hax is a Bitcoin wallet, so correctness and safety come before features.
 
-The most useful contributions right now improve correctness, safety, tests, docs, and UX consistency.
+## Ground rules
 
-## Local Setup
+- **Security issues go to [SECURITY.md](SECURITY.md)**, not public issues or PRs.
+- Keep PRs small and focused, with one logical change each. Prefer a test-backed fix over a broad rewrite.
+- Anything that touches key material, derivation, PSBT construction or signing, fee and change logic, address or network handling, or storage needs tests and a clear explanation in the PR description.
+- Don't make mainnet or production-readiness claims that the code doesn't back up.
+- Don't add new dependencies without a good reason. Each one is attack surface.
 
-Prerequisites:
+## Development setup
 
-- Go 1.25.4 or newer
-- A terminal with Unicode support
-
-Common commands:
+Requirements: Go (version in `go.mod`), `make`, and a Unicode terminal. Optional tools: `golangci-lint` v2, `govulncheck`, `goreleaser`, `vhs`.
 
 ```bash
-make build
-make test
-make build-release
-DEBUG=1 ./hax
+make build                  # ./hax
+make test                   # go test ./...
+make test-race              # go test -race ./...
+go vet ./...
+golangci-lint run ./...
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+goreleaser release --snapshot --clean --skip=sign,sbom   # local release dry run
 ```
 
-## Development Guidelines
+Run against testnet4 only. Use a throwaway `HOME` to keep test wallets isolated:
 
-- Keep changes small and focused.
-- Prefer fixes with tests over broad rewrites.
-- Do not add mainnet claims or production-readiness language unless the underlying work is done.
-- Keep docs aligned with actual behavior.
-- Do not commit generated binaries, local logs, or local agent metadata.
+```bash
+HOME=$(mktemp -d) ./hax
+```
 
 ## Tests
 
-Before opening a pull request, run:
+- Wallet logic: `internal/wallet`. Backends: `internal/backend`. UI: `internal/ui/models` (Bubble Tea models, plus `teatest` where useful).
+- UI golden snapshots: `go test ./internal/ui/models -tags golden -run TestGolden [-update]`.
+- README screenshots are generated, not hand-edited:
+  ```bash
+  HAX_SCREENSHOT_DIR=/tmp/hax-screens go test ./internal/ui/models -tags screenshots -run TestScreenshots
+  vhs docs/images/screens.tape
+  ```
 
-```bash
-make test
-make build
+CI runs vet, race tests with coverage, golangci-lint (new issues only), govulncheck, and a GoReleaser snapshot build on Linux, macOS, and Windows. A PR must be green before merge.
+
+## Commits and PRs
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+fix(wallet): reject foreign-network addresses in ValidateBitcoinAddress
+feat(send): add RBF fee bump
+chore(deps): bump golang.org/x/crypto to v0.58.0
 ```
 
-If you changed UI behavior, add or update the closest relevant test in `internal/ui/models`.
+Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
 
-If you changed wallet logic, add or update tests in `internal/wallet`.
+A PR description should say what changed, why, how you verified it, and what is still open.
 
-## Pull Requests
+## Releases
 
-Please include:
-
-- What changed
-- Why it changed
-- How you verified it
-- Any follow-up work that is still open
-
-Keep pull requests narrowly scoped when possible.
-
-## Security Reports
-
-Do not file public issues for vulnerabilities. Use the process in [SECURITY.md](SECURITY.md).
+Maintainers tag `vX.Y.Z` on `main`. The release workflow builds reproducible archives, signs `checksums.txt` keyless with cosign, attaches SBOMs, attests build provenance, and opens a **draft** release for manual review before it's published.
