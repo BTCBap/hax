@@ -131,7 +131,7 @@ func (b *ElectrumBackend) Connect() error {
 		b.config.Electrum.ProxyPort = port
 	}
 
-	addr := fmt.Sprintf("%s:%d", b.config.Electrum.Host, b.config.Electrum.Port)
+	addr := net.JoinHostPort(b.config.Electrum.Host, strconv.Itoa(b.config.Electrum.Port))
 
 	var conn net.Conn
 	var err error
@@ -143,7 +143,7 @@ func (b *ElectrumBackend) Connect() error {
 
 	// Use SOCKS5 proxy if configured (for Tor)
 	if b.config.Electrum.UseProxy {
-		proxyAddr := fmt.Sprintf("%s:%d", b.config.Electrum.ProxyHost, b.config.Electrum.ProxyPort)
+		proxyAddr := net.JoinHostPort(b.config.Electrum.ProxyHost, strconv.Itoa(b.config.Electrum.ProxyPort))
 		socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, dialer)
 		if err != nil {
 			b.mu.Unlock()
@@ -624,11 +624,10 @@ func (b *ElectrumBackend) addressToScriptHash(address string) (string, error) {
 	// Decode the address
 	addr, err := btcutil.DecodeAddress(address, params)
 	if err != nil {
-		// Try with nil params for addresses that don't match network
-		addr, err = btcutil.DecodeAddress(address, nil)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode address: %w", err)
-		}
+		return "", fmt.Errorf("failed to decode address: %w", err)
+	}
+	if !addr.IsForNet(params) {
+		return "", fmt.Errorf("address %s is not valid for network %s", address, b.config.Network)
 	}
 
 	script, err := txscript.PayToAddrScript(addr)
