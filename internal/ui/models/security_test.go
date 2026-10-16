@@ -3,6 +3,7 @@ package models
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -40,7 +41,8 @@ func TestWritePrivateFile_Mode0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	// Windows has no POSIX permission bits; os.Stat reports 0666 there.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Errorf("mode = %o, want 600", info.Mode().Perm())
 	}
 }
