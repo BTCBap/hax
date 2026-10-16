@@ -125,6 +125,8 @@ type SendModel struct {
 	customFeeInput textinput.Model
 	customFeeRate  float64 // Custom fee rate in sat/vB (supports sub-1 like 0.5)
 	editingCustom  bool    // Whether custom fee input is active
+	highFeePending float64 // custom rate above feeSoftCap awaiting typed confirmation
+	highFeeInput   textinput.Model
 
 	// Transaction data
 	utxos        []api.UTXO
@@ -1629,7 +1631,41 @@ func (m *SendModel) handleUTXOSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// feeSoftCap is the custom fee rate above which the user must type
+// highFeeConfirmWord to proceed. feeHardCap is never accepted.
+const (
+	feeSoftCap         = 500.0
+	feeHardCap         = 10000.0
+	highFeeConfirmWord = "high fee"
+)
+
+func (m *SendModel) handleHighFeeConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		if strings.TrimSpace(strings.ToLower(m.highFeeInput.Value())) != highFeeConfirmWord {
+			m.err = fmt.Errorf("type %q to use %s sat/vB, or press esc", highFeeConfirmWord, formatFeeRate(m.highFeePending))
+			return m, nil
+		}
+		m.customFeeRate = m.highFeePending
+		m.highFeePending = 0
+		m.editingCustom = false
+		m.err = nil
+		m.updateFeeEstimate()
+		return m, nil
+	case "esc":
+		m.highFeePending = 0
+		m.err = nil
+		return m, m.customFeeInput.Focus()
+	}
+	var cmd tea.Cmd
+	m.highFeeInput, cmd = m.highFeeInput.Update(msg)
+	return m, cmd
+}
+
 func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.highFeePending > 0 {
+		return m.handleHighFeeConfirm(msg)
+	}
 	// Handle custom fee input mode
 	if m.editingCustom {
 		switch msg.String() {
@@ -1641,13 +1677,22 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			feeRate, err := strconv.ParseFloat(feeStr, 64)
-			if err != nil || feeRate < 0.1 {
+			if err != nil || math.IsNaN(feeRate) || feeRate < 0.1 {
 				m.err = fmt.Errorf("invalid fee rate (minimum 0.1 sat/vB)")
 				return m, nil
 			}
-			if feeRate > 10000 {
-				m.err = fmt.Errorf("fee rate too high (maximum 10000 sat/vB)")
+			if feeRate > feeHardCap {
+				m.err = fmt.Errorf("fee rate too high (maximum %.0f sat/vB)", feeHardCap)
 				return m, nil
+			}
+			if feeRate > feeSoftCap {
+				m.highFeePending = feeRate
+				m.highFeeInput = textinput.New()
+				m.highFeeInput.Placeholder = highFeeConfirmWord
+				m.highFeeInput.CharLimit = 20
+				m.highFeeInput.Width = 20
+				m.err = nil
+				return m, m.highFeeInput.Focus()
 			}
 			m.customFeeRate = feeRate
 			m.editingCustom = false
@@ -2742,7 +2787,7 @@ func (m SendModel) viewUTXOSelection() string {
 		status := "✓"
 		statusDesc := "confirmed"
 		if !utxo.Status.Confirmed {
-			status = "⏳"
+			status = "○"
 			statusDesc = "unconfirmed"
 		}
 
@@ -2837,7 +2882,11 @@ func (m SendModel) viewFeeSelection() string {
 	}
 
 	var customOptionText string
-	if m.editingCustom {
+	if m.highFeePending > 0 {
+		estimatedFee := int64(math.Ceil(float64(m.estimatedSize) * m.highFeePending))
+		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
+			customCursor, formatFeeRate(m.highFeePending), estimatedFee, highFeeConfirmWord, m.highFeeInput.View())
+	} else if m.editingCustom {
 		// Show input field when editing
 		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Enter rate: %s sat/vB",
 			customCursor, m.customFeeInput.View())
@@ -2860,7 +2909,12 @@ func (m SendModel) viewFeeSelection() string {
 	}
 
 	var help string
-	if m.editingCustom {
+	if m.highFeePending > 0 {
+		help = styles.RenderHelp(
+			styles.HK("enter", "confirm high fee"),
+			styles.HK("esc", "edit rate"),
+		)
+	} else if m.editingCustom {
 		help = styles.RenderHelp(
 			styles.HK("enter", "confirm"),
 			styles.HK("esc", "cancel"),

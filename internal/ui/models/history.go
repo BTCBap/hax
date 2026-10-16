@@ -1197,7 +1197,7 @@ func (m TransactionHistoryModel) renderTransactionDetails() string {
 		)
 	} else {
 		details = append(details,
-			styles.WarningText.Render("⏳ Unconfirmed - waiting for block"),
+			styles.WarningText.Render("○ Unconfirmed - waiting for block"),
 		)
 	}
 
@@ -1266,7 +1266,7 @@ func (m TransactionHistoryModel) renderFilterBadges() string {
 		case "confirmed":
 			statusLabel = "✓ CONFIRMED"
 		case "pending":
-			statusLabel = "⏳ PENDING"
+			statusLabel = "○ PENDING"
 		}
 		badges += " " + styles.Badge(styles.PastelYellow).Render(statusLabel)
 	}
@@ -1301,7 +1301,7 @@ func renderDetailRow(label, value string) string {
 // formatConfirmations returns a confirmation label with progress toward 6 confirmations.
 func formatConfirmations(txBlockHeight, chainHeight int64, confirmed bool) string {
 	if !confirmed {
-		return "⏳ Unconfirmed"
+		return "○ Unconfirmed"
 	}
 
 	if chainHeight == 0 || txBlockHeight == 0 {
@@ -1316,15 +1316,15 @@ func formatConfirmations(txBlockHeight, chainHeight int64, confirmed bool) strin
 
 	switch {
 	case confirmations == 1:
-		return "◔ 1/6 conf"
+		return "○ 1/6 conf"
 	case confirmations == 2:
-		return "◑ 2/6 conf"
+		return "○ 2/6 conf"
 	case confirmations == 3:
-		return "◑ 3/6 conf"
+		return "○ 3/6 conf"
 	case confirmations == 4:
-		return "◕ 4/6 conf"
+		return "○ 4/6 conf"
 	case confirmations == 5:
-		return "◕ 5/6 conf"
+		return "○ 5/6 conf"
 	case confirmations >= 6:
 		return fmt.Sprintf("✓ %d conf", confirmations)
 	default:
