@@ -481,7 +481,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					walletDir := homeDir + "/.hax"
 					filename := fmt.Sprintf("%s/%s_labels_bip329.jsonl", walletDir, m.walletManager.GetWalletName())
-					if err := os.WriteFile(filename, []byte(output), 0644); err != nil {
+					if err := writePrivateFile(filename, []byte(output)); err != nil {
 						m.err = fmt.Errorf("failed to write export file: %v", err)
 						m.errorTime = time.Now()
 						cmds = append(cmds, m.animateTick())
@@ -510,7 +510,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					walletDir := homeDir + "/.hax"
 					filename := fmt.Sprintf("%s/%s_koinly.csv", walletDir, m.walletManager.GetWalletName())
-					if err := os.WriteFile(filename, []byte(output), 0644); err != nil {
+					if err := writePrivateFile(filename, []byte(output)); err != nil {
 						m.err = fmt.Errorf("failed to write Koinly export: %v", err)
 						m.errorTime = time.Now()
 						cmds = append(cmds, m.animateTick())
@@ -1347,4 +1347,14 @@ func openTransactionInBrowser(txID string) error {
 	}
 
 	return cmd.Start()
+}
+
+// writePrivateFile writes data readable only by the current user (0600).
+// Exports contain transaction history and labels, which are privacy-sensitive.
+func writePrivateFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return err
+	}
+	// WriteFile does not change the mode of an existing file; enforce it.
+	return os.Chmod(path, 0600)
 }
