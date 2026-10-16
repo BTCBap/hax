@@ -40,47 +40,112 @@ func TestScreenshots(t *testing.T) {
 	sp.width, sp.height, sp.progress = w, h, 1.0
 	write("splash", sp.View())
 
-	mock := NewMockWalletManager()
-	mock.IsUnlockedFn = func() bool { return true }
-	mock.GetWalletNameFn = func() string { return "demo-testnet4" }
-	mock.GetWalletTypeFn = func() string { return "Software" }
-	mock.GetCachedBalanceFn = func() (api.Satoshi, bool) { return 2_150_000, true }
+	// Demo data: plausible testnet4 txids/addresses (BIP173 test vectors and
+	// fixed hex), fees as Electrum/Core report on a quiet testnet (2/1/1 sat/vB).
+	const (
+		txFaucet  = "3b7f2e9c1a4d8f60b5e2c7d93a1f4e8b6c0d2a5f7e9b1c3d5f7a9b1c3e5d7f90"
+		txFaucet2 = "9d1c5a7e3f2b8d40c6a1e9f75b3d2c8a0e4f6b1d9c7a5e3f1b8d6c4a2e0f9b71"
+		txSpend   = "c4e8a2f61d9b3c7e05a8f2d4b6c1e9a73f5d8b2c0e6a4f9d1b7c3e5a8f2d6b04"
+		ourRecv   = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
+		ourRecv2  = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"
+		ourChange = "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy"
+		faucet    = "tb1qm90ugl4d48jv8n6e5t9ln6t9zlpm5th68x4f8g"
+		payee     = "tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l"
+	)
+	fees := &api.FeeEstimates{FastestFee: 2, HalfHourFee: 1, HourFee: 1, EconomyFee: 1, MinimumFee: 1}
 	demoTxs := []api.Transaction{
 		{
-			TxID:   "aabbccdd1234567890",
-			Vin:    []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "external_addr", Value: 2_200_000}}},
-			Vout:   []api.Vout{{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}},
+			TxID: txFaucet,
+			Size: 222, Weight: 561, Fee: 141,
+			Vin:    []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: faucet, Value: 1_500_000}}},
+			Vout:   []api.Vout{{ScriptpubkeyAddress: ourRecv, Value: 1_500_000}},
+			Status: api.Status{Confirmed: true, BlockHeight: 98_120, BlockTime: 1759830000},
+		},
+		{
+			TxID: txFaucet2,
+			Size: 222, Weight: 561, Fee: 141,
+			Vin:    []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: faucet, Value: 700_000}}},
+			Vout:   []api.Vout{{ScriptpubkeyAddress: ourRecv2, Value: 700_000}},
 			Status: api.Status{Confirmed: true, BlockHeight: 98_300, BlockTime: 1760000000},
 		},
 		{
-			TxID: "eeff00112233445566",
-			Vin:  []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}}},
+			TxID: txSpend,
+			Size: 222, Weight: 561, Fee: 141,
+			Vin: []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: ourRecv, Value: 1_500_000}}},
 			Vout: []api.Vout{
-				{ScriptpubkeyAddress: "external_dest", Value: 49_000},
-				{ScriptpubkeyAddress: "tb1q_our_change", Value: 2_150_000},
+				{ScriptpubkeyAddress: payee, Value: 250_000},
+				{ScriptpubkeyAddress: ourChange, Value: 1_249_859},
 			},
 			Status: api.Status{Confirmed: true, BlockHeight: 98_410, BlockTime: 1760090000},
 		},
 	}
-	mock.GetAccountsFn = func() []wallet.AccountData {
+	demoUTXOs := []api.UTXO{
+		{TxID: txFaucet2, Vout: 0, Value: 700_000, Status: api.Status{Confirmed: true, BlockHeight: 98_300}},
+		{TxID: txSpend, Vout: 1, Value: 1_249_859, Status: api.Status{Confirmed: true, BlockHeight: 98_410}},
+	}
+	var balance api.Satoshi
+	for _, u := range demoUTXOs {
+		balance += u.Value
+	}
+	accounts := func() []wallet.AccountData {
 		return []wallet.AccountData{{Addresses: []wallet.AddressData{
-			{Address: "tb1q_our_addr"}, {Address: "tb1q_our_change", Change: true},
+			{Address: ourRecv}, {Address: ourRecv2}, {Address: ourChange, Change: true},
 		}}}
 	}
-	mock.GetStateFn = func() wallet.WalletStateSnapshot {
-		return wallet.WalletStateSnapshot{
-			Status:       wallet.SyncStatusSynced,
-			Balance:      2_150_000,
-			BlockHeight:  98_412,
-			Transactions: demoTxs,
-			UTXOs:        []api.UTXO{{TxID: "eeff00112233445566", Vout: 1, Value: 2_150_000, Status: api.Status{Confirmed: true}}},
-			FeeEstimates: &api.FeeEstimates{FastestFee: 12, HalfHourFee: 8, HourFee: 5, EconomyFee: 2, MinimumFee: 1},
+	labels := func(txid string) string {
+		switch txid {
+		case txFaucet, txFaucet2:
+			return "Faucet"
+		case txSpend:
+			return "Test payment"
 		}
+		return ""
 	}
+	state := wallet.WalletStateSnapshot{
+		Status:       wallet.SyncStatusSynced,
+		Balance:      balance,
+		BlockHeight:  98_412,
+		Transactions: demoTxs,
+		UTXOs:        demoUTXOs,
+		FeeEstimates: fees,
+	}
+
+	mock := NewMockWalletManager()
+	mock.IsUnlockedFn = func() bool { return true }
+	mock.GetWalletNameFn = func() string { return "demo-testnet4" }
+	mock.GetWalletTypeFn = func() string { return "Software" }
+	mock.GetScriptTypeFn = func() (wallet.ScriptType, int, int) { return wallet.ScriptTypeP2WPKH, 0, 0 }
+	mock.GetCachedBalanceFn = func() (api.Satoshi, bool) { return balance, true }
+	mock.GetAccountsFn = accounts
+	mock.GetTransactionLabelFn = labels
+	mock.GetUTXOsFn = func(uint32) ([]api.UTXO, error) { return demoUTXOs, nil }
+	mock.GetStateFn = func() wallet.WalletStateSnapshot { return state }
 	d := NewMainDashboardModel(mock, nil)
 	d.width, d.height = w, h
-	d.balance, d.balanceLoaded, d.loading = 2_150_000, true, false
+	d.balance, d.balanceLoaded, d.loading = balance, true, false
 	write("dashboard", d.View())
+
+	// Send review: one recipient, 1 sat/vB (the medium tier), P2WPKH 1-in/2-out.
+	sm := NewSendModel(mock, balance, demoUTXOs)
+	sm.width, sm.height = w, h
+	sm.feeEstimates = fees
+	sm.recipients = []Recipient{{Address: payee, Amount: 100_000}}
+	sm.feeLevel = FeeLevelMedium
+	sm.estimatedSize = 141
+	sm.estimatedFee = 141
+	sm.step = SendStepReview
+	sm.psbtResult = &wallet.PSBTResult{
+		Fee: 141, IntendedFee: 141, Change: 599_859, HasChange: true,
+		ChangeAddress: ourChange, VSize: 141,
+		SelectedUTXOs: []wallet.UTXOWithPath{{UTXO: demoUTXOs[0], Address: ourRecv2, Path: "m/84'/1'/0'/0/1"}},
+	}
+	write("send", sm.View())
+
+	um := NewUTXOsModel(mock, nil)
+	um.width, um.height, um.isActive, um.loading = w, h, true, false
+	um.utxos = demoUTXOs
+	um.sortAndUpdateTable()
+	write("utxos", um.View())
 
 	rm := NewMockWalletManager()
 	rm.GetCurrentReceiveAddrFn = func(uint32) (string, string, uint32, error) {
@@ -95,38 +160,10 @@ func TestScreenshots(t *testing.T) {
 	r.revealProgress = 1.0
 	write("receive", r.View())
 
-	hm := NewMockWalletManager()
-	hm.GetTransactionLabelFn = func(txid string) string {
-		if txid == "aabbccdd1234567890" {
-			return "Faucet"
-		}
-		return ""
-	}
-	hm.GetAccountsFn = func() []wallet.AccountData {
-		return []wallet.AccountData{{Addresses: []wallet.AddressData{
-			{Address: "tb1q_our_addr"}, {Address: "tb1q_our_change", Change: true},
-		}}}
-	}
-	hi := NewTransactionHistoryModel(hm)
+	hi := NewTransactionHistoryModel(mock)
 	hi.width, hi.height = w, h
-	hi.loading, hi.fadeIn, hi.isActive, hi.blockHeight = false, 1.0, true, 200
-	hi.transactions = []api.Transaction{
-		{
-			TxID:   "aabbccdd1234567890",
-			Vin:    []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "external_addr", Value: 2_200_000}}},
-			Vout:   []api.Vout{{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}},
-			Status: api.Status{Confirmed: true, BlockHeight: 100, BlockTime: 1760000000},
-		},
-		{
-			TxID: "eeff00112233445566",
-			Vin:  []api.Vin{{Prevout: &api.Vout{ScriptpubkeyAddress: "tb1q_our_addr", Value: 2_200_000}}},
-			Vout: []api.Vout{
-				{ScriptpubkeyAddress: "external_dest", Value: 49_000},
-				{ScriptpubkeyAddress: "tb1q_our_change", Value: 2_150_000},
-			},
-			Status: api.Status{Confirmed: false},
-		},
-	}
+	hi.loading, hi.fadeIn, hi.isActive, hi.blockHeight = false, 1.0, true, 98_412
+	hi.transactions = demoTxs
 	hi.updateTableData()
 	write("history", hi.View())
 

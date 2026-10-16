@@ -20,7 +20,15 @@ Type@0ms "clear; cat /tmp/hax-screens/receive.ansi" Enter
 Show
 Sleep 2s
 Hide
+Type@0ms "clear; cat /tmp/hax-screens/send.ansi" Enter
+Show
+Sleep 2s
+Hide
 Type@0ms "clear; cat /tmp/hax-screens/history.ansi" Enter
+Show
+Sleep 2s
+Hide
+Type@0ms "clear; cat /tmp/hax-screens/utxos.ansi" Enter
 Show
 Sleep 2s
 Hide

@@ -39,6 +39,8 @@
 | Dashboard | Receive |
 |---|---|
 | ![Dashboard](docs/images/dashboard.png) | ![Receive](docs/images/receive.png) |
+| **Send review** | **UTXOs** |
+| ![Send review](docs/images/send.png) | ![UTXOs](docs/images/utxos.png) |
 | **History** | **Help** |
 | ![History](docs/images/history.png) | ![Help](docs/images/help.png) |
 
