@@ -43,7 +43,7 @@ func (m *WalletManager) SetTransactionLabel(txid string, label string) error {
 	}
 
 	// Save wallet (lock held via defer)
-	if err := m.saveWalletTracked(m.data.Name, m.data, m.password); err != nil {
+	if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
 		return fmt.Errorf("failed to save label: %w", err)
 	}
 
@@ -131,7 +131,7 @@ func (m *WalletManager) ImportLabelsBIP329(data string) (int, error) {
 
 	// Save wallet with new labels
 	if imported > 0 {
-		if err := m.saveWalletTracked(m.data.Name, m.data, m.password); err != nil {
+		if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
 			return imported, fmt.Errorf("failed to save imported labels: %w", err)
 		}
 	}

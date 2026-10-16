@@ -32,6 +32,8 @@ func GenerateMnemonic(strength MnemonicStrength) (string, error) {
 		return "", fmt.Errorf("failed to generate entropy: %w", err)
 	}
 
+	defer Wipe(entropy)
+
 	// Convert entropy to mnemonic
 	mnemonic, err := bip39.NewMnemonic(entropy)
 	if err != nil {

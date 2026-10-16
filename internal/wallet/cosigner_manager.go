@@ -149,7 +149,7 @@ func (m *WalletManager) ImportCosignerSeed(mnemonic string) (int, error) {
 
 	// Save if we matched any cosigners
 	if matchedCount > 0 {
-		if err := m.saveWalletTracked(m.data.Name, m.data, m.password); err != nil {
+		if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
 			return -1, fmt.Errorf("failed to save wallet: %w", err)
 		}
 		return firstMatchIndex, nil
@@ -237,7 +237,7 @@ func (m *WalletManager) UpdateCosigner(index int, name, fingerprint string) erro
 	}
 
 	// Save the wallet
-	if err := m.saveWalletTracked(m.data.Name, m.data, m.password); err != nil {
+	if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
 		return fmt.Errorf("failed to save wallet: %w", err)
 	}
 
@@ -435,7 +435,7 @@ func (m *WalletManager) ImportCosignerFromLocalWallet(walletName, password strin
 		m.dataMu.Unlock()
 
 		// Save updated name (ignore error - seed import succeeded, name is non-critical)
-		_ = m.saveWalletTracked(m.data.Name, m.data, m.password)
+		_ = m.saveWalletTracked(m.data.Name, m.data)
 	}
 
 	return index, nil

@@ -19,8 +19,14 @@ type WalletManager struct {
 
 	wallet   *HDWallet
 	data     *WalletData
-	password string
 	unlocked bool
+
+	// encKey/encSalt are the AES key derived from the wallet password at
+	// unlock, kept so the session can re-persist. The password itself is
+	// never retained. Both are wiped on lock. Guarded by keyMu.
+	encKey  []byte
+	encSalt []byte
+	keyMu   sync.RWMutex
 
 	// dataMu protects m.data and m.data.Accounts.
 	dataMu sync.RWMutex
@@ -68,10 +74,34 @@ func NewWalletManager(walletDir string, b backend.BitcoinBackend) (*WalletManage
 
 // saveWalletTracked wraps storage.SaveWallet with WaitGroup tracking so
 // in-flight persist operations can be awaited during shutdown.
-func (m *WalletManager) saveWalletTracked(name string, data *WalletData, password string) error {
+func (m *WalletManager) saveWalletTracked(name string, data *WalletData) error {
 	m.persistWg.Add(1)
 	defer m.persistWg.Done()
-	return m.storage.SaveWallet(name, data, password)
+	m.keyMu.RLock()
+	defer m.keyMu.RUnlock()
+	return m.storage.SaveWalletWithKey(name, data, m.encSalt, m.encKey)
+}
+
+// hasKey reports whether the session holds an encryption key (i.e. is unlocked).
+func (m *WalletManager) hasKey() bool {
+	m.keyMu.RLock()
+	defer m.keyMu.RUnlock()
+	return len(m.encKey) > 0
+}
+
+func (m *WalletManager) setKey(salt, key []byte) {
+	m.keyMu.Lock()
+	Wipe(m.encKey)
+	m.encSalt, m.encKey = salt, key
+	m.keyMu.Unlock()
+}
+
+func (m *WalletManager) wipeKey() {
+	m.keyMu.Lock()
+	Wipe(m.encKey)
+	Wipe(m.encSalt)
+	m.encKey, m.encSalt = nil, nil
+	m.keyMu.Unlock()
 }
 
 // WaitForPersist blocks until all in-flight persist operations complete.
@@ -281,9 +311,12 @@ func (m *WalletManager) CreateHardwareWallet(
 		return fmt.Errorf("xpub cannot be empty")
 	}
 
-	_, err := hdkeychain.NewKeyFromString(xpub)
+	xkey, err := hdkeychain.NewKeyFromString(xpub)
 	if err != nil {
 		return fmt.Errorf("invalid xpub: %w", err)
+	}
+	if !xkey.IsForNet(&TestNet4Params) {
+		return fmt.Errorf("xpub is for a different network than this wallet (testnet4 expects tpub)")
 	}
 
 	var addrTypeStr string
@@ -486,56 +519,59 @@ func (m *WalletManager) ImportSeedToWatchOnlyWallet(mnemonic string) error {
 	m.wallet = hdWallet
 	m.dataMu.Unlock()
 
-	if err := m.saveWalletTracked(m.data.Name, m.data, m.password); err != nil {
+	if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
 		return fmt.Errorf("failed to save wallet: %w", err)
 	}
 
 	return nil
 }
 
-// UnlockWallet loads and unlocks a wallet
+// UnlockWallet loads and unlocks a wallet. The password is used only to
+// derive the encryption key and is not retained.
 func (m *WalletManager) UnlockWallet(name string, password string) error {
+	pw := []byte(password)
+	defer Wipe(pw)
+	return m.UnlockWalletBytes(name, pw)
+}
+
+// UnlockWalletBytes is UnlockWallet for a password held in a []byte. The
+// caller may wipe password after it returns.
+func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 	if m.unlocked {
 		m.LockWallet()
 	}
 
 	m.state.SetStatus(SyncStatusConnecting, "Loading wallet...")
 
-	data, err := m.storage.LoadWallet(name, password)
+	data, salt, key, err := m.storage.LoadWalletKey(name, password)
 	if err != nil {
 		m.state.SetError(fmt.Errorf("failed to load wallet: %w", err))
 		return fmt.Errorf("failed to load wallet: %w", err)
 	}
 
-	if data.Multisig != nil {
-		m.wallet = nil
-		m.data = data
-		m.password = password
-		m.unlocked = true
-
-		m.migrateMultisigPaths()
-	} else if data.HardwareWallet != nil {
-		m.wallet = nil
-		m.data = data
-		m.password = password
-		m.unlocked = true
-	} else {
+	var hd *HDWallet
+	if data.Multisig == nil && data.HardwareWallet == nil {
 		seed, err := seedFromWalletData(data)
 		if err != nil {
+			Wipe(key)
 			m.state.SetError(fmt.Errorf("failed to derive seed: %w", err))
 			return fmt.Errorf("failed to derive seed: %w", err)
 		}
-
-		wallet, err := NewHDWallet(seed, data.Network == "testnet")
+		hd, err = NewHDWallet(seed, data.Network == "testnet")
+		Wipe(seed)
 		if err != nil {
+			Wipe(key)
 			m.state.SetError(fmt.Errorf("failed to create HD wallet: %w", err))
 			return fmt.Errorf("failed to create HD wallet: %w", err)
 		}
+	}
 
-		m.wallet = wallet
-		m.data = data
-		m.password = password
-		m.unlocked = true
+	m.setKey(salt, key)
+	m.wallet = hd
+	m.data = data
+	m.unlocked = true
+	if data.Multisig != nil {
+		m.migrateMultisigPaths()
 	}
 
 	m.cache = NewWalletCache()
@@ -549,7 +585,8 @@ func (m *WalletManager) UnlockWallet(name string, password string) error {
 	return nil
 }
 
-// LockWallet locks the current wallet
+// LockWallet locks the current wallet, stops background work, and wipes the
+// in-memory encryption key and derived key material.
 func (m *WalletManager) LockWallet() {
 	if m.scanCancel != nil {
 		m.scanCancel()
@@ -560,9 +597,21 @@ func (m *WalletManager) LockWallet() {
 
 	m.persistWg.Wait()
 
-	m.wallet = nil
+	m.wipeKey()
+	m.dataMu.Lock()
+	if m.data != nil {
+		// Drop references so the GC can reclaim them; strings can't be zeroed.
+		m.data.Mnemonic = ""
+		m.data.Passphrase = ""
+		if m.data.Multisig != nil {
+			for i := range m.data.Multisig.Cosigners {
+				m.data.Multisig.Cosigners[i].Mnemonic = ""
+			}
+		}
+	}
 	m.data = nil
-	m.password = ""
+	m.dataMu.Unlock()
+	m.wallet = nil
 	m.unlocked = false
 	m.cache = nil
 }
@@ -627,7 +676,7 @@ func (m *WalletManager) CreateAccount(name string, addrType AddressType, customD
 
 	m.data.Accounts = append(m.data.Accounts, account)
 
-	err := m.saveWalletTracked(m.data.Name, m.data, m.password)
+	err := m.saveWalletTracked(m.data.Name, m.data)
 	m.dataMu.Unlock()
 
 	if err != nil {
@@ -865,15 +914,6 @@ func (m *WalletManager) GetMnemonic() (string, error) {
 	}
 
 	return m.data.Mnemonic, nil
-}
-
-// GetPassword returns the current wallet password (needed for scanning other local wallets)
-// WARNING: Handle with care - never log or expose this
-func (m *WalletManager) GetPassword() string {
-	if !m.unlocked {
-		return ""
-	}
-	return m.password
 }
 
 // getWalletFingerprint returns the master fingerprint for the current wallet
