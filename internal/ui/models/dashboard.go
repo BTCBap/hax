@@ -411,7 +411,7 @@ func (m MainDashboardModel) View() string {
 		statusIndicator + "\n\n" +
 		balanceDisplay + "\n\n" +
 		walletMeta + "\n" +
-		styles.DimText.Render("Testnet4")
+		renderNetworkBadge(walletNetwork(m.walletManager))
 
 	// --- Recent Activity Box ---
 	var recentActivityContent string
@@ -725,4 +725,25 @@ func (m MainDashboardModel) getDisplayUnit() wallet.DisplayUnit {
 	default:
 		return wallet.DisplayUnitBTC
 	}
+}
+
+// renderNetworkBadge makes the active network unmistakable. Mainnet is shown
+// in bold warning color because it involves real money.
+func renderNetworkBadge(network string) string {
+	if network == wallet.NetworkMainnet {
+		return lipgloss.NewStyle().Bold(true).Foreground(styles.ErrorRed).Render("● MAINNET · real bitcoin")
+	}
+	return styles.DimText.Render("Testnet4")
+}
+
+// walletNetwork returns the active wallet's network, defaulting to testnet4
+// when no wallet is loaded.
+func walletNetwork(w WalletService) string {
+	if w == nil {
+		return wallet.NetworkTestnet
+	}
+	if n := w.GetNetwork(); n != "" {
+		return n
+	}
+	return wallet.NetworkTestnet
 }

@@ -1292,7 +1292,7 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		}
 
 		// Validate address
-		if err := wallet.ValidateBitcoinAddress(addr, true); err != nil {
+		if err := wallet.ValidateAddressForNetwork(addr, walletNetwork(m.walletManager)); err != nil {
 			m.err = err
 			return true, nil
 		}
@@ -2122,7 +2122,7 @@ func (m *SendModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		// Open transaction in browser on mempool.space
 		if m.txID != "" {
-			_ = openTransactionInBrowser(m.txID)
+			_ = openTransactionInBrowser(walletNetwork(m.walletManager), m.txID)
 		}
 		return m, nil
 
@@ -2925,7 +2925,7 @@ func (m SendModel) buildReviewWarnings(totalRecipientAmount, displayFee api.Sato
 
 func (m SendModel) buildReviewScrollable() (string, string, string) {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction")
+	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction") + "  " + renderNetworkBadge(walletNetwork(m.walletManager))
 
 	// Responsive box width for all review sections
 	boxWidth := m.width - 4
@@ -3217,7 +3217,7 @@ func (m SendModel) viewComplete() string {
 
 	info := styles.InfoBoxStyle.Width(completeBoxWidth).Render(
 		"🔍 Track your transaction:\n\n" +
-			fmt.Sprintf("https://mempool.space/testnet4/tx/%s", m.txID))
+			wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID))
 
 	help := styles.RenderHelp(
 		styles.HK("c", "copy txid"),

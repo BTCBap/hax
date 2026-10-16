@@ -16,6 +16,7 @@ type WalletService interface {
 	GetWalletName() string
 	GetWalletType() string
 	GetNetwork() string
+	ValidateAddress(address string) error
 	GetCreatedAt() int64
 	IsHardwareWallet() bool
 	GetHardwareWalletConfig() *wallet.HardwareWalletConfig
@@ -45,7 +46,6 @@ type WalletService interface {
 	GetAccounts() []wallet.AccountData
 	GetExtendedPublicKey(accountIndex uint32) (string, error)
 	GetMnemonic() (string, error)
-	GetPassword() string
 
 	// Addresses
 	GetNewAddress(accountIndex uint32) (string, error)

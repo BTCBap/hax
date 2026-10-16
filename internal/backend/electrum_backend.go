@@ -159,8 +159,8 @@ func (b *ElectrumBackend) Connect() error {
 		// Wrap with TLS if using SSL
 		if b.config.Electrum.UseSSL {
 			tlsConn := tls.Client(conn, &tls.Config{
-				ServerName:         b.config.Electrum.Host,
-				InsecureSkipVerify: false,
+				ServerName:       b.config.Electrum.Host,
+				VerifyConnection: verifyConnection(addr),
 			})
 			if err := tlsConn.Handshake(); err != nil {
 				conn.Close()
@@ -173,7 +173,8 @@ func (b *ElectrumBackend) Connect() error {
 	} else if b.config.Electrum.UseSSL {
 		// Direct TLS connection
 		tlsConfig := &tls.Config{
-			ServerName: b.config.Electrum.Host,
+			ServerName:       b.config.Electrum.Host,
+			VerifyConnection: verifyConnection(addr),
 		}
 		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 		if err != nil {

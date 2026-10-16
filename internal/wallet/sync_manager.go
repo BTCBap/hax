@@ -52,8 +52,8 @@ func (m *WalletManager) migrateMultisigPaths() {
 	}
 
 	// Save wallet if we migrated any paths
-	if migrated && m.password != "" {
-		m.saveWalletTracked(m.data.Name, m.data, m.password)
+	if migrated && m.hasKey() {
+		_ = m.saveWalletTracked(m.data.Name, m.data) // best-effort cache persist; retried on next save
 	}
 }
 
@@ -174,8 +174,8 @@ func (m *WalletManager) scanAddressesWithContext(ctx context.Context) {
 
 	// Save wallet to persist discovered addresses (hold lock during save)
 	m.dataMu.RLock()
-	if m.data != nil && m.password != "" {
-		m.saveWalletTracked(m.data.Name, m.data, m.password)
+	if m.data != nil && m.hasKey() {
+		_ = m.saveWalletTracked(m.data.Name, m.data) // best-effort cache persist; retried on next save
 	}
 	m.dataMu.RUnlock()
 }
@@ -499,7 +499,7 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 
 // persistCache saves the current cache to the wallet file for instant load on next unlock
 func (m *WalletManager) persistCache() {
-	if m.data == nil || m.cache == nil || m.password == "" {
+	if m.data == nil || m.cache == nil || !m.hasKey() {
 		return
 	}
 
@@ -540,9 +540,8 @@ func (m *WalletManager) persistCache() {
 	// Save synchronously while holding the lock to avoid data races
 	// (saving to local file is fast, so blocking is acceptable)
 	walletName := m.data.Name
-	password := m.password
 	walletData := m.data
-	m.saveWalletTracked(walletName, walletData, password)
+	_ = m.saveWalletTracked(walletName, walletData) // best-effort cache persist; retried on next save
 	m.dataMu.Unlock()
 }
 
