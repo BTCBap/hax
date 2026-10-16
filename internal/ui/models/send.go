@@ -2880,7 +2880,7 @@ func (m SendModel) buildReviewWarnings(totalRecipientAmount, displayFee api.Sato
 
 func (m SendModel) buildReviewScrollable() (string, string, string) {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := withBadge(styles.SubtitleStyle.Render("Step 6/7: Review transaction"), walletNetwork(m.walletManager), "  ")
+	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction")
 
 	// Responsive box width for all review sections
 	boxWidth := m.width - 4
