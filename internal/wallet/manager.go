@@ -204,15 +204,22 @@ func (m *WalletManager) getGapLimit() int {
 	return AddressGapLimit
 }
 
-// CreateWallet creates a new wallet with a generated mnemonic
+// CreateWallet creates a new wallet with a generated mnemonic (no BIP39 passphrase).
 func (m *WalletManager) CreateWallet(name string, password string, wordCount int) (string, error) {
-	return m.CreateWalletOnNetwork(name, password, wordCount, NetworkTestnet)
+	return m.CreateWalletOnNetwork(name, password, wordCount, NetworkTestnet, "")
+}
+
+// CreateWalletWithPassphrase creates a new wallet with an optional BIP39 passphrase.
+func (m *WalletManager) CreateWalletWithPassphrase(name, password, passphrase string, wordCount int) (string, error) {
+	return m.CreateWalletOnNetwork(name, password, wordCount, NetworkTestnet, passphrase)
 }
 
 // CreateWalletOnNetwork creates a new software wallet for network
-// (NetworkMainnet or NetworkTestnet). The network is persisted in the wallet
-// file and fixes derivation coin type and address encoding for its lifetime.
-func (m *WalletManager) CreateWalletOnNetwork(name, password string, wordCount int, network string) (string, error) {
+// (NetworkMainnet or NetworkTestnet) with an optional BIP39 passphrase.
+// The network is persisted in the wallet file and fixes derivation coin type
+// and address encoding for its lifetime. The passphrase is stored only inside
+// the encrypted wallet file and is honored on every unlock.
+func (m *WalletManager) CreateWalletOnNetwork(name, password string, wordCount int, network, passphrase string) (string, error) {
 	if _, err := ParamsForNetwork(network); err != nil {
 		return "", err
 	}
@@ -246,12 +253,13 @@ func (m *WalletManager) CreateWalletOnNetwork(name, password string, wordCount i
 
 	// Create wallet data
 	walletData := &WalletData{
-		Version:   1,
-		Name:      name,
-		Mnemonic:  mnemonic,
-		CreatedAt: time.Now().Unix(),
-		Network:   network,
-		Accounts:  make([]AccountData, 0),
+		Version:    1,
+		Name:       name,
+		Mnemonic:   mnemonic,
+		Passphrase: passphrase,
+		CreatedAt:  time.Now().Unix(),
+		Network:    network,
+		Accounts:   make([]AccountData, 0),
 	}
 
 	// Save to disk

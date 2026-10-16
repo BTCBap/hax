@@ -124,6 +124,33 @@ func TestPassphraseHonoredOnUnlock(t *testing.T) {
 	}
 }
 
+func TestCreateWalletPassphraseHonoredOnUnlock(t *testing.T) {
+	m := &WalletManager{storage: mustStorage(t)}
+	mn, err := m.CreateWalletOnNetwork("cpp", "longenough", 12, NetworkTestnet, "TREZOR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := m.storage.LoadWallet("cpp", "longenough")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Passphrase != "TREZOR" {
+		t.Fatalf("stored passphrase=%q", data.Passphrase)
+	}
+	got, err := seedFromWalletData(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := MnemonicToSeed(mn, "TREZOR")
+	none, _ := MnemonicToSeed(mn, "")
+	if string(got) != string(want) {
+		t.Error("create wallet seed did not use stored passphrase")
+	}
+	if string(got) == string(none) {
+		t.Error("passphrase seed equals empty-passphrase seed")
+	}
+}
+
 func TestValidateBitcoinAddress_StrictNetwork(t *testing.T) {
 	if err := ValidateBitcoinAddress("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", true); err == nil {
 		t.Error("mainnet address accepted on testnet")

@@ -32,7 +32,7 @@ type WalletService interface {
 	// Wallet lifecycle
 	CreateWallet(name, password string, wordCount int) (string, error)
 	RestoreWallet(name, password, mnemonic string) error
-	CreateWalletOnNetwork(name, password string, wordCount int, network string) (string, error)
+	CreateWalletOnNetwork(name, password string, wordCount int, network, passphrase string) (string, error)
 	RestoreWalletOnNetwork(name, password, mnemonic, passphrase, network string) error
 	CreateHardwareWallet(name, password, xpub, fingerprint, keyOrigin string, addrType wallet.AddressType, deviceType string) error
 	CreateMultisigWallet(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType) error
