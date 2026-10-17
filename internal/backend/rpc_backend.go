@@ -47,6 +47,9 @@ type RPCBackend struct {
 	pollStop     chan struct{}
 	pollInterval time.Duration
 	lastTip      int64
+
+	// historyLimited is set when scanblocks is unavailable.
+	historyLimited atomic.Bool
 }
 
 // defaultRPCPollInterval is how often the RPC backend checks for a new block.
@@ -880,8 +883,10 @@ func (b *RPCBackend) checkAddressUsedViaScanblocks(address string) bool {
 	result, err := b.callRPC("scanblocks", []interface{}{"start", []interface{}{descriptor}})
 	if err != nil {
 		// scanblocks not available — can't determine historical usage
+		b.historyLimited.Store(true)
 		return false
 	}
+	b.historyLimited.Store(false)
 
 	var scan struct {
 		RelevantBlocks []string `json:"relevant_blocks"`
@@ -895,7 +900,8 @@ func (b *RPCBackend) checkAddressUsedViaScanblocks(address string) bool {
 
 // GetAddressTransactions retrieves transaction history for an address.
 // Uses scanblocks to find relevant blocks, then extracts transactions.
-// Falls back to UTXO-only transactions if blockfilterindex is not available.
+// Without blockfilterindex it falls back to the transactions behind the
+// current UTXOs and HistoryLimited reports true until scanblocks works.
 func (b *RPCBackend) GetAddressTransactions(address string) ([]api.Transaction, error) {
 	if !b.IsConnected() {
 		if err := b.Connect(); err != nil {
@@ -907,14 +913,35 @@ func (b *RPCBackend) GetAddressTransactions(address string) ([]api.Transaction, 
 	descriptor := fmt.Sprintf("addr(%s)", address)
 	result, err := b.callRPC("scanblocks", []interface{}{"start", []interface{}{descriptor}})
 	if err == nil {
+		b.historyLimited.Store(false)
 		return b.getTransactionsFromBlocks(result, address)
 	}
 
-	// Fallback: return transactions from current UTXOs only
+	// Fallback: spent coins leave no trace in the UTXO set, so the
+	// history is missing every transaction whose outputs are all spent.
+	debugLog("[RPC] scanblocks unavailable, history limited to UTXOs: %v", err)
+	b.historyLimited.Store(true)
 	return b.getTransactionsFromUTXOs(address)
 }
 
-// getTransactionsFromBlocks extracts transactions involving the address from scanblocks results
+// HistoryLimiter is implemented by backends whose address history can be
+// incomplete, such as Core without a block filter index.
+type HistoryLimiter interface {
+	HistoryLimited() bool
+}
+
+// HistoryLimited reports whether the last history lookup could not use
+// scanblocks, so it shows only transactions behind unspent coins. Core
+// needs -blockfilterindex=1 for full history.
+func (b *RPCBackend) HistoryLimited() bool {
+	if b == nil {
+		return false
+	}
+	return b.historyLimited.Load()
+}
+
+// getTransactionsFromBlocks extracts transactions involving the address
+// from scanblocks results.
 func (b *RPCBackend) getTransactionsFromBlocks(scanResult json.RawMessage, address string) ([]api.Transaction, error) {
 	var scan struct {
 		RelevantBlocks []string `json:"relevant_blocks"`
@@ -925,22 +952,14 @@ func (b *RPCBackend) getTransactionsFromBlocks(scanResult json.RawMessage, addre
 
 	var transactions []api.Transaction
 	seen := make(map[string]bool)
+	// Outputs paying the address, so a later spend is found even when
+	// Core does not report the prevout (verbosity 2 has none).
+	funded := make(map[string]*api.Vout)
 
 	for _, blockHash := range scan.RelevantBlocks {
-		// getblock with verbosity=2 (decoded transactions)
-		blockResult, err := b.callRPC("getblock", []interface{}{blockHash, 2})
+		block, err := b.getBlockWithPrevouts(blockHash)
 		if err != nil {
 			debugLog("[RPC] Failed to get block %s: %v", blockHash, err)
-			continue
-		}
-
-		var block struct {
-			Height int64             `json:"height"`
-			Time   int64             `json:"time"`
-			Hash   string            `json:"hash"`
-			Tx     []json.RawMessage `json:"tx"`
-		}
-		if err := json.Unmarshal(blockResult, &block); err != nil {
 			continue
 		}
 
@@ -954,19 +973,63 @@ func (b *RPCBackend) getTransactionsFromBlocks(scanResult json.RawMessage, addre
 				continue
 			}
 
-			// Check if transaction involves this address
-			if txInvolvesAddress(tx, address) {
-				tx.Status.Confirmed = true
-				tx.Status.BlockHeight = block.Height
-				tx.Status.BlockHash = block.Hash
-				tx.Status.BlockTime = block.Time
-				transactions = append(transactions, *tx)
-				seen[tx.TxID] = true
+			spends := false
+			for i := range tx.Vin {
+				vin := &tx.Vin[i]
+				prev, ok := funded[fmt.Sprintf("%s:%d", vin.TxID, vin.Vout)]
+				if !ok {
+					continue
+				}
+				spends = true
+				if vin.Prevout == nil {
+					vin.Prevout = prev
+				}
 			}
+
+			if !spends && !txInvolvesAddress(tx, address) {
+				continue
+			}
+			for i := range tx.Vout {
+				if tx.Vout[i].ScriptpubkeyAddress == address {
+					out := tx.Vout[i]
+					funded[fmt.Sprintf("%s:%d", tx.TxID, i)] = &out
+				}
+			}
+			tx.Status.Confirmed = true
+			tx.Status.BlockHeight = block.Height
+			tx.Status.BlockHash = block.Hash
+			tx.Status.BlockTime = block.Time
+			transactions = append(transactions, *tx)
+			seen[tx.TxID] = true
 		}
 	}
 
 	return transactions, nil
+}
+
+// verboseBlock is the part of a decoded getblock result hax reads.
+type verboseBlock struct {
+	Height int64             `json:"height"`
+	Time   int64             `json:"time"`
+	Hash   string            `json:"hash"`
+	Tx     []json.RawMessage `json:"tx"`
+}
+
+// getBlockWithPrevouts fetches a decoded block, asking for verbosity 3
+// (prevouts, Core 25+) and falling back to 2 on older nodes.
+func (b *RPCBackend) getBlockWithPrevouts(hash string) (*verboseBlock, error) {
+	result, err := b.callRPC("getblock", []interface{}{hash, 3})
+	if err != nil {
+		result, err = b.callRPC("getblock", []interface{}{hash, 2})
+		if err != nil {
+			return nil, err
+		}
+	}
+	var block verboseBlock
+	if err := json.Unmarshal(result, &block); err != nil {
+		return nil, fmt.Errorf("failed to parse block: %w", err)
+	}
+	return &block, nil
 }
 
 // getTransactionsFromUTXOs returns transactions associated with current UTXOs.
