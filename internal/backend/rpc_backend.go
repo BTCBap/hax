@@ -40,7 +40,17 @@ type RPCBackend struct {
 	// Server info captured during connection
 	version string // Bitcoin Core version string
 	chain   string // Chain name (e.g., "testnet4", "main")
+
+	// Block polling: Core has no push notifications over JSON-RPC, so
+	// SubscribeHeaders starts a poller that reports new tips here.
+	headerChan   chan HeaderNotification
+	pollStop     chan struct{}
+	pollInterval time.Duration
+	lastTip      int64
 }
+
+// defaultRPCPollInterval is how often the RPC backend checks for a new block.
+const defaultRPCPollInterval = 15 * time.Second
 
 // rpcRequest is a JSON-RPC 2.0 request
 type rpcRequest struct {
@@ -77,7 +87,9 @@ func NewRPCBackend(config *BackendConfig) (*RPCBackend, error) {
 	}
 
 	return &RPCBackend{
-		config: config,
+		config:       config,
+		headerChan:   make(chan HeaderNotification, 10),
+		pollInterval: defaultRPCPollInterval,
 	}, nil
 }
 
@@ -235,6 +247,10 @@ func (b *RPCBackend) Disconnect() error {
 	if b.client != nil {
 		b.client.CloseIdleConnections()
 	}
+	if b.pollStop != nil {
+		close(b.pollStop)
+		b.pollStop = nil
+	}
 	b.connected = false
 	b.client = nil
 	b.baseURL = ""
@@ -284,14 +300,63 @@ func (b *RPCBackend) ScripthashNotifications() <-chan ScripthashNotification {
 	return nil
 }
 
-// HeaderNotifications returns a nil channel; RPC does not support Electrum subscriptions.
+// HeaderNotifications delivers new chain tips found by the block poller
+// started in SubscribeHeaders.
 func (b *RPCBackend) HeaderNotifications() <-chan HeaderNotification {
-	return nil
+	return b.headerChan
 }
 
-// SubscribeHeaders is a no-op for RPC backend.
+// SubscribeHeaders returns the current tip and starts polling getblockcount
+// for new blocks (once per connection). Disconnect stops the poller.
 func (b *RPCBackend) SubscribeHeaders() (int64, error) {
-	return 0, nil
+	height, err := b.GetBlockHeight()
+	if err != nil {
+		return 0, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if height > b.lastTip {
+		b.lastTip = height
+	}
+	if b.pollStop == nil && b.headerChan != nil {
+		b.pollStop = make(chan struct{})
+		go b.pollBlocks(b.pollStop, b.pollInterval)
+	}
+	return height, nil
+}
+
+// pollBlocks checks the tip every interval and sends a notification when
+// it advances. A failed poll is skipped; the next one retries.
+func (b *RPCBackend) pollBlocks(stop <-chan struct{}, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+		// Never reconnect from the poller; Disconnect means stop.
+		if !b.IsConnected() {
+			continue
+		}
+		height, err := b.GetBlockHeight()
+		if err != nil {
+			continue
+		}
+		b.mu.Lock()
+		advanced := height > b.lastTip
+		if advanced {
+			b.lastTip = height
+		}
+		b.mu.Unlock()
+		if advanced {
+			select {
+			case b.headerChan <- HeaderNotification{Height: height}:
+			default: // UI is behind; it will see the next tip
+			}
+		}
+	}
 }
 
 // SubscribeAddress is a no-op for RPC backend.

@@ -11,6 +11,7 @@ This is a lightweight project changelog, not a strict release ledger.
 - Taproot (P2TR) address support with BIP86 derivation
 - Multisig wallet infrastructure (BIP48 derivation, P2SH/P2SH-P2WSH/P2WSH)
 - Semantic versioning with build-time injection
+- Bitcoin Core backend: live new-block alerts (polled)
 
 ### Changed
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`
@@ -18,6 +19,8 @@ This is a lightweight project changelog, not a strict release ledger.
 - Public launch stance is source-first until release verification is in place
 
 ### Fixed
+- A dropped connection mid-sync no longer shows a zero balance as synced; the last good data is kept and the error is shown
+- Locking during the initial sync no longer hangs
 - Scroll momentum carryover across screen and step transitions
 
 ## Pre-GitHub Testnet History (through 2026-01-30)
