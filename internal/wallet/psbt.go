@@ -385,6 +385,40 @@ func CreatePSBT(
 			totalInput, totalOutput+fee)
 	}
 
+	allOutputs := outputs
+	if hasChange {
+		allOutputs = append(append([]TxOutput(nil), outputs...),
+			TxOutput{Address: changeAddr, Amount: changeAmount})
+	}
+	packet, err := assemblePSBT(utxos, allOutputs, network, witnessScripts,
+		inputScriptType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PSBTResult{
+		Packet:        packet,
+		Fee:           fee,
+		Change:        changeAmount,
+		HasChange:     hasChange,
+		SelectedUTXOs: utxos,
+		ChangeAddress: changeAddr,
+		VSize:         vSize,
+		DustAbsorbed:  dustAbsorbed,
+		IntendedFee:   intendedFee,
+	}, nil
+}
+
+// assemblePSBT builds an unsigned PSBT spending utxos to exactly outputs,
+// in order, with the input metadata hax's signers expect. The caller has
+// already settled amounts and fee.
+func assemblePSBT(
+	utxos []UTXOWithPath,
+	outputs []TxOutput,
+	network *chaincfg.Params,
+	witnessScripts [][]byte,
+	inputScriptType ScriptType,
+) (*psbt.Packet, error) {
 	// Create the unsigned transaction (version 2 for modern transactions)
 	unsignedTx := wire.NewMsgTx(2)
 
@@ -400,7 +434,7 @@ func CreatePSBT(
 		unsignedTx.AddTxIn(txIn)
 	}
 
-	// Add recipient outputs
+	// Add outputs (recipients, then change when there is one)
 	for _, out := range outputs {
 		addr, err := btcutil.DecodeAddress(out.Address, network)
 		if err != nil {
@@ -411,19 +445,6 @@ func CreatePSBT(
 			return nil, fmt.Errorf("failed to create script: %w", err)
 		}
 		unsignedTx.AddTxOut(wire.NewTxOut(out.Amount.Int64(), pkScript))
-	}
-
-	// Add change output if needed
-	if hasChange {
-		changeAddrDecoded, err := btcutil.DecodeAddress(changeAddr, network)
-		if err != nil {
-			return nil, fmt.Errorf("invalid change address: %w", err)
-		}
-		changePkScript, err := txscript.PayToAddrScript(changeAddrDecoded)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create change script: %w", err)
-		}
-		unsignedTx.AddTxOut(wire.NewTxOut(changeAmount.Int64(), changePkScript))
 	}
 
 	// Create PSBT from unsigned transaction
@@ -480,17 +501,7 @@ func CreatePSBT(
 		packet.Inputs[i].SighashType = sighashAll
 	}
 
-	return &PSBTResult{
-		Packet:        packet,
-		Fee:           fee,
-		Change:        changeAmount,
-		HasChange:     hasChange,
-		SelectedUTXOs: utxos,
-		ChangeAddress: changeAddr,
-		VSize:         vSize,
-		DustAbsorbed:  dustAbsorbed,
-		IntendedFee:   intendedFee,
-	}, nil
+	return packet, nil
 }
 
 // SignPSBT signs all inputs in the PSBT that we have keys for

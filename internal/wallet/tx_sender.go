@@ -120,22 +120,9 @@ func (m *WalletManager) CreatePSBTBatchTransaction(accountIndex uint32, recipien
 		}
 	}
 
-	// For multisig wallets, derive witness scripts for each input
-	var witnessScripts [][]byte
-	if m.data.Multisig != nil {
-		witnessScripts = make([][]byte, len(selectedUTXOs))
-		for i, utxo := range selectedUTXOs {
-			change, index, err := parseMultisigPath(utxo.Path)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse path for UTXO %d: %w", i, err)
-			}
-
-			_, witnessScript, err := m.GetMultisigAddress(change, index)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive witness script for UTXO %d: %w", i, err)
-			}
-			witnessScripts[i] = witnessScript
-		}
+	witnessScripts, err := m.multisigWitnessScripts(selectedUTXOs)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := CreatePSBT(selectedUTXOs, outputs, changeAddr, feeRateSatsPerVByte, network, witnessScripts, scriptType, multisigM, multisigN)
@@ -143,34 +130,59 @@ func (m *WalletManager) CreatePSBTBatchTransaction(accountIndex uint32, recipien
 		return nil, fmt.Errorf("failed to create PSBT: %w", err)
 	}
 
-	// Add BIP32 derivation paths to inputs (for signing) and change output (for verification)
+	changeOutputIdx := -1
+	if result.HasChange {
+		changeOutputIdx = len(recipients)
+	}
+	if err := m.addSignerData(result, changePath, changeAddrIndex, changeOutputIdx); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// multisigWitnessScripts returns the witness script for each input of a
+// multisig wallet, or nil for single-sig.
+func (m *WalletManager) multisigWitnessScripts(utxos []UTXOWithPath) ([][]byte, error) {
+	if m.data.Multisig == nil {
+		return nil, nil
+	}
+	scripts := make([][]byte, len(utxos))
+	for i, utxo := range utxos {
+		change, index, err := parseMultisigPath(utxo.Path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse path for UTXO %d: %w", i, err)
+		}
+		_, witnessScript, err := m.GetMultisigAddress(change, index)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive witness script for UTXO %d: %w", i, err)
+		}
+		scripts[i] = witnessScript
+	}
+	return scripts, nil
+}
+
+// addSignerData adds what signers need to a freshly built PSBT: key
+// derivations for inputs and change (changeOutputIdx -1 when there is
+// none), multisig scripts and xpubs, and previous transactions.
+func (m *WalletManager) addSignerData(result *PSBTResult, changePath string, changeAddrIndex uint32, changeOutputIdx int) error {
 	if m.IsMultisig() && m.data.Multisig != nil {
-		if err := m.addBip32DerivationToInputs(result.Packet, selectedUTXOs); err != nil {
-			_ = err // Silently continue
+		// Metadata errors are not fatal: hax signs from its own
+		// paths, and only some external signers need these fields.
+		_ = m.addBip32DerivationToInputs(result.Packet, result.SelectedUTXOs)
+		if changeOutputIdx >= 0 {
+			_ = m.addMultisigChangeOutputMetadata(result.Packet, changeAddrIndex, changeOutputIdx)
 		}
-		if result.HasChange {
-			changeOutputIdx := len(recipients)
-			if err := m.addMultisigChangeOutputMetadata(result.Packet, changeAddrIndex, changeOutputIdx); err != nil {
-				_ = err // Silently continue
-			}
-		}
-		// Add global xpubs so devices like Coldcard can auto-detect the multisig config
-		if err := m.addGlobalXpubs(result.Packet); err != nil {
-			_ = err // Silently continue — signing still works without global xpubs
-		}
+		// Global xpubs let devices like Coldcard detect the multisig.
+		_ = m.addGlobalXpubs(result.Packet)
 	} else {
-		changeOutputIdx := -1
-		if result.HasChange {
-			changeOutputIdx = len(recipients)
-		}
-		m.addSingleSigSignerData(result.Packet, selectedUTXOs, changePath, changeOutputIdx)
+		m.addSingleSigSignerData(result.Packet, result.SelectedUTXOs, changePath, changeOutputIdx)
 	}
 
 	// After the signer data: whether a P2SH input is segwit depends on
 	// its redeem script.
 	if err := m.attachPrevTxs(result); err != nil {
-		return nil, fmt.Errorf("failed to attach previous transactions: %w", err)
+		return fmt.Errorf("failed to attach previous transactions: %w", err)
 	}
-
-	return result, nil
+	return nil
 }
