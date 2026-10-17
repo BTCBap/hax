@@ -125,8 +125,9 @@ func setLabel(labels *map[string]string, key, label string) {
 	(*labels)[key] = label
 }
 
-// ExportLabelsBIP329 exports transaction and address labels in BIP-329
-// JSON Lines format, sorted for stable output.
+// ExportLabelsBIP329 exports transaction and address labels, and frozen
+// coins as outputs with spendable:false, in BIP-329 JSON Lines format,
+// sorted for stable output.
 func (m *WalletManager) ExportLabelsBIP329() (string, error) {
 	if !m.unlocked {
 		return "", fmt.Errorf("wallet is locked")
@@ -134,50 +135,57 @@ func (m *WalletManager) ExportLabelsBIP329() (string, error) {
 	m.dataMu.RLock()
 	defer m.dataMu.RUnlock()
 
-	type rec struct{ typ, ref, label string }
-	var recs []rec
+	var recs []bip329Record
 	for txid, label := range m.data.TransactionLabels {
-		recs = append(recs, rec{"tx", txid, label})
+		recs = append(recs, bip329Record{Type: "tx", Ref: txid, Label: strPtr(label)})
 	}
 	for _, acc := range m.data.Accounts {
 		for addr, label := range acc.Labels {
-			recs = append(recs, rec{"addr", addr, label})
+			recs = append(recs, bip329Record{Type: "addr", Ref: addr, Label: strPtr(label)})
 		}
+	}
+	notSpendable := false
+	for ref := range m.data.FrozenOutputs {
+		recs = append(recs, bip329Record{Type: "output", Ref: ref, Spendable: &notSpendable})
 	}
 	if len(recs) == 0 {
 		return "", ErrNoLabels
 	}
+	order := map[string]int{"tx": 0, "addr": 1, "output": 2}
 	sort.Slice(recs, func(i, j int) bool {
-		if recs[i].typ != recs[j].typ {
-			return recs[i].typ > recs[j].typ // tx first, then addr
+		if recs[i].Type != recs[j].Type {
+			return order[recs[i].Type] < order[recs[j].Type]
 		}
-		return recs[i].ref < recs[j].ref
+		return recs[i].Ref < recs[j].Ref
 	})
 
-	var output string
+	var output strings.Builder
 	for _, r := range recs {
-		txid, label, typ := r.ref, r.label, r.typ
-		// Create BIP-329 record for each transaction label
-		record := map[string]string{
-			"type":  typ,
-			"ref":   txid,
-			"label": label,
-		}
-
-		jsonBytes, err := json.Marshal(record)
+		jsonBytes, err := json.Marshal(r)
 		if err != nil {
 			return "", fmt.Errorf("failed to marshal label: %w", err)
 		}
-
-		output += string(jsonBytes) + "\n"
+		output.Write(jsonBytes)
+		output.WriteByte('\n')
 	}
 
-	return output, nil
+	return output.String(), nil
 }
 
-// ImportLabelsBIP329 imports transaction labels from BIP-329 JSON Lines format
-// Each line should be a JSON object with "type", "ref", and "label" fields
-// Only "tx" type labels are imported (transaction labels)
+// bip329Record is one line of a BIP-329 export. Label and Spendable are
+// optional; an import leaves the value alone when they are absent.
+type bip329Record struct {
+	Type      string  `json:"type"`
+	Ref       string  `json:"ref"`
+	Label     *string `json:"label,omitempty"`
+	Spendable *bool   `json:"spendable,omitempty"`
+}
+
+func strPtr(s string) *string { return &s }
+
+// ImportLabelsBIP329 imports BIP-329 JSON Lines: transaction labels,
+// labels of this wallet's addresses, and the spendable flag of outputs
+// (spendable:false freezes a coin). Other records are skipped.
 func (m *WalletManager) ImportLabelsBIP329(data string) (int, error) {
 	if !m.unlocked {
 		return 0, fmt.Errorf("wallet is locked")
@@ -199,30 +207,28 @@ func (m *WalletManager) ImportLabelsBIP329(data string) (int, error) {
 			continue
 		}
 
-		var record map[string]string
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
+		var r bip329Record
+		if err := json.Unmarshal([]byte(line), &r); err != nil || r.Ref == "" {
 			// Skip invalid lines
 			continue
 		}
 
-		// BIP-329 requires type, ref, and label fields
-		labelType, hasType := record["type"]
-		ref, hasRef := record["ref"]
-		label, hasLabel := record["label"]
-
-		if !hasType || !hasRef || !hasLabel {
-			continue
-		}
-
-		switch labelType {
+		switch r.Type {
 		case "tx":
-			// Import the label (overwrites existing)
-			m.data.TransactionLabels[ref] = label
-			imported++
+			if r.Label != nil {
+				m.data.TransactionLabels[r.Ref] = *r.Label
+				imported++
+			}
 		case "addr":
 			// Only addresses this wallet derived; others are skipped.
-			if acc := m.accountForAddressLocked(ref); acc != nil {
-				setLabel(&acc.Labels, ref, label)
+			if acc := m.accountForAddressLocked(r.Ref); acc != nil && r.Label != nil {
+				setLabel(&acc.Labels, r.Ref, *r.Label)
+				imported++
+			}
+		case "output":
+			// spendable:false freezes the coin, true unfreezes it.
+			if txid, vout, ok := parseOutpoint(r.Ref); ok && r.Spendable != nil {
+				setFrozenLocked(m.data, outpointKey(txid, vout), !*r.Spendable)
 				imported++
 			}
 		}

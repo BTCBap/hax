@@ -35,6 +35,8 @@ type WalletData struct {
 	Network           string            `json:"network"` // "mainnet" or "testnet"
 	Accounts          []AccountData     `json:"accounts"`
 	TransactionLabels map[string]string `json:"transaction_labels,omitempty"` // TxID -> Label mapping (BIP-329)
+	// FrozenOutputs holds "txid:vout" of coins the wallet must not spend.
+	FrozenOutputs map[string]bool `json:"frozen_outputs,omitempty"`
 
 	// Multisig configuration (nil for single-sig wallets)
 	Multisig *MultisigWalletConfig `json:"multisig,omitempty"`

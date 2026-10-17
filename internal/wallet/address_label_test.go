@@ -58,8 +58,8 @@ func TestBIP329_RoundTripsAddressLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"label":"rent","ref":"aa","type":"tx"}` + "\n" +
-		`{"label":"cold storage","ref":"` + addr + `","type":"addr"}` + "\n"
+	want := `{"type":"tx","ref":"aa","label":"rent"}` + "\n" +
+		`{"type":"addr","ref":"` + addr + `","label":"cold storage"}` + "\n"
 	if out != want {
 		t.Fatalf("export:\n%s\nwant:\n%s", out, want)
 	}

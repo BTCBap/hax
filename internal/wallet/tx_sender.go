@@ -19,6 +19,10 @@ func (m *WalletManager) resolveUTXOs(accountIndex uint32, utxos []api.UTXO, addr
 	if len(utxos) > 0 {
 		utxosWithPath := make([]UTXOWithPath, 0, len(utxos))
 		for _, utxo := range utxos {
+			if m.IsUTXOFrozen(utxo.TxID, utxo.Vout) {
+				return nil, fmt.Errorf("%s:%d: %w; unfreeze it first",
+					shortTxID(utxo.TxID), utxo.Vout, ErrCoinFrozen)
+			}
 			tx, err := m.backend.GetTransaction(utxo.TxID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get transaction %s: %w", utxo.TxID, err)
@@ -55,6 +59,10 @@ func (m *WalletManager) resolveUTXOs(accountIndex uint32, utxos []api.UTXO, addr
 	}
 	if len(utxosWithPath) == 0 {
 		return nil, fmt.Errorf("no UTXOs available")
+	}
+	utxosWithPath = m.spendableUTXOs(utxosWithPath)
+	if len(utxosWithPath) == 0 {
+		return nil, fmt.Errorf("every coin is frozen")
 	}
 	return utxosWithPath, nil
 }

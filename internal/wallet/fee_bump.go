@@ -74,6 +74,8 @@ type bumpAnalysis struct {
 	ownOutputs []int          // indices of outputs paying us
 	childUTXOs []UTXOWithPath // our unspent outputs of tx
 	walletUTXO []UTXOWithPath
+	// frozenOutputs counts our unspent outputs of the tx that are frozen.
+	frozenOutputs int
 }
 
 // AnalyzeFeeBump reports whether an unconfirmed transaction can be sped
@@ -270,6 +272,10 @@ func (m *WalletManager) checkCPFP(a *bumpAnalysis) {
 				ok = true
 			}
 		}
+		if ok && m.IsUTXOFrozen(a.TxID, vout) {
+			a.frozenOutputs++
+			continue
+		}
 		if ok {
 			a.childUTXOs = append(a.childUTXOs, u)
 			a.CPFPValue += u.Value
@@ -277,6 +283,9 @@ func (m *WalletManager) checkCPFP(a *bumpAnalysis) {
 	}
 	if len(a.childUTXOs) == 0 {
 		a.CPFPReason = "it has no unspent output paying this wallet"
+		if a.frozenOutputs > 0 {
+			a.CPFPReason = "its outputs to this wallet are frozen"
+		}
 		return
 	}
 	a.CanCPFP = true
@@ -314,7 +323,7 @@ func (m *WalletManager) BuildRBF(txid string, feeRate float64) (*PSBTResult, err
 	}
 
 	inputs := append([]UTXOWithPath(nil), a.inputs...)
-	spare := spareConfirmedUTXOs(a.walletUTXO, a)
+	spare := spareConfirmedUTXOs(m.spendableUTXOs(a.walletUTXO), a)
 	var recipientTotal api.Satoshi
 	for _, r := range a.Recipients {
 		recipientTotal += r.Amount
@@ -436,7 +445,7 @@ func spareConfirmedUTXOs(utxos []UTXOWithPath, a *bumpAnalysis) []UTXOWithPath {
 // hasSpentOutputs reports whether one of our outputs of the transaction
 // is already spent by a descendant.
 func (m *WalletManager) hasSpentOutputs(a *bumpAnalysis) bool {
-	return len(a.childUTXOs) < len(a.ownOutputs)
+	return len(a.childUTXOs)+a.frozenOutputs < len(a.ownOutputs)
 }
 
 // BuildCPFP builds a child that spends our unconfirmed outputs of txid
