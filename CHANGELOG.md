@@ -15,6 +15,7 @@ This is a lightweight project changelog, not a strict release ledger.
 - Send: BIP21 `bitcoin:` URIs fill address, amount and label; the review names the chosen fee priority
 - Address labels (Addresses screen, BIP-329 export/import), and history search by address or address label
 - Automatic reconnect with backoff and a "Reconnecting in Ns" status when the server drops; Electrum subscriptions are replayed and missed blocks or payments are reported
+- Hardware wallet end-to-end check against a device emulator and a regtest node (`go test -tags emulator`)
 
 ### Changed
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`
@@ -22,6 +23,9 @@ This is a lightweight project changelog, not a strict release ledger.
 - Public launch stance is source-first until release verification is in place
 
 ### Fixed
+- Hardware wallets can sign `hax` PSBTs: inputs now carry the previous transaction (legacy and SegWit v0), Taproot inputs and change carry the BIP371 key origin and internal key, and nested SegWit inputs and change carry their redeem script
+- Signing an imported nested SegWit (P2SH-P2WPKH) PSBT produced an invalid signature
+- The README release badge showed "invalid"
 - A dropped connection mid-sync no longer shows a zero balance as synced; the last good data is kept and the error is shown
 - Locking during the initial sync no longer hangs
 - Scroll momentum carryover across screen and step transitions

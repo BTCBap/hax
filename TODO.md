@@ -17,6 +17,7 @@ Manual checks; they need a person, real funds, or real devices.
 - [x] Send: send max / sweep (already there: `m` on the amount step)
 - [x] Send: clearer fee choice on review
 - [x] Address and transaction labels, with history search and filter
+- [x] Hardware signing: PSBTs carry previous transactions, BIP371 Taproot fields and nested SegWit redeem scripts (checked on a Trezor emulator)
 
 ## Later
 

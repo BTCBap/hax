@@ -50,6 +50,9 @@ type WalletManager struct {
 	persistWg sync.WaitGroup
 
 	gapLimit int
+
+	// prevTxs caches full previous transactions for PSBT inputs.
+	prevTxs prevTxCache
 }
 
 // NewWalletManager creates a new wallet manager with the specified backend.

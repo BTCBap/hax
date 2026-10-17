@@ -152,6 +152,11 @@ type PSBTResult struct {
 	// Dust tracking - for user warnings
 	DustAbsorbed api.Satoshi // Amount of dust absorbed into fee (0 if change was created)
 	IntendedFee  api.Satoshi // Fee before dust absorption (same as Fee if no dust)
+
+	// Warnings are problems that do not stop software signing but that
+	// the user should see before exporting, e.g. data a hardware signer
+	// will need is missing.
+	Warnings []string
 }
 
 // TotalInput returns the sum of all selected UTXO values.
@@ -517,9 +522,9 @@ func SignPSBT(packet *psbt.Packet, wallet *HDWallet, utxos []UTXOWithPath, netwo
 		}
 
 		pubKey := privKey.PubKey().SerializeCompressed()
-		witnessUtxo := packet.Inputs[i].WitnessUtxo
+		witnessUtxo := inputPrevOut(packet, i)
 		if witnessUtxo == nil {
-			return newSigningError(ErrMissingWitnessUtxo, i, "WitnessUtxo is nil")
+			return newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data for input")
 		}
 
 		isBIP44 := path.Purpose == 44 // P2PKH
@@ -662,14 +667,7 @@ func SignPSBTFromDerivation(packet *psbt.Packet, wallet *HDWallet, network *chai
 			continue
 		}
 
-		// WitnessUtxo first, fall back to NonWitnessUtxo for Legacy inputs
-		witnessUtxo := input.WitnessUtxo
-		if witnessUtxo == nil && input.NonWitnessUtxo != nil && i < len(packet.UnsignedTx.TxIn) {
-			prevOutIdx := packet.UnsignedTx.TxIn[i].PreviousOutPoint.Index
-			if int(prevOutIdx) < len(input.NonWitnessUtxo.TxOut) {
-				witnessUtxo = input.NonWitnessUtxo.TxOut[prevOutIdx]
-			}
-		}
+		witnessUtxo := inputPrevOut(packet, i)
 		if witnessUtxo == nil {
 			return newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data available (neither WitnessUtxo nor NonWitnessUtxo)")
 		}
@@ -833,6 +831,20 @@ func signSegWitInput(packet *psbt.Packet, inputIndex int, privKey *btcec.Private
 				fmt.Sprintf("failed to create redeemScript: %v", err))
 		}
 		packet.Inputs[inputIndex].RedeemScript = redeemScript
+		p2sh, err := txscript.NewScriptBuilder().AddOp(txscript.OP_HASH160).
+			AddData(btcutil.Hash160(redeemScript)).AddOp(txscript.OP_EQUAL).Script()
+		if err != nil || !bytes.Equal(p2sh, witnessUtxo.PkScript) {
+			return newSigningError(ErrKeyMismatch, inputIndex,
+				"derived key does not match the P2SH-P2WPKH output")
+		}
+	}
+
+	// BIP143 script code: btcd expands a P2WPKH program to the P2PKH
+	// form. For P2SH-P2WPKH that program is the redeem script, not the
+	// P2SH scriptPubKey.
+	witnessProgram := witnessUtxo.PkScript
+	if isNested {
+		witnessProgram = packet.Inputs[inputIndex].RedeemScript
 	}
 
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(
@@ -846,7 +858,7 @@ func signSegWitInput(packet *psbt.Packet, inputIndex int, privKey *btcec.Private
 		sigHashes,
 		inputIndex,
 		witnessUtxo.Value,
-		witnessUtxo.PkScript,
+		witnessProgram,
 		txscript.SigHashAll,
 		privKey,
 	)
@@ -936,7 +948,7 @@ func SignMultisigPSBTFromDerivation(
 				continue
 			}
 
-			witnessUtxo := input.WitnessUtxo
+			witnessUtxo := inputPrevOut(packet, i)
 			if witnessUtxo == nil {
 				psbtDebugLog("[DEBUG] Input %d: no witness UTXO", i)
 				continue
@@ -1094,8 +1106,8 @@ func signTaprootInput(packet *psbt.Packet, inputIndex int, privKey *btcec.Privat
 	// Taproot sighash requires prevouts for all inputs
 	prevOuts := make(map[wire.OutPoint]*wire.TxOut)
 	for i, input := range packet.UnsignedTx.TxIn {
-		if packet.Inputs[i].WitnessUtxo != nil {
-			prevOuts[input.PreviousOutPoint] = packet.Inputs[i].WitnessUtxo
+		if prevOut := inputPrevOut(packet, i); prevOut != nil {
+			prevOuts[input.PreviousOutPoint] = prevOut
 		}
 	}
 	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(prevOuts)
@@ -1292,9 +1304,9 @@ func SignMultisigPSBT(
 				return sigsAdded, newSigningError(ErrMissingWitnessScript, i, "no multisig script (neither WitnessScript nor RedeemScript)")
 			}
 
-			witnessUtxo := packet.Inputs[i].WitnessUtxo
+			witnessUtxo := inputPrevOut(packet, i)
 			if witnessUtxo == nil {
-				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i, "WitnessUtxo is nil")
+				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data for input")
 			}
 
 			pubKey := privKey.PubKey().SerializeCompressed()
@@ -1419,7 +1431,7 @@ func FinalizePSBT(packet *psbt.Packet) (*wire.MsgTx, error) {
 			if err := finalizeLegacyP2SHMultisig(packet, i); err != nil {
 				return nil, fmt.Errorf("failed to finalize Legacy P2SH multisig input %d: %w", i, err)
 			}
-		} else if len(input.PartialSigs) > 0 && input.WitnessUtxo != nil && txscript.IsPayToPubKeyHash(input.WitnessUtxo.PkScript) {
+		} else if prevOut := inputPrevOut(packet, i); len(input.PartialSigs) > 0 && prevOut != nil && txscript.IsPayToPubKeyHash(prevOut.PkScript) {
 			// btcd's psbt.Finalize mishandles P2PKH when WitnessUtxo is set
 			if err := finalizeLegacyP2PKH(packet, i); err != nil {
 				return nil, fmt.Errorf("failed to finalize Legacy P2PKH input %d: %w", i, err)
@@ -1457,8 +1469,11 @@ func finalizeTaprootKeyPath(packet *psbt.Packet, inputIndex int) error {
 	}
 	input.FinalScriptWitness = buf.Bytes()
 
+	// BIP174 finalizer: drop everything but the UTXO and final fields.
 	input.TaprootKeySpendSig = nil
 	input.TaprootInternalKey = nil
+	input.TaprootBip32Derivation = nil
+	input.Bip32Derivation = nil
 	input.SighashType = 0
 
 	return nil

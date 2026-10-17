@@ -16,6 +16,7 @@ import (
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 // testMnemonics provides deterministic test wallets for multisig signing tests.
@@ -40,6 +41,7 @@ type multisigTestSetup struct {
 type mockBroadcastBackend struct {
 	lastRawTx string
 	txid      string
+	rawTxs    map[string]*wire.MsgTx
 }
 
 func (m *mockBroadcastBackend) Connect() error            { return nil }
@@ -56,6 +58,12 @@ func (m *mockBroadcastBackend) GetAddressTransactions(address string) ([]api.Tra
 	return nil, nil
 }
 func (m *mockBroadcastBackend) GetTransaction(txid string) (*api.Transaction, error) { return nil, nil }
+func (m *mockBroadcastBackend) GetRawTransaction(txid string, _ int64) (*wire.MsgTx, error) {
+	if tx, ok := m.rawTxs[txid]; ok {
+		return tx, nil
+	}
+	return nil, fmt.Errorf("transaction %s not found", txid)
+}
 func (m *mockBroadcastBackend) BroadcastTransaction(rawTxHex string) (string, error) {
 	m.lastRawTx = rawTxHex
 	if m.txid == "" {

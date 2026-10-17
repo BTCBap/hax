@@ -496,6 +496,36 @@ func (b *RPCBackend) GetTransaction(txid string) (*api.Transaction, error) {
 	return b.parseVerboseTransaction(result)
 }
 
+// GetRawTransaction fetches a full transaction. Without -txindex, Core
+// only finds mempool and wallet transactions by txid, so when the block
+// height is known the lookup is retried against that block.
+func (b *RPCBackend) GetRawTransaction(txid string, blockHeight int64) (*wire.MsgTx, error) {
+	if !b.IsConnected() {
+		if err := b.Connect(); err != nil {
+			return nil, err
+		}
+	}
+	result, err := b.callRPC("getrawtransaction", []interface{}{txid, false})
+	if err != nil && blockHeight > 0 {
+		hashRes, herr := b.callRPC("getblockhash", []interface{}{blockHeight})
+		if herr == nil {
+			var blockHash string
+			if json.Unmarshal(hashRes, &blockHash) == nil {
+				result, err = b.callRPC("getrawtransaction",
+					[]interface{}{txid, false, blockHash})
+			}
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction %s: %w", txid, err)
+	}
+	var rawHex string
+	if err := json.Unmarshal(result, &rawHex); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction hex: %w", err)
+	}
+	return decodeRawTx(txid, rawHex)
+}
+
 // parseVerboseTransaction maps Bitcoin Core's verbose transaction JSON to api.Transaction
 func (b *RPCBackend) parseVerboseTransaction(data json.RawMessage) (*api.Transaction, error) {
 	var raw struct {
