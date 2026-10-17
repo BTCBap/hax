@@ -857,24 +857,6 @@ func FormatAmount(satoshis api.Satoshi, unit DisplayUnit) string {
 	}
 }
 
-// FormatAmountWithSign formats a satoshi amount with +/- sign prefix
-func FormatAmountWithSign(satoshis api.Satoshi, unit DisplayUnit) string {
-	sign := ""
-	if satoshis > 0 {
-		sign = "+"
-	}
-	switch unit {
-	case DisplayUnitBitcoin, DisplayUnitSats:
-		// BIP-177: Display as integer with ₿ symbol
-		return sign + "₿" + formatWithCommas(satoshis)
-	case DisplayUnitBTC:
-		fallthrough
-	default:
-		btc := float64(satoshis) / 100000000.0
-		return fmt.Sprintf("%s%.8f BTC", sign, btc)
-	}
-}
-
 // FormatAmountCompact formats a satoshi amount in a compact form
 func FormatAmountCompact(satoshis api.Satoshi, unit DisplayUnit) string {
 	switch unit {
@@ -886,18 +868,6 @@ func FormatAmountCompact(satoshis api.Satoshi, unit DisplayUnit) string {
 	default:
 		btc := float64(satoshis) / 100000000.0
 		return fmt.Sprintf("%.8f BTC", btc)
-	}
-}
-
-// GetUnitLabel returns the label for a display unit
-func GetUnitLabel(unit DisplayUnit) string {
-	switch unit {
-	case DisplayUnitBitcoin, DisplayUnitSats:
-		return "₿ (bitcoin)"
-	case DisplayUnitBTC:
-		fallthrough
-	default:
-		return "BTC"
 	}
 }
 

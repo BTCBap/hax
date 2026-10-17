@@ -6,9 +6,6 @@ debug.log
 
 # Built binaries and build output
 /hax
-/wallet
-cmd/wallet/main
-hax-video.mov
 
 build/
 dist/

@@ -320,40 +320,12 @@ func (m *WalletManager) getNetwork() *chaincfg.Params {
 	return &TestNet4Params
 }
 
-// ValidateCosignerXpub validates an xpub string and returns parsed info
-func ValidateCosignerXpub(xpub string) (fingerprint string, err error) {
-	key, err := hdkeychain.NewKeyFromString(xpub)
-	if err != nil {
-		return "", fmt.Errorf("invalid xpub: %w", err)
-	}
-
-	// Check it's a public key (not private)
-	if key.IsPrivate() {
-		return "", fmt.Errorf("expected public key (xpub/tpub), got private key")
-	}
-
-	// For now return empty fingerprint - would need the full key origin
-	// In practice, the user would provide [fingerprint/path]xpub format
-	return "", nil
-}
-
 // CosignerValidationResult contains the result of cosigner validation
 type CosignerValidationResult struct {
 	Config  MultisigCosignerConfig
 	Warning string // Non-fatal warning (e.g., "bare xpub without key origin")
 	Error   error  // Fatal error (e.g., "wrong derivation path for multisig")
 	IsBIP48 bool   // True if derivation path is proper BIP48
-}
-
-// ParseCosignerString parses a cosigner string in format:
-// [fingerprint/48h/1h/0h/2h]tpub... or just tpub...
-// Standard format from Coldcard/Sparrow exports: [0f056943/48h/1h/0h/2h]tpub...
-func ParseCosignerString(input string) (MultisigCosignerConfig, error) {
-	result := ValidateCosignerInput(input)
-	if result.Error != nil {
-		return result.Config, result.Error
-	}
-	return result.Config, nil
 }
 
 // ValidateCosignerInput validates a cosigner input string and returns detailed results

@@ -64,29 +64,3 @@ func FormatBitcoinAddressCompact(address string, prefixLen, suffixLen int) strin
 		dimStyle.Render("...") +
 		highlightStyle.Render(suffix)
 }
-
-// FormatBitcoinAddressReadable formats with separator every 4 characters
-// Example: tb1q ABCD EFGH IJKL MNOP QRST UVWX YZ01
-func FormatBitcoinAddressReadable(address string) string {
-	highlightStyle := lipgloss.NewStyle().
-		Foreground(styles.PastelOrange). // Pastel orange
-		Bold(true)
-
-	normalStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#BAE1FF")) // Pastel blue
-
-	var result string
-	for i, char := range address {
-		if i > 0 && i%4 == 0 {
-			result += " "
-		}
-
-		// Highlight first 4 and last 4 characters
-		if i < 4 || i >= len(address)-4 {
-			result += highlightStyle.Render(string(char))
-		} else {
-			result += normalStyle.Render(string(char))
-		}
-	}
-	return result
-}

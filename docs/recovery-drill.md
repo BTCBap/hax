@@ -8,7 +8,7 @@ It is intentionally narrow:
 - run on testnet4 (the procedure is identical on mainnet)
 - mnemonic-based restore only
 
-Use this alongside [public-beta-checklist.md](public-beta-checklist.md).
+Use this alongside the [smoke test](smoke-test.md).
 
 ## Goal
 
