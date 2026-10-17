@@ -13,10 +13,10 @@ Manual checks; they need a person, real funds, or real devices.
 ## Next
 
 - [x] Connection resilience: clear status when the server drops, automatic reconnect with backoff, visible "reconnecting" state
-- [ ] Send: paste a `bitcoin:` (BIP21) URI to fill address, amount and label
-- [ ] Send: send max / sweep
-- [ ] Send: clearer fee choice on review
-- [ ] Address and transaction labels, with history search and filter
+- [x] Send: paste a `bitcoin:` (BIP21) URI to fill address, amount and label
+- [x] Send: send max / sweep (already there: `m` on the amount step)
+- [x] Send: clearer fee choice on review
+- [x] Address and transaction labels, with history search and filter
 
 ## Later
 

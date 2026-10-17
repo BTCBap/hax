@@ -31,7 +31,8 @@
 - **Multisig:** BIP48 P2WSH / P2SH-P2WSH / P2SH, with Sparrow-compatible descriptor import/export
 - **Coin control:** Branch-and-Bound selection, send-all, batch payments, and dust and fee-anomaly warnings at review
 - **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC
-- **BIP-329 labels**, transaction history, and Koinly CSV export
+- **BIP21 payment URIs:** paste a `bitcoin:` link to fill the address, amount and label
+- **BIP-329 labels** for transactions and addresses, searchable history, and Koinly CSV export
 - **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory
 
 | Dashboard | Receive |

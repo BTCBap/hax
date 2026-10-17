@@ -12,6 +12,8 @@ This is a lightweight project changelog, not a strict release ledger.
 - Multisig wallet infrastructure (BIP48 derivation, P2SH/P2SH-P2WSH/P2WSH)
 - Semantic versioning with build-time injection
 - Bitcoin Core backend: live new-block alerts (polled)
+- Send: BIP21 `bitcoin:` URIs fill address, amount and label; the review names the chosen fee priority
+- Address labels (Addresses screen, BIP-329 export/import), and history search by address or address label
 - Automatic reconnect with backoff and a "Reconnecting in Ns" status when the server drops; Electrum subscriptions are replayed and missed blocks or payments are reported
 
 ### Changed
