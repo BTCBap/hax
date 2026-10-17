@@ -12,7 +12,7 @@ Manual checks; they need a person, real funds, or real devices.
 
 ## Next
 
-- [ ] Connection resilience: clear status when the server drops, automatic reconnect with backoff, visible "reconnecting" state
+- [x] Connection resilience: clear status when the server drops, automatic reconnect with backoff, visible "reconnecting" state
 - [ ] Send: paste a `bitcoin:` (BIP21) URI to fill address, amount and label
 - [ ] Send: send max / sweep
 - [ ] Send: clearer fee choice on review

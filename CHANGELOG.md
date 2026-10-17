@@ -12,6 +12,7 @@ This is a lightweight project changelog, not a strict release ledger.
 - Multisig wallet infrastructure (BIP48 derivation, P2SH/P2SH-P2WSH/P2WSH)
 - Semantic versioning with build-time injection
 - Bitcoin Core backend: live new-block alerts (polled)
+- Automatic reconnect with backoff and a "Reconnecting in Ns" status when the server drops; Electrum subscriptions are replayed and missed blocks or payments are reported
 
 ### Changed
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`
