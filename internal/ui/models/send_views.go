@@ -96,7 +96,7 @@ func (m SendModel) viewAddressInput() string {
 		balanceBox = styles.InfoBoxStyle.Render(balanceInfo)
 	}
 
-	instruction := styles.NormalText.Render("Enter the recipient's Bitcoin address:")
+	instruction := styles.NormalText.Render("Enter the recipient's address or a bitcoin: payment URI:")
 
 	// Hint about import option
 	importHint := styles.DimText.Render("Or press 'i' to import an existing PSBT")
@@ -144,6 +144,21 @@ func (m SendModel) viewAmountInput() string {
 
 	instruction := styles.NormalText.Render(fmt.Sprintf("Enter amount in %s:", unitLabel))
 	toggleHint := styles.DimText.Render("(Press TAB to toggle BTC/satoshis)")
+	if req := m.pendingRequest; req != nil {
+		var lines []string
+		if req.Amount > 0 {
+			lines = append(lines, "Amount from payment request. Check it, then press enter.")
+		}
+		if req.Label != "" {
+			lines = append(lines, "Label: "+truncateRunes(req.Label, 60, "…"))
+		}
+		if req.Message != "" {
+			lines = append(lines, "Message: "+truncateRunes(req.Message, 60, "…"))
+		}
+		if len(lines) > 0 {
+			toggleHint += "\n" + styles.HighlightText.Render(strings.Join(lines, "\n"))
+		}
+	}
 
 	help := styles.RenderHelp(
 		styles.HK("enter", "continue"),
@@ -561,6 +576,9 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 			"  "+styles.DimText.Render(fmt.Sprintf("Output #%d (Recipient):", i+1))+" "+formattedRecipient,
 			renderRow("  Amount:", formatBTCWithSats(r.Amount)),
 		)
+		if r.Label != "" {
+			outputRows = append(outputRows, renderRow("  Label:", truncateRunes(r.Label, 40, "…")))
+		}
 		totalRecipientAmount += r.Amount
 
 		// Limit display to first 3 recipients to save space
@@ -585,7 +603,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 		// Add extra spaces to align "Change):" to match length of "Recipient):"
 		// "Recipient" = 9 chars, "Change" = 6 chars, difference = 3 spaces needed
 		outputRows = append(outputRows,
-			"  "+styles.DimText.Render("Output #2 (Change):   ")+" "+formattedChange,
+			"  "+styles.DimText.Render(fmt.Sprintf("Output #%d (Change):   ", len(m.recipients)+1))+" "+formattedChange,
 			renderRow("  Amount:", formatBTCWithSats(m.psbtResult.Change)),
 		)
 	}
@@ -597,9 +615,12 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	// === FEE & SIZE BREAKDOWN ===
 	// Calculate actual transaction size breakdown
 	numInputs := len(m.psbtResult.SelectedUTXOs)
-	numOutputs := 1 // recipient
+	numOutputs := len(m.recipients)
+	if numOutputs == 0 {
+		numOutputs = 1
+	}
 	if m.psbtResult.HasChange {
-		numOutputs = 2 // recipient + change
+		numOutputs++
 	}
 	txVSize := m.reviewTxVSize(numInputs, numOutputs)
 
@@ -612,7 +633,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	feeRows := []string{
 		styles.HighlightText.Render("Fee & Size Breakdown:"),
 		renderRow("Tx Size:", sizeSummary),
-		renderRow("Fee Rate:", fmt.Sprintf("%s sat/vB", formatFeeRate(m.getFeeRate()))),
+		renderRow("Fee Rate:", fmt.Sprintf("%s sat/vB · %s", formatFeeRate(m.getFeeRate()), m.feeChoiceSummary())),
 		renderRow("Network Fee:", formatBTCWithSats(displayFee)),
 		renderRow("Total Cost:", formatBTCWithSats(totalRecipientAmount+displayFee)),
 	}
@@ -652,7 +673,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	// Unified help - all wallet types go to Sign & Broadcast
 	help := styles.RenderHelp(
 		styles.HK("enter", "sign & broadcast"),
-		styles.HK("esc", "back"),
+		styles.HK("esc", "change fee"),
 	)
 
 	// Split into fixed header and scrollable content
@@ -847,4 +868,20 @@ func (m SendModel) renderScrollableViewport(header, content, footer string) stri
 	}
 
 	return header + indicator + "\n" + view + "\n" + footer
+}
+
+// feeChoiceSummary names the fee the user picked, so the review shows
+// the choice and not just a number: "Medium priority, ~30 min".
+func (m SendModel) feeChoiceSummary() string {
+	switch m.feeLevel {
+	case FeeLevelHigh:
+		return "High priority, next block"
+	case FeeLevelLow:
+		return "Low priority, ~1 hour"
+	case FeeLevelCustom:
+		if m.customFeeRate > 0 {
+			return "Custom rate"
+		}
+	}
+	return "Medium priority, ~30 min"
 }

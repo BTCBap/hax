@@ -31,6 +31,11 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		return true, nil
 
 	case "i", "I":
+		// 'i' is also a valid address/URI character, so it only opens
+		// the PSBT import when nothing has been typed yet.
+		if m.addressInput.Value() != "" {
+			return false, nil
+		}
 		// Import PSBT - open file browser
 		m.psbtFiles = discoverPSBTFiles()
 		m.fileBrowserCursor = 0
@@ -40,10 +45,14 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		return true, nil
 
 	case "enter":
-		addr := m.addressInput.Value()
+		addr := strings.TrimSpace(m.addressInput.Value())
 		if addr == "" {
 			m.err = fmt.Errorf("please enter a recipient address")
 			return true, nil
+		}
+
+		if wallet.IsBIP21(addr) {
+			return true, m.applyPaymentRequest(addr)
 		}
 
 		// Validate address
@@ -53,6 +62,7 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		}
 
 		m.recipientAddress = addr
+		m.pendingRequest = nil
 		m.err = nil
 		m.step = SendStepAmount
 		return true, m.amountInput.Focus()
@@ -62,6 +72,31 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		return true, Navigate(StateMainDashboard)
 	}
 	return false, nil // Not handled - let input handle it
+}
+
+// applyPaymentRequest fills the recipient from a BIP21 URI. The amount, if
+// any, is prefilled on the amount step for the user to confirm; it is
+// never sent without that step.
+func (m *SendModel) applyPaymentRequest(uri string) tea.Cmd {
+	req, err := wallet.ParseBIP21(uri, walletNetwork(m.walletManager))
+	if err != nil {
+		m.err = fmt.Errorf("payment request: %w", err)
+		return nil
+	}
+	m.recipientAddress = req.Address
+	m.pendingRequest = req
+	m.err = nil
+	m.amountInput.SetValue("")
+	if req.Amount > 0 {
+		if m.usesBTC {
+			m.amountInput.SetValue(formatBTCExact(req.Amount))
+		} else {
+			m.amountInput.SetValue(strconv.FormatInt(int64(req.Amount), 10))
+		}
+		m.amountInput.CursorEnd()
+	}
+	m.step = SendStepAmount
+	return m.amountInput.Focus()
 }
 
 // handleAmountInputSpecial handles special keys for amount input
@@ -121,7 +156,9 @@ func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		m.recipients = append(m.recipients, Recipient{
 			Address: m.recipientAddress,
 			Amount:  m.amountSats,
+			Label:   m.pendingRequestLabel(),
 		})
+		m.pendingRequest = nil
 
 		// Clear inputs for next recipient
 		m.addressInput.SetValue("")
@@ -170,7 +207,9 @@ func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 		m.recipients = append(m.recipients, Recipient{
 			Address: m.recipientAddress,
 			Amount:  0,
+			Label:   m.pendingRequestLabel(),
 		})
+		m.pendingRequest = nil
 
 		// Reset per-recipient input fields and skip UTXO selection for MAX spend.
 		// Inputs are locked to "all UTXOs" and still shown later in review.
@@ -811,6 +850,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				// Success - go to complete step and trigger lightweight refresh
 				m.txID = txID
+				m.labelFromRequest()
 				m.showPSBTExport = false
 				m.step = SendStepComplete
 				return m, m.postBroadcastRefreshCmd()
@@ -941,4 +981,16 @@ func (m *SendModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m SendModel) pendingRequestLabel() string {
+	if m.pendingRequest == nil {
+		return ""
+	}
+	return m.pendingRequest.Label
+}
+
+// formatBTCExact renders sats as a BTC decimal without float rounding.
+func formatBTCExact(sats api.Satoshi) string {
+	return fmt.Sprintf("%d.%08d", int64(sats)/100_000_000, int64(sats)%100_000_000)
 }
