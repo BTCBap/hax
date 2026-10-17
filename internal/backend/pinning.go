@@ -130,6 +130,17 @@ func verifyConnection(server string) func(tls.ConnectionState) error {
 	return func(cs tls.ConnectionState) error { return store.Check(server, cs) }
 }
 
+// electrumTLSConfig returns the client TLS settings for an Electrum server at
+// addr (host:port). The TLS 1.2 floor is set explicitly so it does not depend
+// on Go toolchain defaults or GODEBUG overrides such as tls10server=1.
+func electrumTLSConfig(host, addr string) *tls.Config {
+	return &tls.Config{
+		MinVersion:       tls.VersionTLS12,
+		ServerName:       host,
+		VerifyConnection: verifyConnection(addr),
+	}
+}
+
 // PinMismatchError describes a server whose TLS public key differs from the
 // pinned one. errors.Is(err, ErrCertPinMismatch) holds for it.
 type PinMismatchError struct {

@@ -157,10 +157,7 @@ func (b *ElectrumBackend) Connect() error {
 
 		// Wrap with TLS if using SSL
 		if b.config.Electrum.UseSSL {
-			tlsConn := tls.Client(conn, &tls.Config{
-				ServerName:       b.config.Electrum.Host,
-				VerifyConnection: verifyConnection(addr),
-			})
+			tlsConn := tls.Client(conn, electrumTLSConfig(b.config.Electrum.Host, addr))
 			if err := tlsConn.Handshake(); err != nil {
 				_ = conn.Close()
 				b.mu.Unlock()
@@ -171,11 +168,7 @@ func (b *ElectrumBackend) Connect() error {
 		}
 	} else if b.config.Electrum.UseSSL {
 		// Direct TLS connection
-		tlsConfig := &tls.Config{
-			ServerName:       b.config.Electrum.Host,
-			VerifyConnection: verifyConnection(addr),
-		}
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+		conn, err = tls.DialWithDialer(dialer, "tcp", addr, electrumTLSConfig(b.config.Electrum.Host, addr))
 		if err != nil {
 			b.mu.Unlock()
 			return fmt.Errorf("failed to connect with TLS: %w", err)

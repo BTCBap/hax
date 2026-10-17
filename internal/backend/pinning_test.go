@@ -132,3 +132,33 @@ func TestPinStore_TrustReplacesOnlyExpectedPin(t *testing.T) {
 		t.Fatal("PinMismatchError must match ErrCertPinMismatch")
 	}
 }
+
+func TestElectrumTLSConfig_TLS12Floor(t *testing.T) {
+	cfg := electrumTLSConfig("example.com", "example.com:50002")
+	if cfg.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("MinVersion = %#x, want TLS 1.2", cfg.MinVersion)
+	}
+	if cfg.ServerName != "example.com" {
+		t.Fatalf("ServerName = %q", cfg.ServerName)
+	}
+
+	// A server that tops out at TLS 1.1 must be refused.
+	srv := newServer(t)
+	srv.Close()
+	legacy := httptest.NewUnstartedServer(http.NotFoundHandler())
+	legacy.TLS = srv.TLS.Clone()
+	legacy.TLS.MinVersion = tls.VersionTLS10
+	legacy.TLS.MaxVersion = tls.VersionTLS11
+	legacy.StartTLS()
+	t.Cleanup(legacy.Close)
+
+	pool := x509.NewCertPool()
+	cert, _ := x509.ParseCertificate(legacy.TLS.Certificates[0].Certificate[0])
+	pool.AddCert(cert)
+	cfg.RootCAs = pool
+	c, err := tls.Dial("tcp", legacy.Listener.Addr().String(), cfg)
+	if err == nil {
+		_ = c.Close()
+		t.Fatal("handshake succeeded with a TLS 1.1-only server")
+	}
+}
