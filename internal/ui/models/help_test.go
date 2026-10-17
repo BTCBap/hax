@@ -227,6 +227,7 @@ func TestHelpMatchesAddressesAndUTXOsFooters(t *testing.T) {
 	assertFooterAndHelpShortcut(t, addressesView, helpContent, "PgUp/PgDn", "Scroll faster")
 	assertFooterAndHelpShortcut(t, addressesView, helpContent, "tab", "Toggle receive / change")
 	assertFooterAndHelpShortcut(t, addressesView, helpContent, "c", "Copy address")
+	assertFooterAndHelpShortcut(t, addressesView, helpContent, "e", "Edit address label")
 
 	utxos := NewUTXOsModel(mock, nil)
 	utxos.width = 100

@@ -1,5 +1,10 @@
 package models
 
+import (
+	"strings"
+	"unicode"
+)
+
 // truncateRunes shortens s to at most max runes, replacing the tail with
 // ellipsis when it has to cut. It never splits a multi-byte character, so
 // labels and error text from users or remote servers render cleanly.
@@ -28,4 +33,16 @@ func prefixRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+// sanitizeLine drops control characters (newlines, terminal escapes) so
+// imported or user-entered text renders on one line and can't restyle
+// the terminal.
+func sanitizeLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

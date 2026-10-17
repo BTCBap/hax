@@ -307,7 +307,7 @@ func (m *UTXOsModel) sortAndUpdateTable() {
 		outpoint := fmt.Sprintf("%s..:%d", prefixRunes(utxo.TxID, 8), utxo.Vout)
 
 		// Label (from transaction labels)
-		label := m.walletManager.GetTransactionLabel(utxo.TxID)
+		label := sanitizeLine(m.walletManager.GetTransactionLabel(utxo.TxID))
 		label = truncateRunes(label, 15, "…")
 		if label == "" {
 			label = "-"

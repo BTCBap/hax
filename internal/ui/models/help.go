@@ -280,6 +280,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("PgUp/PgDn", "Scroll faster"))
 	lines = append(lines, m.shortcut("tab", "Toggle receive / change"))
 	lines = append(lines, m.shortcut("c", "Copy address"))
+	lines = append(lines, m.shortcut("e", "Edit address label"))
 	lines = append(lines, m.shortcut("r", "Refresh"))
 
 	// UTXOs

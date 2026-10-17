@@ -656,9 +656,13 @@ func (m *TransactionHistoryModel) updateTableData() {
 	// Get accounts to determine our addresses
 	accounts := m.walletManager.GetAccounts()
 	ourAddresses := make(map[string]bool)
+	addrLabels := make(map[string]string)
 	if len(accounts) > 0 {
 		for _, addr := range accounts[0].Addresses {
 			ourAddresses[addr.Address] = true
+		}
+		for a, l := range accounts[0].Labels {
+			addrLabels[a] = strings.ToLower(l)
 		}
 	}
 
@@ -708,7 +712,8 @@ func (m *TransactionHistoryModel) updateTableData() {
 				!strings.Contains(statusStr, searchLower) &&
 				!strings.Contains(timestampStr, searchLower) &&
 				!strings.Contains(typeStr, searchLower) &&
-				!strings.Contains(labelStr, searchLower) {
+				!strings.Contains(labelStr, searchLower) &&
+				!txTouchesAddressMatch(tx, searchLower, addrLabels) {
 				continue // Skip transactions that don't match search
 			}
 		}
@@ -792,7 +797,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		}
 
 		// Get label for this transaction
-		label := m.walletManager.GetTransactionLabel(tx.TxID)
+		label := sanitizeLine(m.walletManager.GetTransactionLabel(tx.TxID))
 		if label == "" {
 			label = "-" // Show dash if no label
 		} else {
@@ -1391,4 +1396,32 @@ func (m TransactionHistoryModel) effectiveColumnWidths() [6]int {
 		}
 	}
 	return w
+}
+
+// txTouchesAddressMatch reports whether any input or output address of tx,
+// or the label of one of our addresses it touches, contains query
+// (already lower-cased). Lets the history search find payments by address
+// or by address label.
+func txTouchesAddressMatch(tx api.Transaction, query string, addrLabels map[string]string) bool {
+	check := func(addr string) bool {
+		if addr == "" {
+			return false
+		}
+		if strings.Contains(strings.ToLower(addr), query) {
+			return true
+		}
+		l, ok := addrLabels[addr]
+		return ok && strings.Contains(l, query)
+	}
+	for _, out := range tx.Vout {
+		if check(out.ScriptpubkeyAddress) {
+			return true
+		}
+	}
+	for _, in := range tx.Vin {
+		if in.Prevout != nil && check(in.Prevout.ScriptpubkeyAddress) {
+			return true
+		}
+	}
+	return false
 }
