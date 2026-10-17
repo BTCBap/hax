@@ -2,10 +2,6 @@
 
 ## Next
 
-- [ ] Send flow: step breadcrumb bar
-- [ ] Wallet setup: seed backup check (re-enter a few words) and password strength meter
-- [ ] Dashboard: "last synced" age
-- [ ] Layout pass at 80×24
 - [ ] Split `send.go`, `wallet_setup.go`, and `settings.go` into smaller files
 
 ## Validation

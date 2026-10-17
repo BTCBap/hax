@@ -63,6 +63,12 @@ const (
 
 // WalletSetupModel handles wallet creation or restoration
 type WalletSetupModel struct {
+	// Seed backup check after creating a wallet (see wallet_setup_backup.go)
+	backupWords       []int // 0-based word positions to ask for, ascending
+	backupPos         int   // index into backupWords of the word being asked
+	backupInput       textinput.Model
+	backupSkipConfirm bool // "skip the check?" prompt is open
+
 	width        int
 	height       int
 	scrollOffset int // For scrollable views
@@ -413,6 +419,10 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmMainnet = false
 				return m, nil
 			}
+			if m.step == StepConfirmMnemonic && m.backupSkipConfirm {
+				m.backupSkipConfirm = false
+				return m, nil
+			}
 			// Clear errors when navigating back
 			m.hwiError = nil
 			m.err = nil
@@ -498,31 +508,16 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StepChooseNetwork:
 			return m.handleChooseNetwork(msg)
 
+		case StepConfirmMnemonic:
+			return m.handleConfirmMnemonic(msg)
+
 		case StepShowMnemonic:
 			switch msg.String() {
 			case "enter":
-				// Wallet creation complete! Navigate to dashboard
-				// First, unlock the wallet we just created
-				err := m.walletManager.UnlockWallet(m.walletName, m.password)
-				if err != nil {
-					m.err = err
-					return m, tea.Batch(cmds...)
-				}
-
-				// Create default account with selected script type
-				_, err = m.walletManager.CreateAccount("Main Account", m.selectedScriptType, m.customDerivationPath)
-				if err != nil {
-					m.err = err
-					return m, tea.Batch(cmds...)
-				}
-
-				// Save this wallet as last used (for auto-login)
-				m.saveLastWalletName(m.walletName)
-
-				// Navigate to dashboard
-				return m, func() tea.Msg {
-					return NavigateMsg{Target: StateMainDashboard}
-				}
+				// Ask for a few words back before opening the wallet.
+				m.startBackupCheck()
+				m.step = StepConfirmMnemonic
+				return m, textinput.Blink
 			case "up", "k":
 				m.scrollOffset -= 3
 				if m.scrollOffset < 0 {
@@ -1122,6 +1117,8 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 		return StepEnterPassphrase
 	case StepShowMnemonic:
 		return StepChooseWordCount
+	case StepConfirmMnemonic:
+		return StepShowMnemonic
 
 	// Single-sig hardware wallet flow
 	case StepHWISetup:
@@ -1198,7 +1195,7 @@ func (m WalletSetupModel) getStepProgress() float64 {
 		return 0.78
 	case StepChooseWordCount:
 		return 0.80
-	case StepShowMnemonic:
+	case StepShowMnemonic, StepConfirmMnemonic:
 		return 1.0
 
 	// Restore wallet flow from seed
@@ -1267,7 +1264,7 @@ func (m WalletSetupModel) renderProgressBar() string {
 		stepNum, totalSteps = 4, 5
 	case StepChooseWordCount:
 		stepNum, totalSteps = 4, 5
-	case StepShowMnemonic:
+	case StepShowMnemonic, StepConfirmMnemonic:
 		stepNum, totalSteps = 5, 5
 
 	// Restore wallet flow from seed
@@ -1345,6 +1342,8 @@ func (m WalletSetupModel) View() string {
 		content.WriteString(m.viewChooseNetwork())
 	case StepShowMnemonic:
 		content.WriteString(m.viewShowMnemonic())
+	case StepConfirmMnemonic:
+		content.WriteString(m.viewConfirmMnemonic())
 
 	// Multisig flow views
 	case StepMultisigChooseType:
@@ -1505,6 +1504,7 @@ func (m WalletSetupModel) viewEnterPassword() string {
 	content += warning + "\n" +
 		instruction + "\n" +
 		m.passwordInput.View() + "\n" +
+		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

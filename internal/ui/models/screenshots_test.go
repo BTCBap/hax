@@ -3,7 +3,7 @@
 package models
 
 // Renders key screens with true-color ANSI into $HAX_SCREENSHOT_DIR using mock
-// wallet data (no network, no real keys). Consumed by docs/images/screens.tape.
+// wallet data (no network, no real keys). Consumed by docs/images/render-screens.sh.
 //
 //   HAX_SCREENSHOT_DIR=/tmp/hax-screens go test ./internal/ui/models -tags screenshots -run TestScreenshots
 
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -105,6 +106,7 @@ func TestScreenshots(t *testing.T) {
 		Status:       wallet.SyncStatusSynced,
 		Balance:      balance,
 		BlockHeight:  98_412,
+		LastSyncAt:   time.Now().Add(-20 * time.Second),
 		Transactions: demoTxs,
 		UTXOs:        demoUTXOs,
 		FeeEstimates: fees,

@@ -12,7 +12,7 @@ Thanks for your interest. hax is a Bitcoin wallet, so correctness and safety com
 
 ## Development setup
 
-Requirements: Go (version in `go.mod`), `make`, and a Unicode terminal. Optional tools: `golangci-lint` v2, `govulncheck`, `goreleaser`, `vhs`.
+Requirements: Go (version in `go.mod`), `make`, and a Unicode terminal. Optional tools: `golangci-lint` v2, `govulncheck`, `goreleaser`; for screenshots `freeze`, `google-chrome`, and `ffmpeg`.
 
 ```bash
 make build                  # ./hax
@@ -36,8 +36,7 @@ HOME=$(mktemp -d) ./hax
 - UI golden snapshots: `go test ./internal/ui/models -tags golden -run TestGolden [-update]`.
 - README screenshots are generated, not hand-edited:
   ```bash
-  HAX_SCREENSHOT_DIR=/tmp/hax-screens go test ./internal/ui/models -tags screenshots -run TestScreenshots
-  vhs docs/images/screens.tape
+  docs/images/render-screens.sh   # PNGs and hax-tour.gif
   ```
 
 CI runs vet, race tests with coverage, golangci-lint (new issues only), govulncheck, and a GoReleaser snapshot build on Linux, macOS, and Windows. A PR must be green before merge.

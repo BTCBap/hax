@@ -150,6 +150,7 @@ func (m WalletSetupModel) viewRestoreEnterPassword() string {
 		warning + "\n" +
 		instruction + "\n" +
 		m.passwordInput.View() + "\n" +
+		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

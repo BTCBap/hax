@@ -2667,8 +2667,8 @@ func TestSend_View_AddressStep(t *testing.T) {
 	if !strings.Contains(view, "Send Bitcoin") {
 		t.Error("expected 'Send Bitcoin' in address view")
 	}
-	if !strings.Contains(view, "Step 1/7") {
-		t.Error("expected 'Step 1/7' in address view")
+	if !strings.Contains(view, "Enter recipient address") {
+		t.Error("expected 'Enter recipient address' in address view")
 	}
 	if !strings.Contains(view, "recipient") {
 		t.Error("expected 'recipient' in address view")
@@ -2695,8 +2695,8 @@ func TestSend_View_AmountStep(t *testing.T) {
 
 	view := m.View()
 
-	if !strings.Contains(view, "Step 2/7") {
-		t.Error("expected 'Step 2/7' in amount view")
+	if !strings.Contains(view, "Enter amount") {
+		t.Error("expected 'Enter amount' in amount view")
 	}
 	if !strings.Contains(view, "BTC") {
 		t.Error("expected 'BTC' in amount view")
@@ -2711,8 +2711,8 @@ func TestSend_View_RecipientListStep(t *testing.T) {
 
 	view := m.View()
 
-	if !strings.Contains(view, "Step 3/7") {
-		t.Error("expected 'Step 3/7' in recipient list view")
+	if !strings.Contains(view, "Review Recipients") {
+		t.Error("expected 'Review Recipients' in recipient list view")
 	}
 	if !strings.Contains(view, "Recipients") {
 		t.Error("expected 'Recipients' in view")
@@ -2730,8 +2730,8 @@ func TestSend_View_UTXOSelectionStep(t *testing.T) {
 
 	view := m.View()
 
-	if !strings.Contains(view, "Step 4/7") {
-		t.Error("expected 'Step 4/7' in UTXO selection view")
+	if !strings.Contains(view, "Select UTXOs") {
+		t.Error("expected 'Select UTXOs' in UTXO selection view")
 	}
 	if !strings.Contains(view, "UTXO") {
 		t.Error("expected 'UTXO' in view")

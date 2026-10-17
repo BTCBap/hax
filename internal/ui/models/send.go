@@ -2483,7 +2483,7 @@ func (m SendModel) View() string {
 
 func (m SendModel) viewAddressInput() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 1/7: Enter recipient address")
+	subtitle := m.stepHeader(1, "Enter recipient address")
 
 	// Format balance with pastel orange (matching dashboard style)
 	var balanceBox string
@@ -2520,7 +2520,7 @@ func (m SendModel) viewAddressInput() string {
 
 func (m SendModel) viewAmountInput() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 2/7: Enter amount")
+	subtitle := m.stepHeader(2, "Enter amount")
 
 	// Format address with pastel colors (first/last 6 chars highlighted)
 	formattedAddr := ui.FormatBitcoinAddressColored(m.recipientAddress, 6, 6)
@@ -2564,7 +2564,7 @@ func (m SendModel) viewAmountInput() string {
 
 func (m SendModel) viewRecipientList() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 3/7: Review Recipients")
+	subtitle := m.stepHeader(3, "Review Recipients")
 
 	// Calculate totals
 	var totalAmount api.Satoshi
@@ -2617,7 +2617,7 @@ func (m SendModel) viewRecipientList() string {
 
 func (m SendModel) viewUTXOSelection() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 4/7: Select UTXOs")
+	subtitle := m.stepHeader(4, "Select UTXOs")
 
 	// Calculate total amount for all recipients
 	var totalSending api.Satoshi
@@ -2712,7 +2712,7 @@ func (m SendModel) viewUTXOSelection() string {
 
 func (m SendModel) viewFeeSelection() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 5/7: Choose fee priority")
+	subtitle := m.stepHeader(5, "Choose fee priority")
 
 	feeOptions := []struct {
 		name         string
@@ -2880,7 +2880,7 @@ func (m SendModel) buildReviewWarnings(totalRecipientAmount, displayFee api.Sato
 
 func (m SendModel) buildReviewScrollable() (string, string, string) {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
-	subtitle := styles.SubtitleStyle.Render("Step 6/7: Review transaction")
+	subtitle := m.stepHeader(6, "Review transaction")
 
 	// Responsive box width for all review sections
 	boxWidth := m.width - 4
@@ -3192,7 +3192,7 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 	// Guard against nil wallet manager in tests or incomplete state.
 	if m.walletManager == nil {
 		header := styles.TitleStyle.Render("🔐 Sign & Broadcast")
-		subtitle := styles.SubtitleStyle.Render("Step 7/7: Sign to complete transaction")
+		subtitle := m.stepHeader(7, "Sign to complete transaction")
 		help := styles.RenderHelp(styles.HK("esc", "back"))
 		return header + "\n" + subtitle, styles.DimText.Render("Loading..."), help
 	}
@@ -3212,19 +3212,19 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 	var statusStyle lipgloss.Style
 
 	if m.psbtSigsAdded >= m.psbtSigsTotal {
-		subtitleText = "Step 7/7: Ready to broadcast"
+		subtitleText = "Ready to broadcast"
 		statusText = fmt.Sprintf("✓ %d of %d signatures", m.psbtSigsAdded, m.psbtSigsTotal)
 		statusStyle = styles.SignatureCompleteStyle
 	} else if m.psbtSigsAdded > 0 {
-		subtitleText = "Step 7/7: Partially signed - need more signatures"
+		subtitleText = "Partially signed - need more signatures"
 		statusText = fmt.Sprintf("%d of %d signatures (need %d more)", m.psbtSigsAdded, m.psbtSigsTotal, m.psbtSigsTotal-m.psbtSigsAdded)
 		statusStyle = styles.SignaturePartialStyle
 	} else {
-		subtitleText = "Step 7/7: Sign to complete transaction"
+		subtitleText = "Sign to complete transaction"
 		statusText = fmt.Sprintf("0 of %d signatures", m.psbtSigsTotal)
 		statusStyle = styles.DimText
 	}
-	subtitle := styles.SubtitleStyle.Render(subtitleText)
+	subtitle := m.stepHeader(7, subtitleText)
 
 	// Responsive box width for PSBT display
 	psbtBoxWidth := m.width - 4
