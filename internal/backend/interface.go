@@ -1,6 +1,10 @@
 package backend
 
-import "github.com/BTCBap/hax/internal/api"
+import (
+	"github.com/BTCBap/hax/internal/api"
+
+	"github.com/btcsuite/btcd/wire"
+)
 
 // BackendType identifies the backend implementation
 type BackendType string
@@ -28,6 +32,10 @@ type BitcoinBackend interface {
 
 	// Transaction operations
 	GetTransaction(txid string) (*api.Transaction, error)
+	// GetRawTransaction returns the full transaction. blockHeight is a
+	// hint for nodes without -txindex (0 if unknown or unconfirmed).
+	// The returned transaction's hash is checked against txid.
+	GetRawTransaction(txid string, blockHeight int64) (*wire.MsgTx, error)
 	BroadcastTransaction(rawTxHex string) (string, error)
 
 	// Network operations

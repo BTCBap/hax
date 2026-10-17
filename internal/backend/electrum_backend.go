@@ -1176,6 +1176,25 @@ func (b *ElectrumBackend) GetTransaction(txid string) (*api.Transaction, error) 
 	return tx, nil
 }
 
+// GetRawTransaction fetches and decodes a full transaction. The height
+// hint is unused: Electrum servers index every transaction.
+func (b *ElectrumBackend) GetRawTransaction(txid string, _ int64) (*wire.MsgTx, error) {
+	if !b.IsConnected() {
+		if err := b.Connect(); err != nil {
+			return nil, err
+		}
+	}
+	result, err := b.request("blockchain.transaction.get", []interface{}{txid})
+	if err != nil {
+		return nil, err
+	}
+	var rawHex string
+	if err := json.Unmarshal(result, &rawHex); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction hex: %w", err)
+	}
+	return decodeRawTx(txid, rawHex)
+}
+
 // GetTransactionWithFee retrieves transaction details including fee calculation
 // This fetches input values from previous transactions to calculate the fee
 func (b *ElectrumBackend) GetTransactionWithFee(txid string) (*api.Transaction, error) {
