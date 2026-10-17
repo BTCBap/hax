@@ -761,6 +761,44 @@ func (b *RPCBackend) GetAddressUTXOs(address string) ([]api.UTXO, error) {
 	return utxos, nil
 }
 
+// MempoolEntryFee returns the fee of a mempool transaction. Core knows it
+// even when it can't look up the transaction's inputs (no -txindex).
+func (b *RPCBackend) MempoolEntryFee(txid string) (api.Satoshi, error) {
+	if !b.IsConnected() {
+		if err := b.Connect(); err != nil {
+			return 0, err
+		}
+	}
+	result, err := b.callRPC("getmempoolentry", []interface{}{txid})
+	if err != nil {
+		return 0, fmt.Errorf("getmempoolentry failed: %w", err)
+	}
+	var entry struct {
+		Fees struct {
+			Base float64 `json:"base"`
+		} `json:"fees"`
+	}
+	if err := json.Unmarshal(result, &entry); err != nil {
+		return 0, fmt.Errorf("failed to parse mempool entry: %w", err)
+	}
+	return btcToSatoshi(entry.Fees.Base), nil
+}
+
+// IsUnspent reports whether an output is unspent, counting the mempool
+// both for spends and for unconfirmed outputs.
+func (b *RPCBackend) IsUnspent(txid string, vout uint32) (bool, error) {
+	if !b.IsConnected() {
+		if err := b.Connect(); err != nil {
+			return false, err
+		}
+	}
+	result, err := b.callRPC("gettxout", []interface{}{txid, vout, true})
+	if err != nil {
+		return false, fmt.Errorf("gettxout failed: %w", err)
+	}
+	return string(result) != "null" && len(result) > 0, nil
+}
+
 // GetAddressBalance returns the balance for an address in satoshis
 func (b *RPCBackend) GetAddressBalance(address string) (api.Satoshi, error) {
 	if !b.IsConnected() {
