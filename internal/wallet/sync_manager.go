@@ -328,13 +328,17 @@ func (m *WalletManager) StartBackgroundSync() {
 		// and we hold the lock. The old goroutine will exit on channel close.
 	}
 
-	m.syncStopChan = make(chan struct{})
+	stop := make(chan struct{})
+	m.syncStopChan = stop
 
-	// Start sync goroutine with WaitGroup tracking
+	// Start sync goroutine with WaitGroup tracking. The goroutine gets its
+	// own copy of the stop channel: StopBackgroundSync nils the field, and
+	// a nil channel would block the select forever (hanging Lock/Stop
+	// when it arrives during the initial sync).
 	m.syncWg.Add(1)
 	go func() {
 		defer m.syncWg.Done()
-		m.backgroundSync()
+		m.backgroundSync(stop)
 	}()
 }
 
@@ -355,7 +359,7 @@ func (m *WalletManager) StopBackgroundSync() {
 // Note: Electrum notification channels (scripthash, headers) are handled by the UI layer
 // in root.go via StartListeningWithSubscriptions/ContinueListening, which shows toast
 // notifications and triggers RefreshCache. This avoids channel read conflicts.
-func (m *WalletManager) backgroundSync() {
+func (m *WalletManager) backgroundSync(stop <-chan struct{}) {
 	// Set status to connecting before initial sync
 	m.state.SetStatus(SyncStatusConnecting, "Connecting to server...")
 
@@ -369,7 +373,7 @@ func (m *WalletManager) backgroundSync() {
 
 	for {
 		select {
-		case <-m.syncStopChan:
+		case <-stop:
 			return
 		case <-ticker.C:
 			if m.unlocked {
@@ -451,14 +455,27 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 		}
 	}
 
+	// Setup creates the first account right after the wallet is opened;
+	// until then there is nothing to fetch.
+	m.dataMu.RLock()
+	hasAccount := m.data != nil && len(m.data.Accounts) > 0
+	m.dataMu.RUnlock()
+	if !hasAccount {
+		m.state.MarkSynced(m.cache.GetBlockHeight())
+		return
+	}
+
 	// Fetch UTXOs first (needed for accurate balance)
 	setStatus("Fetching UTXOs...")
 	utxos, err := m.fetchUTXOsFromNetwork(0)
-	if err == nil {
-		m.cache.SetUTXOs(utxos)
-		// Update unified state
-		m.state.UpdateUTXOs(utxos)
+	if err != nil {
+		// Keep the last good balance and history; report the failure
+		// instead of showing a zero balance as "synced".
+		m.state.SetError(err)
+		return
 	}
+	m.cache.SetUTXOs(utxos)
+	m.state.UpdateUTXOs(utxos)
 
 	// Calculate balance from UTXOs (more accurate than separate fetch)
 	setStatus("Calculating balance...")
@@ -472,11 +489,12 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 	// Fetch transactions
 	setStatus("Fetching transactions...")
 	txs, err := m.GetTransactions(0)
-	if err == nil {
-		m.cache.SetTransactions(txs)
-		// Update unified state
-		m.state.UpdateTransactions(txs)
+	if err != nil {
+		m.state.SetError(err)
+		return
 	}
+	m.cache.SetTransactions(txs)
+	m.state.UpdateTransactions(txs)
 
 	// Fetch fee estimates
 	if !opts.SkipFeeEstimates {
@@ -898,10 +916,10 @@ func (m *WalletManager) GetTransactions(accountIndex uint32) ([]api.Transaction,
 		}
 	}
 
-	// Return partial results even if some addresses failed
-	// Only return error if ALL addresses failed
-	if len(errs) > 0 && len(allTxs) == 0 {
-		return nil, fmt.Errorf("all transaction fetches failed: %v", errs[0])
+	// A partial list would make history silently shrink, so any failure
+	// fails the fetch and callers keep what they already have.
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("fetching transactions failed for %d of %d addresses: %w", len(errs), len(addresses), errs[0])
 	}
 
 	return allTxs, nil
@@ -966,7 +984,11 @@ func (m *WalletManager) fetchUTXOsFromNetwork(accountIndex uint32) ([]api.UTXO, 
 	// Bounded parallel fetch - limit concurrent requests
 	const maxConcurrent = 10
 	semaphore := make(chan struct{}, maxConcurrent)
-	results := make(chan []api.UTXO, len(addresses))
+	type utxoResult struct {
+		utxos []api.UTXO
+		err   error
+	}
+	results := make(chan utxoResult, len(addresses))
 
 	var wg sync.WaitGroup
 	for _, addr := range addresses {
@@ -977,11 +999,7 @@ func (m *WalletManager) fetchUTXOsFromNetwork(accountIndex uint32) ([]api.UTXO, 
 			defer func() { <-semaphore }() // release
 
 			utxos, err := m.backend.GetAddressUTXOs(address)
-			if err != nil {
-				results <- nil
-				return
-			}
-			results <- utxos
+			results <- utxoResult{utxos: utxos, err: err}
 		}(addr)
 	}
 
@@ -992,9 +1010,23 @@ func (m *WalletManager) fetchUTXOsFromNetwork(accountIndex uint32) ([]api.UTXO, 
 	}()
 
 	// Collect results
+	// A partial UTXO set means a wrong balance, so any failed address
+	// fails the whole fetch and the previous data is kept.
 	allUTXOs := make([]api.UTXO, 0, len(addresses))
-	for utxos := range results {
-		allUTXOs = append(allUTXOs, utxos...)
+	var firstErr error
+	failed := 0
+	for r := range results {
+		if r.err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			continue
+		}
+		allUTXOs = append(allUTXOs, r.utxos...)
+	}
+	if firstErr != nil {
+		return nil, fmt.Errorf("fetching UTXOs failed for %d of %d addresses: %w", failed, len(addresses), firstErr)
 	}
 
 	// Update cache
