@@ -3,7 +3,7 @@
 package models
 
 // Renders key screens with true-color ANSI into $HAX_SCREENSHOT_DIR using mock
-// wallet data (no network, no real keys). Consumed by docs/images/screens.tape.
+// wallet data (no network, no real keys). Consumed by docs/images/render-screens.sh.
 //
 //   HAX_SCREENSHOT_DIR=/tmp/hax-screens go test ./internal/ui/models -tags screenshots -run TestScreenshots
 
