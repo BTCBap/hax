@@ -12,6 +12,7 @@ import (
 	"github.com/BTCBap/hax/internal/wallet"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -1091,6 +1092,9 @@ func (m TransactionHistoryModel) View() string {
 	if searchBadge != "" {
 		metaParts = append(metaParts, searchBadge)
 	}
+	if notice := m.historyNotice(); notice != "" {
+		metaParts = append(metaParts, notice)
+	}
 	metaLine := ""
 	if len(metaParts) > 0 {
 		metaLine = "\n" + strings.Join(metaParts, " ")
@@ -1148,6 +1152,20 @@ func (m TransactionHistoryModel) View() string {
 
 	help := m.renderAnimatedHelp()
 	return content + "\n" + help
+}
+
+// historyNotice warns when the backend cannot see spent coins, so the
+// list is missing transactions whose outputs are all spent.
+func (m TransactionHistoryModel) historyNotice() string {
+	if m.walletManager == nil {
+		return ""
+	}
+	hl, ok := m.walletManager.GetBackend().(backend.HistoryLimiter)
+	if !ok || !hl.HistoryLimited() {
+		return ""
+	}
+	return styles.WarningText.Render(
+		"⚠ Partial history: run Core with -blockfilterindex=1")
 }
 
 // totalPagesForView computes total pages for header display.

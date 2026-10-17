@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -384,5 +385,29 @@ func TestHistory_HeaderLine_ShowsTitlePageAndCopied(t *testing.T) {
 	}
 	if !strings.Contains(headerLine, "Page 1/") || !strings.Contains(headerLine, "Page 1/3 ✓ COPIED!") {
 		t.Fatalf("expected copied status directly after page badge, got %q", headerLine)
+	}
+}
+
+// limitedBackend is a backend whose history misses spent coins.
+type limitedBackend struct {
+	backend.BitcoinBackend
+	limited bool
+}
+
+func (b limitedBackend) HistoryLimited() bool { return b.limited }
+
+func TestHistory_WarnsWhenHistoryLimited(t *testing.T) {
+	for _, limited := range []bool{true, false} {
+		m, mock := newTestHistory(t)
+		mock.GetBackendFn = func() backend.BitcoinBackend {
+			return limitedBackend{limited: limited}
+		}
+		model, _ := m.Update(TransactionsMsg{
+			Transactions: sampleTransactions(), BlockHeight: 150})
+		view := model.(TransactionHistoryModel).View()
+		got := strings.Contains(view, "-blockfilterindex=1")
+		if got != limited {
+			t.Errorf("limited=%v: notice shown = %v", limited, got)
+		}
 	}
 }
