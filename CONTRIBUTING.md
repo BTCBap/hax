@@ -57,4 +57,4 @@ A PR description should say what changed, why, how you verified it, and what is 
 
 ## Releases
 
-Maintainers tag `vX.Y.Z` on `main`. The release workflow builds reproducible archives, signs `checksums.txt` keyless with cosign, attests build provenance, and opens a **draft** release for manual review before it's published.
+Maintainers tag `vX.Y.Z` on `main`. The release workflow builds reproducible archives, signs `checksums.txt` keyless with cosign, attests build provenance, and opens a **draft** release for manual review before it's published. Before publishing, verify the draft's assets with [release-verification.md](docs/release-verification.md). Version bumps (`CHANGELOG.md`, `internal/version`, `Makefile`) land through a PR before the tag.

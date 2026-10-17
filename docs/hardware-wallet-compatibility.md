@@ -1,23 +1,23 @@
 # Hardware Wallet And Multisig Compatibility
 
-This document is the public beta validation matrix for `hax`.
+This document is the hardware wallet and multisig validation matrix for `hax`.
 
 It is intentionally conservative. A workflow should not be described as compatible until it has been exercised and recorded here.
 
 ## Status Legend
 
 - `Implemented`: the code path exists in `hax`
-- `Validated`: exercised end-to-end and considered working for beta
+- `Validated`: exercised end-to-end and considered working
 - `Partial`: works with caveats
 - `Not validated`: code exists but the workflow has not been signed off yet
 - `Unsupported`: not currently expected to work
 
-## Current Beta Position
+## Current Position
 
 - HWI integration exists in the app
 - PSBT import and export flows exist
 - Multisig descriptor export exists
-- Broad device-by-device beta validation is still outstanding
+- Broad device-by-device validation is still outstanding
 - Mainnet claims should not be made from this document
 
 ## Single-Sig Hardware Wallet Matrix
@@ -29,7 +29,7 @@ It is intentionally conservative. A workflow should not be described as compatib
 | Display receive address on device | Implemented | Not validated | Path policy differs across vendors |
 | Export PSBT for device signing | Implemented | Not validated | Base64, file, and QR paths exist in app |
 | Import signed PSBT back into `hax` | Implemented | Not validated | Needs round-trip validation with real devices |
-| Finalize and broadcast after device signing | Implemented | Not validated | Needs end-to-end beta test |
+| Finalize and broadcast after device signing | Implemented | Not validated | Needs an end-to-end real-device test |
 
 ## Multisig Matrix
 
@@ -162,6 +162,6 @@ When recording a device result, capture:
 
 ## Related Docs
 
-- [public-beta-checklist.md](public-beta-checklist.md)
+- [smoke-test.md](smoke-test.md)
 - [recovery-drill.md](recovery-drill.md)
 - [references.md](references.md)

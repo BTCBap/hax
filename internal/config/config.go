@@ -287,15 +287,6 @@ func (cm *ConfigManager) ConfigPath() string {
 	return cm.configPath
 }
 
-// DefaultConfig returns a default configuration with Electrum backend
-func DefaultConfig() *AppConfig {
-	return &AppConfig{
-		Version:          1,
-		FirstRunComplete: false,
-		Backend:          backend.DefaultElectrumConfig("testnet"),
-	}
-}
-
 // RawConfigJSON returns the raw JSON content of the config file for display
 func (cm *ConfigManager) RawConfigJSON() (string, error) {
 	data, err := os.ReadFile(cm.configPath)

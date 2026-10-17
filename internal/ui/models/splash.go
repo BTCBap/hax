@@ -127,9 +127,6 @@ func (m SplashModel) View() string {
 		Foreground(titleColor).
 		Render("BITCOIN WALLET")
 
-	subtitle := styles.SubtitleStyle.
-		Render("Testnet Wallet")
-
 	versionStr := styles.DimText.Render(version.String())
 
 	// Loading indicator
@@ -158,10 +155,6 @@ func (m SplashModel) View() string {
 
 	// Title
 	content.WriteString(styles.CenterHorizontal(title, width))
-	content.WriteString("\n")
-
-	// Subtitle
-	content.WriteString(styles.CenterHorizontal(subtitle, width))
 	content.WriteString("\n\n")
 
 	// Version

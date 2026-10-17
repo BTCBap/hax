@@ -10,7 +10,6 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire"
 )
 
 const bnbMaxTries = 100_000
@@ -352,14 +351,4 @@ func ValidateBitcoinAddress(address string, testnet bool) error {
 		return fmt.Errorf("invalid Bitcoin address: not a %s address", network.Name)
 	}
 	return nil
-}
-
-// GetTransactionID returns the transaction ID
-func GetTransactionID(tx *wire.MsgTx) string {
-	return tx.TxHash().String()
-}
-
-// CalculateTransactionSize returns the virtual size of a transaction
-func CalculateTransactionSize(tx *wire.MsgTx) int {
-	return tx.SerializeSize()
 }

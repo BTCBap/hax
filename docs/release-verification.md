@@ -29,6 +29,12 @@ sha256sum --ignore-missing -c checksums.txt   # Linux
 shasum -a 256 -c checksums.txt                # macOS (ignore "No such file" lines)
 ```
 
+Then check the binary reports the release you expect:
+
+```bash
+./hax --version   # hax vX.Y.Z (commit <sha>, built <date>)
+```
+
 ## 3. Verify build provenance (optional)
 
 ```bash

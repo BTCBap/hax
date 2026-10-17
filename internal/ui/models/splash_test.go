@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/BTCBap/hax/internal/version"
 )
 
 func TestNewSplashModel(t *testing.T) {
@@ -98,8 +100,11 @@ func TestSplashView_ContainsExpectedText(t *testing.T) {
 	if !strings.Contains(view, "BITCOIN WALLET") {
 		t.Error("splash view should contain 'BITCOIN WALLET'")
 	}
-	if !strings.Contains(view, "Testnet") {
-		t.Error("splash view should contain 'Testnet'")
+	if strings.Contains(view, "Testnet") {
+		t.Error("splash view shouldn't call hax a testnet wallet")
+	}
+	if !strings.Contains(view, version.String()) {
+		t.Error("splash view should show the version")
 	}
 }
 

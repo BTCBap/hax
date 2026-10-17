@@ -78,21 +78,3 @@ func MnemonicToSeed(mnemonic string, password string) ([]byte, error) {
 	seed := bip39.NewSeed(mnemonic, password)
 	return seed, nil
 }
-
-// GetWordCount returns the number of words in a mnemonic based on entropy strength
-func GetWordCount(strength MnemonicStrength) int {
-	switch strength {
-	case Mnemonic12Words:
-		return 12
-	case Mnemonic15Words:
-		return 15
-	case Mnemonic18Words:
-		return 18
-	case Mnemonic21Words:
-		return 21
-	case Mnemonic24Words:
-		return 24
-	default:
-		return 0
-	}
-}

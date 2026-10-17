@@ -50,9 +50,6 @@ func getDefaultPinStore() *PinStore {
 // NewPinStore returns a store backed by path.
 func NewPinStore(path string) *PinStore { return &PinStore{path: path} }
 
-// Path returns the backing file path.
-func (s *PinStore) Path() string { return s.path }
-
 func (s *PinStore) load() (map[string]string, error) {
 	pins := map[string]string{}
 	b, err := os.ReadFile(s.path)

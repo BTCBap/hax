@@ -338,20 +338,6 @@ type BIP48Path struct {
 	ScriptType MultisigScriptType // 0=Legacy, 1=Nested, 2=Native
 }
 
-// MultisigPath returns BIP48 path for multisig wallets
-func MultisigPath(testnet bool, account uint32, scriptType MultisigScriptType) BIP48Path {
-	coinType := uint32(0)
-	if testnet {
-		coinType = 1
-	}
-
-	return BIP48Path{
-		CoinType:   coinType,
-		Account:    account,
-		ScriptType: scriptType,
-	}
-}
-
 // String returns the string representation of the BIP48 path (account level)
 func (p BIP48Path) String() string {
 	return fmt.Sprintf("m/48'/%d'/%d'/%d'",

@@ -1,31 +1,13 @@
-# Public Beta Checklist
+# Smoke Test
 
-This document tracks the source-first public beta for `hax`.
-
-It is meant to be executed and updated, not read as a promise.
-
-## Launch Stance
-
-- Network target: `testnet4`
-- Distribution target: source-first
-- Publishing gate: the source repo can go public before funded beta validation is complete
-- Binary trust model: no public release artifacts until checksums and verification instructions exist
-- Mainnet scope: explicitly out of scope for this beta
-- Bitcoin Core scope: connectable but not yet validated as a finished beta backend
-
-## Pre-Push Repo Checklist
-
-- [x] Project, module, and binary naming are consistent
-- [x] Internal-only repo files are removed
-- [x] Public baseline docs exist
-- [x] GitHub CI and templates exist
-- [x] README includes a screenshot
-- [x] Social preview image exists in the repo
-- [x] README uses a GitHub-ready clone command for `hax`
+A manual runbook for checking a build end to end. Record results here
+or in an issue; the [TODO](../TODO.md) validation items point at it.
+For restores, use the [recovery drill](recovery-drill.md); for devices,
+the [hardware wallet matrix](hardware-wallet-compatibility.md).
 
 ## Validation Environment
 
-Fill this in before running the beta checks.
+Fill this in before running the checks.
 
 | Field | Value |
 |------|-------|
@@ -46,7 +28,7 @@ Use a clean wallet directory or a clean machine.
 Suggested prep:
 
 1. Remove or move aside any existing `~/.hax` directory.
-2. Build from the current commit with `make build`.
+2. Build from the current commit with `make build`, or use a [verified release](release-verification.md).
 3. Start `./hax`.
 4. Keep one note file open while testing so failures are logged immediately.
 
@@ -191,66 +173,3 @@ Pass if:
 
 - export succeeds
 - output file exists and is parseable as CSV
-
-## Recovery Drill
-
-Track this with a fresh wallet and a separate clean restore.
-
-### Recovery Matrix
-
-| Step | Result | Notes |
-|------|--------|-------|
-| Record mnemonic correctly | Not run |  |
-| Lock app and restart | Not run |  |
-| Restore from mnemonic | Not run |  |
-| Wallet balance matches expected state | Not run |  |
-| Labels and metadata expectations are documented | Not run |  |
-
-### Recovery Procedure
-
-1. Create a fresh software wallet.
-2. Record the mnemonic exactly once, outside the app.
-3. Fund the wallet and wait for a stable visible balance.
-4. Close the app.
-5. Move aside the existing `~/.hax` directory or use a clean environment.
-6. Restore the wallet from the mnemonic only.
-7. Unlock the restored wallet.
-8. Compare balance, receive flow, and transaction history against expectations.
-9. Record what did and did not come back.
-
-Minimum notes to capture:
-
-- whether balance restored correctly
-- whether transaction history repopulated correctly
-- whether labels came back
-- whether settings or metadata were lost
-- whether any manual step was required
-
-## Hardware Wallet And Multisig Validation
-
-Use [hardware-wallet-compatibility.md](hardware-wallet-compatibility.md) to record device-specific results.
-
-| Workflow | Result | Notes |
-|----------|--------|-------|
-| HWI device detection | Not run |  |
-| Address display verification | Not run |  |
-| PSBT export to hardware flow | Not run |  |
-| PSBT import from hardware flow | Not run |  |
-| Multisig descriptor export | Not run |  |
-| Multisig signing round-trip | Not run |  |
-
-## Sign-Off
-
-| Area | Status | Notes |
-|------|--------|-------|
-| Public repo quality | Pending |  |
-| Unfunded beta validation | Pending |  |
-| Funded beta validation | Pending |  |
-| Recovery confidence | Pending |  |
-| Release artifact trust story | Pending |  |
-
-## Final Decision
-
-- Public beta approved: `yes / no`
-- Blocking issues found:  |
-- Follow-up issue links:  |
