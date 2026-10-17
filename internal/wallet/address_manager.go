@@ -35,6 +35,15 @@ func resolvePathPrefix(account *AccountData, walletData *WalletData) string {
 	}
 }
 
+// multisigAddressPath is the BIP48 path of a multisig address, for display.
+func multisigAddressPath(network string, scriptType MultisigScriptType, change, index uint32) string {
+	coinType := 1
+	if network == NetworkMainnet {
+		coinType = 0
+	}
+	return fmt.Sprintf("m/48'/%d'/0'/%d'/%d/%d", coinType, scriptType, change, index)
+}
+
 // deriveAddress derives an address for the given account, index, and chain (receive/change).
 // Should be called WITHOUT dataMu held to avoid blocking other goroutines during derivation.
 // Reads m.data.Multisig, m.data.HardwareWallet, and m.data.Network without lock;
@@ -51,9 +60,7 @@ func (m *WalletManager) deriveAddress(accountIndex, addressIndex uint32, isChang
 		if err != nil {
 			return "", "", fmt.Errorf("failed to derive multisig address: %w", err)
 		}
-		scriptType := m.data.Multisig.ScriptType
-		pathStr := fmt.Sprintf("m/48'/1'/0'/%d'/%d/%d", scriptType, change, addressIndex)
-		return addr, pathStr, nil
+		return addr, multisigAddressPath(m.data.Network, MultisigScriptType(m.data.Multisig.ScriptType), change, addressIndex), nil
 	}
 
 	if m.data.HardwareWallet != nil {
