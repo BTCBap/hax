@@ -157,6 +157,11 @@ type PSBTResult struct {
 	// the user should see before exporting, e.g. data a hardware signer
 	// will need is missing.
 	Warnings []string
+
+	// Replaces is the txid this transaction replaces (RBF fee bump).
+	Replaces string
+	// ChildOf is the txid this transaction pays for (CPFP).
+	ChildOf string
 }
 
 // TotalInput returns the sum of all selected UTXO values.
