@@ -6,6 +6,8 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -532,5 +534,61 @@ func TestBIP49PSBTFlow(t *testing.T) {
 		t.Errorf("Script verification FAILED: %v", err)
 	} else {
 		t.Logf("Script verification PASSED!")
+	}
+}
+
+// TestBIP49SignFromDerivation signs a P2SH-P2WPKH input the way an
+// imported PSBT is signed: from its BIP32 derivation, with no UTXO path.
+// The BIP143 script code must come from the redeem script.
+func TestBIP49SignFromDerivation(t *testing.T) {
+	seed, err := MnemonicToSeed(testMnemonic, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := NewHDWallet(seed, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := &TestNet4Params
+	path := PathForAddressType(AddressTypeSegWitNested, true, 0, 0, 0)
+	addr, err := w.GetAddress(path, AddressTypeSegWitNested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := btcutil.DecodeAddress(addr, params)
+	pkScript, _ := txscript.PayToAddrScript(a)
+	fund := wire.NewMsgTx(2)
+	fund.AddTxIn(wire.NewTxIn(&wire.OutPoint{}, nil, nil))
+	fund.AddTxOut(wire.NewTxOut(100_000, pkScript))
+	utxos := []UTXOWithPath{{
+		UTXO:    api.UTXO{TxID: fund.TxHash().String(), Vout: 0, Value: 100_000},
+		Address: addr, Path: path.String(),
+	}}
+	res, err := CreatePSBT(utxos, []TxOutput{{Address: addr, Amount: 50_000}}, addr, 2, params, nil, ScriptTypeP2SHP2WPKH, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := w.DeriveKey(path)
+	pub, _ := key.ECPubKey()
+	h := uint32(hdkeychain.HardenedKeyStart)
+	res.Packet.Inputs[0].Bip32Derivation = []*psbt.Bip32Derivation{{
+		PubKey:    pub.SerializeCompressed(),
+		Bip32Path: []uint32{h + 49, h + 1, h, 0, 0},
+	}}
+	if err := SignPSBTFromDerivation(res.Packet, w, params); err != nil {
+		t.Fatal(err)
+	}
+	final, err := FinalizePSBT(res.Packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher := txscript.NewCannedPrevOutputFetcher(pkScript, 100_000)
+	vm, err := txscript.NewEngine(pkScript, final, 0, txscript.StandardVerifyFlags, nil,
+		txscript.NewTxSigHashes(final, fetcher), 100_000, fetcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Execute(); err != nil {
+		t.Fatalf("script verification failed: %v", err)
 	}
 }

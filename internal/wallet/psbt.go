@@ -833,6 +833,20 @@ func signSegWitInput(packet *psbt.Packet, inputIndex int, privKey *btcec.Private
 				fmt.Sprintf("failed to create redeemScript: %v", err))
 		}
 		packet.Inputs[inputIndex].RedeemScript = redeemScript
+		p2sh, err := txscript.NewScriptBuilder().AddOp(txscript.OP_HASH160).
+			AddData(btcutil.Hash160(redeemScript)).AddOp(txscript.OP_EQUAL).Script()
+		if err != nil || !bytes.Equal(p2sh, witnessUtxo.PkScript) {
+			return newSigningError(ErrKeyMismatch, inputIndex,
+				"derived key does not match the P2SH-P2WPKH output")
+		}
+	}
+
+	// BIP143 script code: btcd expands a P2WPKH program to the P2PKH
+	// form. For P2SH-P2WPKH that program is the redeem script, not the
+	// P2SH scriptPubKey.
+	witnessProgram := witnessUtxo.PkScript
+	if isNested {
+		witnessProgram = packet.Inputs[inputIndex].RedeemScript
 	}
 
 	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(
@@ -846,7 +860,7 @@ func signSegWitInput(packet *psbt.Packet, inputIndex int, privKey *btcec.Private
 		sigHashes,
 		inputIndex,
 		witnessUtxo.Value,
-		witnessUtxo.PkScript,
+		witnessProgram,
 		txscript.SigHashAll,
 		privKey,
 	)
