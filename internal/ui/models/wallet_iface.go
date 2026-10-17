@@ -4,6 +4,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
+	"github.com/btcsuite/btcd/btcutil/psbt"
 )
 
 // WalletService defines the interface that UI models use to interact with the wallet.
@@ -92,6 +93,12 @@ type WalletService interface {
 	ImportPSBTFromBase64(base64Data string) (*wallet.PSBTResult, error)
 	FinalizePSBTTransaction(result *wallet.PSBTResult) (string, error)
 	BroadcastPSBT(result *wallet.PSBTResult) (string, error)
+	InspectPSBT(packet *psbt.Packet) *wallet.PSBTInspection
+
+	// Fee bumps
+	AnalyzeFeeBump(txid string) (*wallet.FeeBumpInfo, error)
+	BuildRBF(txid string, feeRate float64) (*wallet.PSBTResult, error)
+	BuildCPFP(txid string, feeRate float64) (*wallet.PSBTResult, error)
 
 	// Hardware wallet
 	GetHWIClient() *wallet.HWIClient

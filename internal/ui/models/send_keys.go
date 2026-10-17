@@ -503,6 +503,9 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Normal fee selection mode
 	switch msg.String() {
+	case "m", "M":
+		m.toggleBumpMethod()
+		return m, nil
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -535,6 +538,16 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.bump != nil {
+			if err := m.checkBumpRate(m.getFeeRateForLevel(m.feeLevel)); err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.err = nil
+			m.step = SendStepPreviewLoading
+			return m, tea.Batch(m.previewTransaction(), m.spinner.Tick)
+		}
+
 		// If sendAll is enabled, enforce deterministic MAX preconditions.
 		// Final amount is derived inside previewTransaction() from backend preview results.
 		if m.sendAll {
@@ -550,6 +563,9 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Preview the transaction to get actual UTXO selection and change details
 		return m, tea.Batch(m.previewTransaction(), m.spinner.Tick)
 	case "esc":
+		if m.bump != nil {
+			return m, Navigate(StateTransactionHistory)
+		}
 		if m.sendAll {
 			m.step = SendStepRecipientList
 			m.cursor = 0
@@ -717,7 +733,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.psbtBase64 = b64
-			m.psbtResult = result
+			m.setPSBTResult(result)
 			m.psbtSigsAdded = wallet.CountPSBTSigners(result.Packet)
 			m.estimatedFee = result.Fee
 			m.showURInput = false
@@ -834,6 +850,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.psbtBase64 = newBase64
+			m.refreshInspection()
 			// Count unique signers in PSBT (not per-input signatures)
 			m.psbtSigsAdded = wallet.CountPSBTSigners(m.psbtResult.Packet)
 			m.showCopied = true

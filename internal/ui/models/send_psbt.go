@@ -685,11 +685,11 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 	// Split into fixed header and scrollable content
 	fixedHeader := header + "\n" + subtitle
 
-	contentSections := []string{
-		psbtBox,
-		infoSection,
-		usageHints,
+	var contentSections []string
+	if inspection := m.renderInspection(psbtBoxWidth); inspection != "" {
+		contentSections = append(contentSections, inspection)
 	}
+	contentSections = append(contentSections, psbtBox, infoSection, usageHints)
 	if statusIndicator != "" {
 		contentSections = append(contentSections, statusIndicator)
 	}

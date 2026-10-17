@@ -19,9 +19,9 @@
 │  Size:          0 bytes                                                            │
 │  Weight:        0 WU                                                               │
 │  Fee:           0 sats                                                             │
-│  ○ Unconfirmed - waiting for block                                                 │
+│  ○ Unconfirmed - waiting for block · b to speed up                                 │
 │                                                                                    │
 ╰────────────────────────────────────────────────────────────────────────────────────╯
                                                                                       
-↑/↓ navigate • enter open • c copy • e label • E export • / search
-1-6 sort • f/x filter • K koinly • ←/→ page • esc back            
+↑/↓ navigate • enter open • c copy • e label • E export • / search 
+1-6 sort • f/x filter • K koinly • b bump fee • ←/→ page • esc back

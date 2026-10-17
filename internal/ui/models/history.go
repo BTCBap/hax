@@ -432,6 +432,22 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		case "b":
+			if len(m.filteredTransactions) > 0 {
+				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
+				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
+					tx := m.filteredTransactions[absoluteIndex]
+					if tx.Status.Confirmed {
+						m.err = fmt.Errorf("already confirmed, nothing to speed up")
+						m.errorTime = time.Now()
+						cmds = append(cmds, m.animateTick())
+					} else {
+						m.isActive = false
+						return m, NavigateToFeeBump(tx.TxID)
+					}
+				}
+			}
+
 		case "1":
 			m.toggleSort(0)
 			m.updateTableData()
@@ -1205,7 +1221,8 @@ func (m TransactionHistoryModel) renderTransactionDetails() string {
 		)
 	} else {
 		details = append(details,
-			styles.WarningText.Render("○ Unconfirmed - waiting for block"),
+			styles.WarningText.Render("○ Unconfirmed - waiting for block")+
+				styles.DimText.Render(" · b to speed up"),
 		)
 	}
 
@@ -1248,6 +1265,7 @@ func (m TransactionHistoryModel) renderAnimatedHelp() string {
 			styles.HK("1-6", "sort"),
 			styles.HK("f/x", "filter"),
 			styles.HK("K", "koinly"),
+			styles.HK("b", "bump fee"),
 			styles.HK("←/→", "page"),
 			styles.HK("esc", "back"),
 		},

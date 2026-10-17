@@ -324,8 +324,11 @@ func (m SendModel) viewUTXOSelection() string {
 }
 
 func (m SendModel) viewFeeSelection() string {
-	header := styles.TitleStyle.Render("📤 Send Bitcoin")
+	header := m.sendTitle()
 	subtitle := m.stepHeader(5, "Choose fee priority")
+	if m.bump != nil {
+		subtitle += "\n" + m.renderBumpSummary(styles.ClampWidth(70, m.width-4))
+	}
 
 	feeOptions := []struct {
 		name         string
@@ -361,8 +364,11 @@ func (m SendModel) viewFeeSelection() string {
 		if feeRate <= 0 {
 			optionText = fmt.Sprintf("%s%s\n    %s • unavailable",
 				cursor, opt.name, opt.desc)
+		} else if m.bump != nil && m.bumpReady() && feeRate < m.bumpMinRate() {
+			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • below the minimum",
+				cursor, opt.name, opt.desc, formatFeeRate(feeRate))
 		} else {
-			estimatedFee := int64(float64(m.estimatedSize) * feeRate)
+			estimatedFee := m.optionFee(feeRate)
 			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • ~%d sats total",
 				cursor, opt.name, opt.desc, formatFeeRate(feeRate), estimatedFee)
 		}
@@ -382,7 +388,7 @@ func (m SendModel) viewFeeSelection() string {
 
 	var customOptionText string
 	if m.highFeePending > 0 {
-		estimatedFee := int64(math.Ceil(float64(m.estimatedSize) * m.highFeePending))
+		estimatedFee := m.optionFee(m.highFeePending)
 		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
 			customCursor, formatFeeRate(m.highFeePending), estimatedFee, highFeeConfirmWord, m.highFeeInput.View())
 	} else if m.editingCustom {
@@ -391,7 +397,7 @@ func (m SendModel) viewFeeSelection() string {
 			customCursor, m.customFeeInput.View())
 	} else if m.customFeeRate > 0 {
 		// Show set custom rate (format nicely for fractional rates)
-		estimatedFee := int64(math.Ceil(float64(m.estimatedSize) * m.customFeeRate))
+		estimatedFee := m.optionFee(m.customFeeRate)
 		rateStr := formatFeeRate(m.customFeeRate)
 		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB • ~%d sats total",
 			customCursor, rateStr, estimatedFee)
@@ -418,6 +424,17 @@ func (m SendModel) viewFeeSelection() string {
 			styles.HK("enter", "confirm"),
 			styles.HK("esc", "cancel"),
 		)
+	} else if m.bump != nil {
+		items := []styles.HelpItem{
+			styles.HK("↑/↓", "navigate"),
+			styles.HK("c", "custom"),
+		}
+		if m.bump.info != nil && m.bump.info.CanRBF && m.bump.info.CanCPFP {
+			items = append(items, styles.HK("m", "method"))
+		}
+		help = styles.RenderHelp(append(items,
+			styles.HK("enter", "continue"),
+			styles.HK("esc", "cancel"))...)
 	} else {
 		help = styles.RenderHelp(
 			styles.HK("↑/↓", "navigate"),
@@ -430,8 +447,16 @@ func (m SendModel) viewFeeSelection() string {
 	return header + "\n" + subtitle + "\n" + menu + "\n" + help
 }
 
+// optionFee is the fee shown next to a feerate in the fee menu.
+func (m SendModel) optionFee(rate float64) int64 {
+	if m.bump != nil {
+		return int64(m.bumpFeeAt(rate))
+	}
+	return int64(math.Ceil(float64(m.estimatedSize) * rate))
+}
+
 func (m SendModel) viewPreviewLoading() string {
-	header := styles.TitleStyle.Render("📤 Send Bitcoin")
+	header := m.sendTitle()
 
 	progress := m.spinner.View() + " " + styles.NormalText.Render("Selecting UTXOs and calculating fees...")
 
@@ -492,7 +517,7 @@ func (m SendModel) buildReviewWarnings(totalRecipientAmount, displayFee api.Sato
 }
 
 func (m SendModel) buildReviewScrollable() (string, string, string) {
-	header := styles.TitleStyle.Render("📤 Send Bitcoin")
+	header := m.sendTitle()
 	subtitle := m.stepHeader(6, "Review transaction")
 
 	// Responsive box width for all review sections

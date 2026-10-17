@@ -16,6 +16,8 @@ This is a lightweight project changelog, not a strict release ledger.
 - Address labels (Addresses screen, BIP-329 export/import), and history search by address or address label
 - Automatic reconnect with backoff and a "Reconnecting in Ns" status when the server drops; Electrum subscriptions are replayed and missed blocks or payments are reported
 - Hardware wallet end-to-end check against a device emulator and a regtest node (`go test -tags emulator`)
+- Speed up a pending transaction from History (`b`): replace it at a higher fee (RBF, BIP125 rules enforced) or spend our output with a child (CPFP) sized to the package feerate
+- The Sign & Broadcast screen shows what the PSBT does before signing: each input and output, change proven by the wallet's own keys, fee and feerate, and warnings (inputs or outputs that aren't ours, mismatched amounts, non-default sighash, dust, high or too-low fee)
 
 ### Changed
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`

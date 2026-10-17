@@ -14,6 +14,10 @@ var sendStepNames = []string{"Address", "Amount", "Recipients", "Coins", "Fee", 
 // stepHeader renders the send-flow breadcrumb with step (1-based) highlighted,
 // followed by the step's title. Narrow terminals get a compact "Step n/7".
 func (m SendModel) stepHeader(step int, title string) string {
+	if m.bump != nil {
+		// A speed-up skips the recipient steps; the bar would mislead.
+		return styles.SubtitleStyle.Render(title)
+	}
 	return renderStepBar(step, m.width) + "\n" + styles.SubtitleStyle.Render(title)
 }
 
