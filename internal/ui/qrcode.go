@@ -6,34 +6,6 @@ import (
 	"github.com/skip2/go-qrcode"
 )
 
-// GenerateQRCodeASCII generates an ASCII QR code from a string
-func GenerateQRCodeASCII(data string) (string, error) {
-	// Generate QR code with medium recovery level
-	qr, err := qrcode.New(data, qrcode.Medium)
-	if err != nil {
-		return "", err
-	}
-
-	// Get the QR code bitmap
-	bitmap := qr.Bitmap()
-
-	var result strings.Builder
-
-	// Convert to ASCII using full/empty blocks
-	for y := range bitmap {
-		for x := range bitmap[y] {
-			if bitmap[y][x] {
-				result.WriteString("██") // Full block for black
-			} else {
-				result.WriteString("  ") // Empty for white
-			}
-		}
-		result.WriteString("\n")
-	}
-
-	return result.String(), nil
-}
-
 // GenerateQRCodeHalfBlocks generates a QR code using half-height blocks (more compact).
 // Uses Low error correction and no border to minimize size for terminal display.
 func GenerateQRCodeHalfBlocks(data string) (string, error) {

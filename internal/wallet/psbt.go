@@ -1868,14 +1868,6 @@ func psbtInfoToScriptParams(info PSBTWalletInfo) (ScriptType, int, int) {
 	}
 }
 
-// ValidatePSBT checks if a PSBT is valid and ready for signing/finalizing
-func ValidatePSBT(packet *psbt.Packet) error {
-	if err := packet.SanityCheck(); err != nil {
-		return fmt.Errorf("PSBT sanity check failed: %w", err)
-	}
-	return nil
-}
-
 // PSBTWalletInfo contains information extracted from a PSBT about which wallet it belongs to
 type PSBTWalletInfo struct {
 	Fingerprints   []string // Unique master fingerprints found in PSBT
@@ -1977,73 +1969,6 @@ func GetPSBTWalletInfo(packet *psbt.Packet) PSBTWalletInfo {
 	_ = detectedPurpose // Suppress unused warning
 
 	return info
-}
-
-// ValidatePSBTForWallet checks if a PSBT belongs to the specified wallet
-// Returns nil if valid, or an error explaining the mismatch
-func ValidatePSBTForWallet(packet *psbt.Packet, walletFingerprint string, walletScriptType string, isMultisig bool) error {
-	if packet == nil || len(packet.Inputs) == 0 {
-		return newSigningError(ErrEmptyPSBT, -1, "no inputs in PSBT")
-	}
-
-	info := GetPSBTWalletInfo(packet)
-
-	// Check if PSBT is multisig vs single-sig
-	if info.IsMultisig && !isMultisig {
-		return newSigningError(ErrWalletMismatch, -1,
-			fmt.Sprintf("PSBT is for a %d-of-%d multisig wallet, but current wallet is single-sig",
-				info.RequiredSigs, info.TotalCosigners))
-	}
-	if !info.IsMultisig && isMultisig {
-		return newSigningError(ErrWalletMismatch, -1,
-			"PSBT is for a single-sig wallet, but current wallet is multisig")
-	}
-
-	// Check fingerprint match (if we have fingerprints in the PSBT)
-	if len(info.Fingerprints) > 0 && walletFingerprint != "" {
-		walletFP := strings.ToLower(walletFingerprint)
-		foundMatch := false
-		for _, fp := range info.Fingerprints {
-			if strings.ToLower(fp) == walletFP {
-				foundMatch = true
-				break
-			}
-		}
-		if !foundMatch {
-			return newSigningError(ErrWalletMismatch, -1,
-				fmt.Sprintf("PSBT fingerprints %v don't match wallet fingerprint %s",
-					info.Fingerprints, walletFingerprint))
-		}
-	}
-
-	// Check script type match for single-sig wallets
-	if !isMultisig && info.ScriptType != "unknown" && walletScriptType != "" {
-		psbtType := info.ScriptType
-		walletType := strings.ToLower(walletScriptType)
-
-		// Normalize types for comparison
-		typeMap := map[string]string{
-			"taproot":       "taproot",
-			"native_segwit": "native",
-			"segwit_native": "native",
-			"native":        "native",
-			"nested_segwit": "nested",
-			"segwit_nested": "nested",
-			"nested":        "nested",
-			"legacy":        "legacy",
-		}
-
-		normalizedPSBT := typeMap[psbtType]
-		normalizedWallet := typeMap[walletType]
-
-		if normalizedPSBT != "" && normalizedWallet != "" && normalizedPSBT != normalizedWallet {
-			return newSigningError(ErrScriptTypeMismatch, -1,
-				fmt.Sprintf("PSBT is for %s addresses, but wallet uses %s addresses",
-					psbtType, walletScriptType))
-		}
-	}
-
-	return nil
 }
 
 // IsPSBTComplete checks if all inputs are signed

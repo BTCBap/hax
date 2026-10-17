@@ -416,25 +416,8 @@ func RenderHelpWrapped(width int, items ...HelpItem) string {
 	return RenderHelpLines(lines...)
 }
 
-// Helper functions
-func WithWidth(style lipgloss.Style, width int) lipgloss.Style {
-	return style.Width(width)
-}
-
-func WithHeight(style lipgloss.Style, height int) lipgloss.Style {
-	return style.Height(height)
-}
-
 func CenterHorizontal(text string, width int) string {
 	return lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Center, text)
-}
-
-func CenterVertical(text string, height int) string {
-	return lipgloss.Place(1, height, lipgloss.Center, lipgloss.Center, text)
-}
-
-func Center(text string, width, height int) string {
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, text)
 }
 
 // ClampWidth returns the smaller of desired and available width, with a minimum of 20.

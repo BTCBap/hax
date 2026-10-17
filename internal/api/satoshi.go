@@ -10,11 +10,6 @@ import (
 // 1 BTC = 100,000,000 satoshis.
 type Satoshi int64
 
-// SatoshiFromBTC converts a BTC float64 to Satoshi.
-func SatoshiFromBTC(btc float64) Satoshi {
-	return Satoshi(btc * 1e8)
-}
-
 // Int64 returns the raw int64 value.
 func (sat Satoshi) Int64() int64 { return int64(sat) }
 

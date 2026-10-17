@@ -145,13 +145,6 @@ func Navigate(target AppState) tea.Cmd {
 	}
 }
 
-// NavigateWithRefresh returns a Cmd that navigates to a screen and triggers a refresh
-func NavigateWithRefresh(target AppState) tea.Cmd {
-	return func() tea.Msg {
-		return NavigateMsg{Target: target, Refresh: true}
-	}
-}
-
 // ErrorMsg represents an error that occurred
 type ErrorMsg struct {
 	Err error

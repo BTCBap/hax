@@ -413,18 +413,6 @@ func DeviceConnectionHints() []string {
 	}
 }
 
-// HWISupportedTypes returns the hardware wallet types supported by this implementation
-func HWISupportedTypes() []HardwareWalletType {
-	return []HardwareWalletType{
-		HWTypeTrezor,
-		HWTypeLedger,
-		HWTypeColdcard,
-		HWTypeKeepKey,
-		HWTypeBitBox,
-		HWTypeJade,
-	}
-}
-
 // HWIInstallStep represents a single step in the HWI installation guide
 type HWIInstallStep struct {
 	Command     string // Terminal command to run
