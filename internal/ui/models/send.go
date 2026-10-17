@@ -122,7 +122,8 @@ type SendModel struct {
 	highFeeInput   textinput.Model
 
 	// Transaction data
-	utxos        []api.UTXO
+	utxos        []api.UTXO // spendable coins; frozen ones are left out
+	frozenCount  int
 	balance      api.Satoshi
 	txID         string
 	broadcastErr error
@@ -301,6 +302,11 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 	// If no cached data provided, mark as loading
 	// This forces fresh fetch from network
 	loadingBalance := cachedBalance == 0 && cachedUTXOs == nil
+	spendable, frozen, frozenValue := withoutFrozen(walletManager, cachedUTXOs)
+	if cachedUTXOs != nil {
+		cachedUTXOs = spendable
+		cachedBalance -= frozenValue
+	}
 
 	return SendModel{
 		walletManager:  walletManager,
@@ -316,8 +322,29 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 		feeLevel:       FeeLevelMedium,
 		balance:        cachedBalance,
 		utxos:          cachedUTXOs,
+		frozenCount:    frozen,
 		loading:        loadingBalance, // Show loading until fresh data arrives
 	}
+}
+
+// withoutFrozen drops frozen coins, which send never offers or spends,
+// and returns how many there were and their value.
+func withoutFrozen(w WalletService, utxos []api.UTXO) ([]api.UTXO, int, api.Satoshi) {
+	if w == nil || utxos == nil {
+		return utxos, 0, 0
+	}
+	out := make([]api.UTXO, 0, len(utxos))
+	var n int
+	var value api.Satoshi
+	for _, u := range utxos {
+		if w.IsUTXOFrozen(u.TxID, u.Vout) {
+			n++
+			value += u.Value
+			continue
+		}
+		out = append(out, u)
+	}
+	return out, n, value
 }
 
 // estimateTxVSize estimates the transaction vSize using wallet-aware script type detection
@@ -544,13 +571,13 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.err = msg.Err
 		} else {
-			m.utxos = msg.UTXOs
+			m.utxos, m.frozenCount, _ = withoutFrozen(m.walletManager, msg.UTXOs)
 			m.balance = 0
-			for _, utxo := range msg.UTXOs {
+			for _, utxo := range m.utxos {
 				m.balance += utxo.Value
 			}
-			if len(m.utxoSelected) != len(msg.UTXOs) {
-				m.utxoSelected = make([]bool, len(msg.UTXOs))
+			if len(m.utxoSelected) != len(m.utxos) {
+				m.utxoSelected = make([]bool, len(m.utxos))
 				for i := range m.utxoSelected {
 					m.utxoSelected[i] = true
 				}
@@ -560,9 +587,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StateChangedMsg:
 		m.balance = msg.State.Balance
 		if len(msg.State.UTXOs) > 0 {
-			m.utxos = msg.State.UTXOs
-			if len(m.utxoSelected) != len(msg.State.UTXOs) {
-				m.utxoSelected = make([]bool, len(msg.State.UTXOs))
+			var frozenValue api.Satoshi
+			m.utxos, m.frozenCount, frozenValue = withoutFrozen(m.walletManager, msg.State.UTXOs)
+			m.balance -= frozenValue
+			if len(m.utxoSelected) != len(m.utxos) {
+				m.utxoSelected = make([]bool, len(m.utxos))
 				for i := range m.utxoSelected {
 					m.utxoSelected[i] = true
 				}

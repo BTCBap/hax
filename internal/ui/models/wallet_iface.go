@@ -81,6 +81,10 @@ type WalletService interface {
 	GetTotalBalanceChange() (api.Satoshi, error)
 	IsSyncing() bool
 
+	// Coin control
+	IsUTXOFrozen(txid string, vout uint32) bool
+	SetUTXOFrozen(txid string, vout uint32, frozen bool) error
+
 	// Transactions (PSBT)
 	PreviewBatchTransaction(accountIndex uint32, recipients []wallet.TxRecipient, feeRate float64, utxos []api.UTXO) (*wallet.PSBTResult, error)
 	CreatePSBTBatchTransaction(accountIndex uint32, recipients []wallet.TxRecipient, feeRate float64, utxos []api.UTXO) (*wallet.PSBTResult, error)

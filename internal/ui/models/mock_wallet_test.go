@@ -1,6 +1,8 @@
 package models
 
 import (
+	"fmt"
+
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -106,6 +108,9 @@ type MockWalletManager struct {
 	DisplayAddrOnDeviceFn func(string, string) error
 
 	// Labels
+	// Frozen holds "txid:vout" of frozen coins.
+	Frozen map[string]bool
+
 	GetTransactionLabelFn func(string) string
 	SetTransactionLabelFn func(string, string) error
 	GetAddressLabelFn     func(string) string
@@ -664,6 +669,23 @@ func (m *MockWalletManager) DisplayAddressOnDevice(addr, derivPath string) error
 }
 
 // --- Labels ---
+
+func (m *MockWalletManager) IsUTXOFrozen(txid string, vout uint32) bool {
+	return m.Frozen[fmt.Sprintf("%s:%d", txid, vout)]
+}
+
+func (m *MockWalletManager) SetUTXOFrozen(txid string, vout uint32, frozen bool) error {
+	if m.Frozen == nil {
+		m.Frozen = map[string]bool{}
+	}
+	key := fmt.Sprintf("%s:%d", txid, vout)
+	if frozen {
+		m.Frozen[key] = true
+	} else {
+		delete(m.Frozen, key)
+	}
+	return nil
+}
 
 func (m *MockWalletManager) GetTransactionLabel(txid string) string {
 	if m.GetTransactionLabelFn != nil {

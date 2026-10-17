@@ -293,6 +293,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("\u2190/\u2192", "Page navigation"))
 	lines = append(lines, m.shortcut("c", "Copy outpoint (txid:vout)"))
 	lines = append(lines, m.shortcut("e", "Edit UTXO label"))
+	lines = append(lines, m.shortcut("f", "Freeze/unfreeze (never spent)"))
 	lines = append(lines, m.shortcut("r", "Refresh"))
 
 	// Settings
