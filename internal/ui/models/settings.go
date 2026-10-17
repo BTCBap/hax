@@ -621,17 +621,22 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.displayUnit = config.DisplayUnitBTC
 			}
 			// Save to config
+			var saveErr error
 			if m.configManager != nil {
 				cfg, err := m.configManager.Load()
 				if err == nil && cfg != nil {
 					cfg.DisplayUnit = m.displayUnit
-					if err := m.configManager.Save(cfg); err != nil {
-						debugLog("[SETTINGS] saving display unit failed: %v", err)
-					}
+					saveErr = m.configManager.Save(cfg)
+				} else {
+					saveErr = err
 				}
 			}
 			m.showCopied = true
 			m.copyMessage = "UNIT: " + strings.ToUpper(string(m.displayUnit))
+			if saveErr != nil {
+				debugLog("[SETTINGS] saving display unit failed: %v", saveErr)
+				m.copyMessage = saveFailedMessage(saveErr)
+			}
 			m.copiedTime = time.Now()
 			cmds = append(cmds, m.animateTick())
 		case "w", "W":
@@ -668,17 +673,22 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.gapLimit = 20
 			}
 			m.walletManager.SetGapLimit(m.gapLimit)
+			var saveErr error
 			if m.configManager != nil {
 				cfg, err := m.configManager.Load()
 				if err == nil && cfg != nil {
 					cfg.GapLimit = m.gapLimit
-					if err := m.configManager.Save(cfg); err != nil {
-						debugLog("[SETTINGS] saving gap limit failed: %v", err)
-					}
+					saveErr = m.configManager.Save(cfg)
+				} else {
+					saveErr = err
 				}
 			}
 			m.showCopied = true
 			m.copyMessage = fmt.Sprintf("GAP LIMIT: %d", m.gapLimit)
+			if saveErr != nil {
+				debugLog("[SETTINGS] saving gap limit failed: %v", saveErr)
+				m.copyMessage = saveFailedMessage(saveErr)
+			}
 			m.copiedTime = time.Now()
 			cmds = append(cmds, m.animateTick())
 		case "up", "k":
@@ -1591,4 +1601,10 @@ func (m SettingsModel) viewCosignerScanPassword() string {
 		Render(m.cosignerScanPassword.View())
 	help := styles.RenderHelp(styles.HK("enter", "scan"), styles.HK("esc", "cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, "", title, info, "", box, help)
+}
+
+// saveFailedMessage is the status line shown when a setting applies for
+// this session but could not be written to config.json.
+func saveFailedMessage(err error) string {
+	return "Not saved (applies until restart): " + err.Error()
 }

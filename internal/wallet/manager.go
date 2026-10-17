@@ -118,14 +118,23 @@ func (m *WalletManager) SetBackend(b backend.BitcoinBackend) error {
 		return fmt.Errorf("backend cannot be nil")
 	}
 
+	// Test the new backend first so a bad server leaves the current one
+	// connected and syncing.
+	if err := b.TestConnection(); err != nil {
+		return fmt.Errorf("backend connection test failed: %w", err)
+	}
+	// An open wallet only switches to a server on its own network.
+	if network := m.GetNetwork(); m.unlocked && network != "" {
+		if err := checkServerNetwork(b, network); err != nil {
+			_ = b.Disconnect()
+			return err
+		}
+	}
+
 	m.StopBackgroundSync()
 
 	if m.backend != nil {
 		_ = m.backend.Disconnect()
-	}
-
-	if err := b.TestConnection(); err != nil {
-		return fmt.Errorf("backend connection test failed: %w", err)
 	}
 
 	m.backend = b

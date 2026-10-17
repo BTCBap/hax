@@ -273,11 +273,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contentViewport.Width = msg.Width
 		m.contentViewport.Height = msg.Height
 	case BackendChosenMsg:
-		return m, m.applySavedBackend()
+		return m, m.applySavedBackend(msg.Then)
 	case ChooseServerMsg:
 		m.setupNetwork = msg.Network
 		return m.Update(NavigateMsg{Target: StateConnectionSetup})
 	case BackendChangedMsg:
+		if msg.Err != nil {
+			return m, tea.Batch(
+				m.alertModel.NewAlertCmd(AlertTypeError, "Server not changed: "+msg.Err.Error()),
+				Navigate(msg.Then))
+		}
 		var restart tea.Cmd
 		m, restart = m.restartListener()
 		return m, tea.Batch(restart, Navigate(msg.Then))
@@ -303,6 +308,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			returnToSettings := prevState == StateSettings
 			cs := NewConnectionSetupModel(m.configManager, returnToSettings)
 			cs.returnToUnlock = prevState == StateUnlock
+			if returnToSettings && m.walletManager != nil && m.walletManager.IsUnlocked() {
+				cs.setNetwork(m.walletManager.GetNetwork())
+			}
 			if m.setupNetwork != "" {
 				cs.setNetwork(m.setupNetwork)
 				m.setupNetwork = ""
@@ -788,19 +796,27 @@ func renderScrollableView(height, scrollOffset int, header, content, footer stri
 // applySavedBackend switches the wallet manager to the backend saved in
 // config, then returns to the unlock screen. Errors are left for the next
 // unlock attempt to report.
-func (m RootModel) applySavedBackend() tea.Cmd {
+func (m RootModel) applySavedBackend(then AppState) tea.Cmd {
 	wm, cm := m.walletManager, m.configManager
 	return func() tea.Msg {
-		if wm != nil && cm != nil {
-			if cfg, err := cm.Load(); err == nil && cfg != nil && cfg.Backend != nil {
-				if b, err := backend.NewBackend(cfg.Backend); err == nil {
-					if err := wm.SetBackend(b); err != nil {
-						log.Printf("apply backend: %v", err)
-					}
-				}
-			}
+		if wm == nil || cm == nil {
+			return BackendChangedMsg{Then: then}
 		}
-		return BackendChangedMsg{Then: StateUnlock}
+		cfg, err := cm.Load()
+		if err == nil && (cfg == nil || cfg.Backend == nil) {
+			err = fmt.Errorf("no server saved")
+		}
+		var b backend.BitcoinBackend
+		if err == nil {
+			b, err = backend.NewBackend(cfg.Backend)
+		}
+		if err == nil {
+			err = wm.SetBackend(b)
+		}
+		if err != nil {
+			debugLog("[ROOT] apply backend: %v", err)
+		}
+		return BackendChangedMsg{Then: then, Err: err}
 	}
 }
 
