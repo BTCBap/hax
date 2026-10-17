@@ -41,6 +41,38 @@ It is intentionally conservative. A workflow should not be described as compatib
 | Import partially signed multisig PSBT | Implemented | Not validated | Needs threshold-signing verification |
 | Finalize fully signed multisig PSBT | Implemented | Not validated | Needs end-to-end test coverage |
 
+## Emulator Validation
+
+Run on a Trezor Model T emulator (firmware 2.7.0, debug build) with
+Bitcoin Core 29.0 on regtest. This shows the PSBTs `hax` builds are
+complete and signable; it is not a substitute for real-device runs.
+
+| Flow | HWI 3.1.0 | HWI 2.1.1 |
+|------|-----------|-----------|
+| Single-sig P2PKH, P2SH-P2WPKH, P2WPKH, P2TR: build, device sign, finalize, Core accepts | Pass | Pass |
+| 2-of-3 P2WSH and P2SH-P2WSH (local seed + device) | Pass | Pass |
+| 2-of-3 legacy P2SH with change | Pass | Fails: HWI 2 sends change as a multisig address output, which the firmware rejects |
+
+Each run also checks that Core's `analyzepsbt` reports the unsigned PSBT
+as ready for the signer, that `finalizepsbt` produces the same
+transaction as `hax`, and that previous transactions are fetched from a
+node without `-txindex`.
+
+To repeat it:
+
+1. Start a Trezor emulator from
+   [data.trezor.io](https://data.trezor.io/dev/firmware/releases/emulators/)
+   or `trezor-user-env`, and load the test mnemonic
+   `abandon ×11 about` with no passphrase.
+2. Run:
+
+   ```sh
+   HAX_BITCOIND=/path/to/bitcoind HAX_HWI=/path/to/hwi \
+     go test -tags emulator -run TestEmulator -v ./internal/wallet/
+   ```
+
+The test starts its own regtest node in a temporary directory.
+
 ## Device Validation Table
 
 Fill this in only after a real workflow run.
