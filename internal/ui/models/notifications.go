@@ -12,6 +12,7 @@ import (
 type BalanceChangeMsg struct {
 	Change api.Satoshi
 	State  wallet.WalletStateSnapshot
+	Gen    int // listener generation of the notification that caused it
 }
 
 // PostBroadcastRefreshDoneMsg is sent after the post-broadcast lightweight refresh completes
@@ -23,17 +24,21 @@ type PostBroadcastRefreshDoneMsg struct {
 
 // waitForNotification blocks until a notification arrives on either channel.
 // Returns a NewTransactionNotification or NewBlockNotification message.
-func waitForNotification(b backend.BitcoinBackend) tea.Msg {
+// It returns nil once stop is closed, which happens when the backend changes.
+func waitForNotification(b backend.BitcoinBackend, gen int, stop <-chan struct{}) tea.Msg {
 	select {
 	case n := <-b.ScripthashNotifications():
-		return NewTransactionNotification{Address: n.Scripthash}
+		return NewTransactionNotification{Address: n.Scripthash, Gen: gen}
 	case n := <-b.HeaderNotifications():
-		return NewBlockNotification{Height: n.Height}
+		return NewBlockNotification{Height: n.Height, Gen: gen}
+	case <-stop:
+		debugLog("[LISTENER] backend changed, stopping listener gen %d", gen)
+		return nil
 	}
 }
 
 // ContinueListening continues listening for more notifications
-func ContinueListening(walletManager WalletService) tea.Cmd {
+func ContinueListening(walletManager WalletService, gen int, stop <-chan struct{}) tea.Cmd {
 	return func() tea.Msg {
 		debugLog("[LISTENER] ContinueListening called")
 		b := walletManager.GetBackend()
@@ -43,7 +48,7 @@ func ContinueListening(walletManager WalletService) tea.Cmd {
 		}
 
 		debugLog("[LISTENER] Waiting for more notifications...")
-		return waitForNotification(b)
+		return waitForNotification(b, gen, stop)
 	}
 }
 
@@ -51,7 +56,7 @@ func ContinueListening(walletManager WalletService) tea.Cmd {
 // This should be called once when the wallet is unlocked.
 // SubscribeHeaders is called inline — errors are logged, then we proceed to listen
 // for notifications regardless (scripthash notifications still work without headers).
-func StartListeningWithSubscriptions(walletManager WalletService) tea.Cmd {
+func StartListeningWithSubscriptions(walletManager WalletService, gen int, stop <-chan struct{}) tea.Cmd {
 	return func() tea.Msg {
 		debugLog("[LISTENER] StartListeningWithSubscriptions called")
 		b := walletManager.GetBackend()
@@ -66,7 +71,7 @@ func StartListeningWithSubscriptions(walletManager WalletService) tea.Cmd {
 		}
 
 		debugLog("[LISTENER] Waiting for notifications...")
-		return waitForNotification(b)
+		return waitForNotification(b, gen, stop)
 	}
 }
 
@@ -80,7 +85,7 @@ func asyncRefreshAndEmitState(walletManager WalletService) tea.Cmd {
 }
 
 // calculateAndShowBalanceChange calculates total balance change and returns a message
-func calculateAndShowBalanceChange(walletManager WalletService, alertModel *alert.AlertModel) tea.Cmd {
+func calculateAndShowBalanceChange(walletManager WalletService, alertModel *alert.AlertModel, gen int) tea.Cmd {
 	return func() tea.Msg {
 		balanceChange, err := walletManager.GetTotalBalanceChange()
 		if err != nil {
@@ -90,6 +95,7 @@ func calculateAndShowBalanceChange(walletManager WalletService, alertModel *aler
 		return BalanceChangeMsg{
 			Change: balanceChange,
 			State:  walletManager.GetState(),
+			Gen:    gen,
 		}
 	}
 }

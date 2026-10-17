@@ -52,10 +52,12 @@ const (
 
 type NewTransactionNotification struct {
 	Address string
+	Gen     int // listener generation that produced it
 }
 
 type NewBlockNotification struct {
 	Height int64
+	Gen    int // listener generation that produced it
 }
 
 // StateChangedMsg broadcasts wallet state updates to screen models.
@@ -101,6 +103,14 @@ type RootModel struct {
 	lastActivity     time.Time
 	autoLockOverride time.Duration // tests only; <0 disables
 	listenerStarted  bool
+	// listenGen and listenStop tie the notification listener to one
+	// backend. A backend change bumps the generation and closes the stop
+	// channel so the old listener exits and a new one subscribes.
+	listenGen  int
+	listenStop chan struct{}
+	// setupNetwork, when set, preselects the network offered by the next
+	// connection setup screen.
+	setupNetwork string
 }
 
 const (
@@ -208,6 +218,7 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 		splashModel:     NewSplashModel(),
 		alertModel:      *alertModel,
 		contentViewport: vp,
+		listenStop:      make(chan struct{}),
 	}
 }
 
@@ -263,6 +274,13 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contentViewport.Height = msg.Height
 	case BackendChosenMsg:
 		return m, m.applySavedBackend()
+	case ChooseServerMsg:
+		m.setupNetwork = msg.Network
+		return m.Update(NavigateMsg{Target: StateConnectionSetup})
+	case BackendChangedMsg:
+		var restart tea.Cmd
+		m, restart = m.restartListener()
+		return m, tea.Batch(restart, Navigate(msg.Then))
 	case NavigateMsg:
 		if msg.Target == StateWalletSetup && m.state == StateSplash {
 			if m.configManager != nil && m.configManager.IsFirstRun() {
@@ -285,6 +303,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			returnToSettings := prevState == StateSettings
 			cs := NewConnectionSetupModel(m.configManager, returnToSettings)
 			cs.returnToUnlock = prevState == StateUnlock
+			if m.setupNetwork != "" {
+				cs.setNetwork(m.setupNetwork)
+				m.setupNetwork = ""
+			}
 			m.connectionSetupModel = cs
 			isNewModel = true
 		case StateWalletSetup:
@@ -306,7 +328,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.listenerStarted {
 					m.listenerStarted = true
 					debugLog("[ROOT] Starting notification listener for dashboard")
-					cmds = append(cmds, StartListeningWithSubscriptions(m.walletManager))
+					cmds = append(cmds, StartListeningWithSubscriptions(m.walletManager, m.listenGen, m.listenStop))
 				}
 			}
 		case StateReceive:
@@ -455,8 +477,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case NewTransactionNotification:
 		debugLog("[ROOT] NewTransactionNotification received: %s", msg.Address)
+		if msg.Gen != m.listenGen {
+			return m, nil // from a backend we no longer use
+		}
 
-		cmds = append(cmds, calculateAndShowBalanceChange(m.walletManager, &m.alertModel))
+		cmds = append(cmds, calculateAndShowBalanceChange(m.walletManager, &m.alertModel, msg.Gen))
 
 	case PostBroadcastRefreshDoneMsg:
 		debugLog("[ROOT] PostBroadcastRefreshDoneMsg received: change=%d", msg.BalanceChange)
@@ -501,7 +526,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			debugLog("[ROOT] Skipping notification - no balance change")
 		}
-		cmds = append(cmds, ContinueListening(m.walletManager))
+		if msg.Gen == m.listenGen {
+			cmds = append(cmds, ContinueListening(m.walletManager, m.listenGen, m.listenStop))
+		}
 		if m.mainDashboardModel != nil {
 			m.mainDashboardModel, cmd = m.mainDashboardModel.Update(StateChangedMsg{State: msg.State})
 			cmds = append(cmds, cmd)
@@ -520,8 +547,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case NewBlockNotification:
 		debugLog("[ROOT] NewBlockNotification received: block %d", msg.Height)
+		if msg.Gen != m.listenGen {
+			return m, nil // from a backend we no longer use
+		}
 		cmds = append(cmds, m.alertModel.NewAlertCmd(AlertTypeNewBlock, fmt.Sprintf("New Block: #%d", msg.Height)))
-		cmds = append(cmds, ContinueListening(m.walletManager))
+		cmds = append(cmds, ContinueListening(m.walletManager, m.listenGen, m.listenStop))
 
 		m.walletManager.GetStatePtr().UpdateBlockHeight(msg.Height)
 		stateMsg := StateChangedMsg{State: m.walletManager.GetState()}
@@ -770,6 +800,22 @@ func (m RootModel) applySavedBackend() tea.Cmd {
 				}
 			}
 		}
-		return NavigateMsg{Target: StateUnlock}
+		return BackendChangedMsg{Then: StateUnlock}
 	}
+}
+
+// restartListener stops the notification listener bound to the previous
+// backend and, if a wallet is open, starts one on the current backend.
+func (m RootModel) restartListener() (RootModel, tea.Cmd) {
+	if m.listenStop != nil {
+		close(m.listenStop)
+	}
+	m.listenStop = make(chan struct{})
+	m.listenGen++
+	m.listenerStarted = false
+	if m.walletManager != nil && m.walletManager.IsUnlocked() && m.mainDashboardModel != nil {
+		m.listenerStarted = true
+		return m, StartListeningWithSubscriptions(m.walletManager, m.listenGen, m.listenStop)
+	}
+	return m, nil
 }

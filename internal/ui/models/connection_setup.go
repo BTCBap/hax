@@ -93,6 +93,24 @@ type ConnectionSetupModel struct {
 	returnToUnlock bool
 }
 
+// ChooseServerMsg opens connection setup from the unlock screen, listing
+// servers for Network (the locked wallet's network, if known).
+type ChooseServerMsg struct{ Network string }
+
+// BackendChangedMsg reports that the wallet manager switched to a new
+// backend; the root model restarts the notification listener on it.
+type BackendChangedMsg struct{ Then AppState }
+
+// setNetwork selects which network's servers are offered.
+func (m *ConnectionSetupModel) setNetwork(network string) {
+	switch backend.NormalizeNetwork(network) {
+	case "mainnet":
+		m.network = "mainnet"
+	case "testnet":
+		m.network = "testnet"
+	}
+}
+
 // BackendChosenMsg asks the root model to apply the saved backend config to
 // the wallet manager and return to the unlock screen.
 type BackendChosenMsg struct{}

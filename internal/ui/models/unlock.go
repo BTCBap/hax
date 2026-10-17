@@ -234,7 +234,12 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+s":
 			if m.networkMismatch() {
-				return m, Navigate(StateConnectionSetup)
+				msg := ChooseServerMsg{}
+				var nm *wallet.NetworkMismatchError
+				if errors.As(m.err, &nm) {
+					msg.Network = nm.WalletNetwork
+				}
+				return m, func() tea.Msg { return msg }
 			}
 		case "esc":
 			if len(m.walletList) > 1 && m.passwordInput.Focused() {
