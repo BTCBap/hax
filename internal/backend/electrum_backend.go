@@ -263,7 +263,9 @@ func (b *ElectrumBackend) Connect() error {
 // connection and reports anything that changed while we were offline.
 func (b *ElectrumBackend) resubscribe() {
 	b.subMu.RLock()
-	headers := b.headersSubscribed
+	// Headers are always replayed: the UI listens for blocks whenever a
+	// wallet is open, even if the first subscribe failed while offline.
+	headers := true
 	hashes := make([]string, 0, len(b.subscriptions))
 	for sh := range b.subscriptions {
 		hashes = append(hashes, sh)
@@ -278,10 +280,12 @@ func (b *ElectrumBackend) resubscribe() {
 			}
 			if json.Unmarshal(res, &h) == nil {
 				b.subMu.Lock()
-				newer := h.Height > b.lastTip
-				if newer {
+				// Only report blocks we missed, not the first tip we learn.
+				newer := b.lastTip > 0 && h.Height > b.lastTip
+				if h.Height > b.lastTip {
 					b.lastTip = h.Height
 				}
+				b.headersSubscribed = true
 				b.subMu.Unlock()
 				if newer {
 					select {

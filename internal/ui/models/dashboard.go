@@ -149,7 +149,7 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isActive = true
 		state := m.walletManager.GetState()
 		animCmds := []tea.Cmd{m.breatheTick()}
-		needsSpinner := m.loading || state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing
+		needsSpinner := m.loading || state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing || state.Status == wallet.SyncStatusReconnecting
 		if needsSpinner {
 			animCmds = append(animCmds, m.spinner.Tick)
 		}
@@ -197,7 +197,7 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		state := m.walletManager.GetState()
-		needsSpinner := m.loading || state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing
+		needsSpinner := m.loading || state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing || state.Status == wallet.SyncStatusReconnecting
 		if needsSpinner && cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -402,6 +402,8 @@ func (m MainDashboardModel) viewGrid() string {
 			errMsg = "Server key changed"
 		}
 		statusIndicator = styles.StatusErrorStyle.Render("● " + errMsg)
+	case wallet.SyncStatusReconnecting:
+		statusIndicator = m.spinner.View() + " " + styles.StatusConnectingStyle.Render(reconnectStatus(time.Now(), state))
 	}
 
 	// Balance display
@@ -797,4 +799,17 @@ func formatAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d/(24*time.Hour)))
 	}
+}
+
+// reconnectStatus is the status line while the server is unreachable,
+// e.g. "Reconnecting in 8s (attempt 3)". It fits the 33-column status slot.
+func reconnectStatus(now time.Time, state wallet.WalletStateSnapshot) string {
+	msg := "Reconnecting..."
+	if wait := state.NextReconnectAt.Sub(now).Round(time.Second); wait >= time.Second {
+		msg = fmt.Sprintf("Reconnecting in %ds", int(wait/time.Second))
+	}
+	if state.ReconnectAttempt > 1 {
+		msg += fmt.Sprintf(" (attempt %d)", state.ReconnectAttempt)
+	}
+	return msg
 }
