@@ -163,9 +163,13 @@ func (m *WalletManager) CreatePSBTBatchTransaction(accountIndex uint32, recipien
 		if result.HasChange {
 			changeOutputIdx = len(recipients)
 		}
-		if err := m.addSingleSigBip32Derivation(result.Packet, selectedUTXOs, changePath, changeOutputIdx); err != nil {
-			_ = err // Silently continue
-		}
+		m.addSingleSigSignerData(result.Packet, selectedUTXOs, changePath, changeOutputIdx)
+	}
+
+	// After the signer data: whether a P2SH input is segwit depends on
+	// its redeem script.
+	if err := m.attachPrevTxs(result); err != nil {
+		return nil, fmt.Errorf("failed to attach previous transactions: %w", err)
 	}
 
 	return result, nil
