@@ -95,6 +95,11 @@ type WalletService interface {
 	BroadcastPSBT(result *wallet.PSBTResult) (string, error)
 	InspectPSBT(packet *psbt.Packet) *wallet.PSBTInspection
 
+	// Fee bumps
+	AnalyzeFeeBump(txid string) (*wallet.FeeBumpInfo, error)
+	BuildRBF(txid string, feeRate float64) (*wallet.PSBTResult, error)
+	BuildCPFP(txid string, feeRate float64) (*wallet.PSBTResult, error)
+
 	// Hardware wallet
 	GetHWIClient() *wallet.HWIClient
 	ListHardwareWallets() ([]wallet.HardwareDevice, error)

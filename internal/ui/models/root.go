@@ -134,6 +134,8 @@ func (m RootModel) usesRootViewport() bool {
 type NavigateMsg struct {
 	Target  AppState
 	Refresh bool // If true, trigger a balance refresh on dashboard
+	// FeeBumpTxID opens the send screen to speed up this transaction.
+	FeeBumpTxID string
 }
 
 // Navigate returns a Cmd that navigates to a new screen
@@ -344,7 +346,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			isNewModel = true
 		case StateSend:
 			state := m.walletManager.GetState()
-			m.sendModel = NewSendModel(m.walletManager, state.Balance, state.UTXOs)
+			if msg.FeeBumpTxID != "" {
+				m.sendModel = NewFeeBumpModel(m.walletManager, msg.FeeBumpTxID, state.Balance, state.UTXOs)
+			} else {
+				m.sendModel = NewSendModel(m.walletManager, state.Balance, state.UTXOs)
+			}
 			isNewModel = true
 		case StateTransactionHistory:
 			if m.transactionHistoryModel == nil {

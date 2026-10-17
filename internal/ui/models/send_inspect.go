@@ -125,6 +125,12 @@ func (m SendModel) renderInspection(boxWidth int) string {
 		rbf = "yes"
 	}
 	rows = append(rows, renderRow("Replaceable:", rbf))
+	if m.psbtResult != nil && m.psbtResult.Replaces != "" {
+		rows = append(rows, renderRow("Replaces:", shortTxIDUI(m.psbtResult.Replaces)))
+	}
+	if m.psbtResult != nil && m.psbtResult.ChildOf != "" {
+		rows = append(rows, renderRow("Speeds up:", shortTxIDUI(m.psbtResult.ChildOf)))
+	}
 
 	section := styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(rows, "\n"))
 	if warnings := m.inspectionWarnings(); len(warnings) > 0 {

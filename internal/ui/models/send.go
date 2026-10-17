@@ -143,6 +143,7 @@ type SendModel struct {
 	psbtSigsTotal  int                    // Total signatures needed (M for multisig)
 	psbtResult     *wallet.PSBTResult     // The actual PSBT for further signing
 	inspection     *wallet.PSBTInspection // What psbtResult does, for review before signing
+	bump           *feeBumpState          // Set when speeding up a pending transaction
 
 	// Hardware wallet / file-based PSBT support
 	psbtFilePath  string          // Path where PSBT was saved/loaded
@@ -327,12 +328,16 @@ func (m *SendModel) estimateTxVSize(numInputs, numOutputs int) int {
 }
 
 func (m SendModel) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.spinner.Tick,
 		m.fetchFeeEstimates(),
 		m.fetchUTXOs(),
-	)
+	}
+	if m.bump != nil {
+		cmds = append(cmds, m.analyzeFeeBump())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m SendModel) fetchFeeEstimates() tea.Cmd {
@@ -362,6 +367,9 @@ func (m SendModel) fetchUTXOs() tea.Cmd {
 func (m SendModel) previewTransaction() tea.Cmd {
 	// Calculate fee rate BEFORE creating closure to avoid stale capture issues
 	feeRate := m.getFeeRateForLevel(m.feeLevel)
+	if m.bump != nil {
+		return m.previewFeeBump(feeRate)
+	}
 
 	// Collect UTXOs before closure
 	var selectedUTXOs []api.UTXO
@@ -565,6 +573,9 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFeeEstimate()
 		}
 
+	case FeeBumpInfoMsg:
+		m.handleFeeBumpInfo(msg)
+
 	case TxPreviewMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
@@ -596,6 +607,9 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.setPSBTResult(msg.Result)
+			if m.bump != nil {
+				m.recipients = m.bumpRecipients()
+			}
 			m.err = nil
 			m.scrollOffset = 0
 			m.scrollViewport.SetYOffset(0)
@@ -1046,6 +1060,11 @@ func (m SendModel) requestLabel() string {
 // failed save is shown but doesn't affect the broadcast.
 func (m *SendModel) labelFromRequest() {
 	label := m.requestLabel()
+	if label == "" && m.psbtResult != nil && m.psbtResult.Replaces != "" &&
+		m.walletManager != nil {
+		// A replacement keeps the label of the transaction it replaces.
+		label = m.walletManager.GetTransactionLabel(m.psbtResult.Replaces)
+	}
 	if label == "" || m.txID == "" || m.walletManager == nil {
 		return
 	}

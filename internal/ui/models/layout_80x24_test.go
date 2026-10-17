@@ -18,6 +18,7 @@ func TestViews_FitIn80Columns(t *testing.T) {
 		"dashboard":  func(w *MockWalletManager) tea.Model { return NewMainDashboardModel(w, nil) },
 		"receive":    func(w *MockWalletManager) tea.Model { return NewReceiveModel(w) },
 		"send":       func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
+		"feebump":    func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
 		"history":    func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
 		"addresses":  func(w *MockWalletManager) tea.Model { return NewAddressesModel(w, nil) },
 		"utxos":      func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },

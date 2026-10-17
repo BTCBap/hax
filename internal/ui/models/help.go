@@ -268,6 +268,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("E", "Export labels (BIP-329)"))
 	lines = append(lines, m.shortcut("K", "Export Koinly CSV"))
 	lines = append(lines, m.shortcut("c", "Copy transaction ID"))
+	lines = append(lines, m.shortcut("b", "Speed up a pending transaction (RBF or CPFP)"))
 	lines = append(lines, m.shortcut("1-6", "Sort by column"))
 	lines = append(lines, m.shortcut("[/] or \u2190/\u2192", "Page navigation"))
 	lines = append(lines, m.shortcut("+/-", "Resize current sorted column"))
