@@ -143,6 +143,8 @@ func TestScreenshots(t *testing.T) {
 	}
 	write("send", sm.View())
 
+	// One frozen coin, so the UTXO screen shows the marker.
+	_ = mock.SetUTXOFrozen(txFaucet2, 0, true)
 	um := NewUTXOsModel(mock, nil)
 	um.width, um.height, um.isActive, um.loading = w, h, true, false
 	um.utxos = demoUTXOs

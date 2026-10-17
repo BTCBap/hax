@@ -245,6 +245,9 @@ func (m *WalletManager) ExportDescriptor(accountIndex uint32) (string, error) {
 		} else if hwConfig.Fingerprint != "" {
 			keyExpr = fmt.Sprintf("[%s]%s", hwConfig.Fingerprint, hwConfig.Xpub)
 		}
+		// The xpub is at the account level; addresses are derived at
+		// /0/i (receive) and /1/i (change).
+		keyExpr += "/<0;1>/*"
 
 		// Build descriptor
 		var desc string

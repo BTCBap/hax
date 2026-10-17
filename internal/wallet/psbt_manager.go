@@ -632,51 +632,66 @@ func (m *WalletManager) DisplayAddressOnDevice(addr, derivPath string) error {
 		return &HWIError{Code: HWIErrNoDevice, RawMsg: "no hardware wallets detected"}
 	}
 
-	// Find device matching wallet fingerprint
+	// Find the device that holds this wallet's keys. Showing the address
+	// on any other device would only produce a confusing mismatch.
 	hwConfig := m.GetHardwareWalletConfig()
-	var target *HardwareDevice
+	target := &devices[0]
 	if hwConfig != nil && hwConfig.Fingerprint != "" {
+		target = nil
 		for i := range devices {
-			if devices[i].Fingerprint == hwConfig.Fingerprint {
+			if strings.EqualFold(devices[i].Fingerprint, hwConfig.Fingerprint) {
 				target = &devices[i]
 				break
 			}
 		}
-	}
-	// Fall back to first device if no fingerprint match
-	if target == nil {
-		target = &devices[0]
+		if target == nil {
+			return &HWIError{Code: HWIErrNoDevice, RawMsg: fmt.Sprintf(
+				"no connected device has fingerprint %s", hwConfig.Fingerprint)}
+		}
 	}
 
 	if target.NeedsPin {
 		return &HWIError{Code: HWIErrDeviceLocked, RawMsg: "device needs PIN"}
 	}
 
-	// Convert address type for HWI
+	return m.verifyAddressOnDevice(hwi, *target, addr, derivPath)
+}
+
+// hwiAddrType maps a wallet address type to HWI's --addr-type.
+func hwiAddrType(addressType string) string {
+	switch addressType {
+	case "taproot":
+		return "tap"
+	case "segwit_native":
+		return "wit"
+	case "segwit_nested":
+		return "sh_wit"
+	case "legacy":
+		return "legacy"
+	}
+	return ""
+}
+
+// verifyAddressOnDevice has the device derive and show the address at
+// derivPath, then checks it against addr.
+func (m *WalletManager) verifyAddressOnDevice(hwi *HWIClient, device HardwareDevice, addr, derivPath string) error {
 	addrType := ""
-	if hwConfig != nil {
-		switch hwConfig.AddressType {
-		case "taproot":
-			addrType = "tap"
-		case "segwit_native":
-			addrType = "wit"
-		case "segwit_nested":
-			addrType = "sh_wit"
-		case "legacy":
-			addrType = "legacy"
-		}
+	if hwConfig := m.GetHardwareWalletConfig(); hwConfig != nil {
+		addrType = hwiAddrType(hwConfig.AddressType)
 	}
 
-	displayed, err := hwi.DisplayAddress(*target, derivPath, addrType)
+	displayed, err := hwi.DisplayAddress(device, derivPath, addrType)
 	if err != nil {
 		return err
 	}
+	if displayed == "" {
+		return fmt.Errorf("device did not report the address; compare it on the device screen")
+	}
 
-	// Verify the displayed address matches what we expect.
 	// Coldcard and other devices in mainnet mode will show a mainnet address
 	// (bc1...) even for testnet derivation paths. Detect this case and show
 	// a helpful message instead of a generic mismatch error.
-	if displayed != "" && displayed != addr {
+	if displayed != addr {
 		isTestnetAddr := strings.HasPrefix(addr, "tb1") || strings.HasPrefix(addr, "2") || strings.HasPrefix(addr, "m") || strings.HasPrefix(addr, "n")
 		isMainnetAddr := strings.HasPrefix(displayed, "bc1") || strings.HasPrefix(displayed, "1") || strings.HasPrefix(displayed, "3")
 		if isTestnetAddr && isMainnetAddr {

@@ -53,11 +53,18 @@ complete and signable; it is not a substitute for real-device runs.
 | 2-of-3 P2WSH and P2SH-P2WSH (local seed + device) | Pass | Pass |
 | 2-of-3 legacy P2SH with change | Pass | Fails: HWI 2 sends change as a multisig address output, which the firmware rejects |
 | Fee bumps, single-sig all four types: device signs a payment, its RBF replacement and a CPFP child; Core accepts each | Pass | Not run |
+| Receive address verification, single-sig all four types: the device derives the address at the path `hax` passes and it matches; a wrong address is reported as a mismatch | Pass | Pass |
 
 Each run also checks that Core's `analyzepsbt` reports the unsigned PSBT
 as ready for the signer, that `finalizepsbt` produces the same
 transaction as `hax`, and that previous transactions are fetched from a
 node without `-txindex`.
+
+Descriptor exports (software, hardware watch-only and multisig, every
+script type) are checked against Core alone: `deriveaddresses` must
+give the same first five receive and change addresses as `hax`, and
+`importdescriptors` into a watch-only wallet must own them on the right
+chain (`TestRegtestDescriptorExport`). Sparrow has not been checked.
 
 To repeat it:
 
@@ -74,7 +81,8 @@ To repeat it:
 
 The test starts its own regtest node in a temporary directory.
 `-run TestRegtest` needs only `HAX_BITCOIND`: it checks RBF and CPFP
-with a seed wallet against Core's own replacement and package rules.
+with a seed wallet against Core's own replacement and package rules,
+and the descriptor exports against Core's derivation.
 
 ## Device Validation Table
 

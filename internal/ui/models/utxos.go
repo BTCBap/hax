@@ -210,6 +210,28 @@ func (m UTXOsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, textinput.Blink
 			}
 
+		case "f":
+			// Freeze or unfreeze the selected coin
+			idx := m.getAbsoluteIndex()
+			if idx >= 0 && idx < len(m.utxos) {
+				u := m.utxos[idx]
+				frozen := !m.walletManager.IsUTXOFrozen(u.TxID, u.Vout)
+				if err := m.walletManager.SetUTXOFrozen(u.TxID, u.Vout, frozen); err != nil {
+					m.err = fmt.Errorf("failed to freeze coin: %v", err)
+					return m, nil
+				}
+				m.copyMsg = "COIN UNFROZEN"
+				if frozen {
+					m.copyMsg = "COIN FROZEN"
+				}
+				m.showCopied = true
+				m.copiedTime = time.Now()
+				m.sortAndUpdateTable()
+				cmds = append(cmds, tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
+					return TickMsg(t)
+				}))
+			}
+
 		case "r":
 			// Refresh from cached state
 			state := m.walletManager.GetState()
@@ -305,6 +327,9 @@ func (m *UTXOsModel) sortAndUpdateTable() {
 
 		// Output (txid:vout truncated)
 		outpoint := fmt.Sprintf("%s..:%d", prefixRunes(utxo.TxID, 8), utxo.Vout)
+		if m.walletManager.IsUTXOFrozen(utxo.TxID, utxo.Vout) {
+			outpoint += " frozen"
+		}
 
 		// Label (from transaction labels)
 		label := sanitizeLine(m.walletManager.GetTransactionLabel(utxo.TxID))
@@ -372,8 +397,13 @@ func (m UTXOsModel) View() string {
 
 	// Stats box — responsive width
 	displayUnit := m.getDisplayUnit()
-	var confirmedBalance, pendingBalance api.Satoshi
+	var confirmedBalance, pendingBalance, frozenBalance api.Satoshi
+	frozenCount := 0
 	for _, utxo := range m.utxos {
+		if m.walletManager.IsUTXOFrozen(utxo.TxID, utxo.Vout) {
+			frozenBalance += utxo.Value
+			frozenCount++
+		}
 		if utxo.Status.Confirmed {
 			confirmedBalance += utxo.Value
 		} else {
@@ -392,6 +422,12 @@ func (m UTXOsModel) View() string {
 		styles.DimText.Render("UTXOs:"),
 		len(m.utxos),
 	)
+	if frozenCount > 0 {
+		statsContent += fmt.Sprintf("\n%s %s (%d)",
+			styles.DimText.Render("Frozen:"),
+			styles.WarningText.Render(wallet.FormatAmountCompact(frozenBalance, displayUnit)),
+			frozenCount)
+	}
 
 	statsWidth := styles.ClampWidth(30, m.width)
 	statsBox := styles.InfoBoxStyle.
@@ -430,6 +466,7 @@ func (m UTXOsModel) View() string {
 		styles.HK("←/→", "page"),
 		styles.HK("e", "edit label"),
 		styles.HK("c", "copy"),
+		styles.HK("f", "freeze"),
 		styles.HK("esc", "back"),
 	)
 

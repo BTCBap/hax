@@ -262,6 +262,10 @@ func (m SendModel) viewUTXOSelection() string {
 	if m.sendAll {
 		selectionInfo = selectionInfo + " • MAX spend locks all inputs"
 	}
+	if m.frozenCount > 0 {
+		selectionInfo += fmt.Sprintf("\n%d frozen coin%s not shown",
+			m.frozenCount, pluralize(m.frozenCount))
+	}
 
 	// List UTXOs
 	utxoList := "\n"
