@@ -683,6 +683,9 @@ func (m *WalletManager) LockWallet() {
 	m.wallet = nil
 	m.unlocked = false
 	m.cache = nil
+	if m.state != nil {
+		m.state.ResetWalletData()
+	}
 }
 
 // GetState returns a snapshot of the current wallet state.
