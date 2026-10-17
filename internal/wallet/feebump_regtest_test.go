@@ -3,6 +3,8 @@
 package wallet
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -136,6 +138,94 @@ func TestRegtestFeeBump(t *testing.T) {
 			childID = node.mempoolSend(m, res)
 			if rate := node.ancestorFeeRate(childID); rate < info.FeeRate+20 {
 				t.Fatalf("incoming package pays %.2f sat/vB", rate)
+			}
+			node.must("-rpcwallet=miner", "-generate", "1")
+		})
+	}
+}
+
+// deviceSend has the emulator sign a PSBT, finalizes it and submits it
+// to the mempool.
+func (n *regtestNode) deviceSend(m *WalletManager, h *HWIClient, dev HardwareDevice, res *PSBTResult) string {
+	n.t.Helper()
+	unsigned, err := m.ExportPSBTBase64(res)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	signed, err := h.SignPSBT(dev, unsigned)
+	if err != nil {
+		n.t.Fatalf("device signing: %v", err)
+	}
+	imported, err := m.ImportPSBTFromBase64(signed)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	txHex, err := m.FinalizePSBTTransaction(imported)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	return n.must("sendrawtransaction", txHex)
+}
+
+// TestEmulatorFeeBump: the device signs a payment, its RBF replacement
+// and a CPFP child, and Core accepts each.
+func TestEmulatorFeeBump(t *testing.T) {
+	h, dev := emulatorDevice(t)
+	node := startRegtest(t)
+	for _, tt := range signerTestTypes {
+		t.Run(tt.name, func(t *testing.T) {
+			origin := fmt.Sprintf("m/%dh/1h/0h", tt.purpose)
+			xpub, err := h.GetXpub(dev, origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := NewWalletManager(t.TempDir(), regtestWalletBackend{node.rpcBackend(), t})
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyOrigin := signerTestFingerprint + strings.TrimPrefix(origin, "m")
+			if err := m.CreateHardwareWalletOnNetwork("hw", "emulator-pw", xpub,
+				signerTestFingerprint, keyOrigin, tt.addr, string(dev.Type), NetworkTestnet); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.UnlockWallet("hw", "emulator-pw"); err != nil {
+				t.Fatal(err)
+			}
+			m.StopBackgroundSync()
+			t.Cleanup(m.LockWallet)
+
+			addr, err := m.GetNewAddress(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			funding := node.fundAddress(addr)
+			m.state.UpdateTransactions([]api.Transaction{{
+				TxID: funding.TxID, Status: funding.Status}})
+
+			dest := externalAddress(t, &TestNet4Params)
+			res, err := m.CreatePSBTBatchTransaction(0,
+				[]TxRecipient{{Address: dest, Amount: 30_000}}, 2, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			origID := node.deviceSend(m, h, dev, res)
+
+			res, err = m.BuildRBF(origID, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			replID := node.deviceSend(m, h, dev, res)
+			if node.inMempool(origID) {
+				t.Fatal("original still in the mempool")
+			}
+
+			res, err = m.BuildCPFP(replID, 30)
+			if err != nil {
+				t.Fatal(err)
+			}
+			childID := node.deviceSend(m, h, dev, res)
+			if rate := node.ancestorFeeRate(childID); rate < 30 {
+				t.Fatalf("package pays %.2f sat/vB", rate)
 			}
 			node.must("-rpcwallet=miner", "-generate", "1")
 		})
