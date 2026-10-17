@@ -46,3 +46,9 @@ type BitcoinBackend interface {
 	ServerInfo() (software, protocol string)
 	CertFingerprint() string
 }
+
+// DropNotifier is implemented by backends that hold a live connection and
+// can report when it is lost unexpectedly (Electrum).
+type DropNotifier interface {
+	Drops() <-chan error
+}
