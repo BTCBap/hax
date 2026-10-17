@@ -16,7 +16,7 @@
 </p>
 
 > [!WARNING]
-> **hax is beta software** and has not been independently audited. Try it on testnet4 first.
+> **hax has not been independently audited.** Try it on testnet4 first.
 
 <p align="center">
   <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
@@ -53,7 +53,7 @@ Each release publishes archives for Linux, macOS, and Windows, plus `checksums.t
 Verify before running:
 
 ```bash
-VERSION=v0.1.0   # the release you downloaded
+VERSION=v1.1.0   # the release you downloaded
 # 1. Verify the checksum manifest was signed by this repo's release workflow
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \

@@ -4,6 +4,8 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-17
+
 ### Added
 - Public repo baseline docs: README, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT
 - GitHub automation and templates for CI, issues, and pull requests

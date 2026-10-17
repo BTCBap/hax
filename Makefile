@@ -2,8 +2,8 @@
 # Provides build targets with version injection
 
 # Version information
-VERSION := 1.0.0
-PRERELEASE := testnet
+VERSION := 1.1.0
+PRERELEASE :=
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -78,7 +78,7 @@ test-race:
 
 # Show version info
 version:
-	@echo "Version:    $(VERSION)-$(PRERELEASE)"
+	@echo "Version:    $(VERSION)$(if $(PRERELEASE),-$(PRERELEASE))"
 	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Git Branch: $(GIT_BRANCH)"
 	@echo "Build Date: $(BUILD_DATE)"

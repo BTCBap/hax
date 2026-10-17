@@ -10,7 +10,7 @@ import (
 // Build-time variables (set via ldflags)
 var (
 	// Version is the semantic version (e.g., "1.0.0")
-	Version = "1.0.0"
+	Version = "1.1.0"
 
 	// GitCommit is the git commit hash
 	GitCommit = "unknown"
@@ -23,7 +23,7 @@ var (
 
 	// Prerelease is the prerelease tag (e.g., "alpha", "beta", "rc1")
 	// Empty string for stable releases
-	Prerelease = "testnet"
+	Prerelease = ""
 )
 
 // Info contains complete version information
