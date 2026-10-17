@@ -1,9 +1,5 @@
 # hax TODO
 
-## Next
-
-- [ ] Split `send.go`, `wallet_setup.go`, and `settings.go` into smaller files
-
 ## Validation
 
 - [ ] Unfunded smoke test in a clean environment: create, restore, unlock, receive, navigation, PSBT import/export
