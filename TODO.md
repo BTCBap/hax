@@ -18,6 +18,8 @@ Manual checks; they need a person, real funds, or real devices.
 - [x] Send: clearer fee choice on review
 - [x] Address and transaction labels, with history search and filter
 - [x] Hardware signing: PSBTs carry previous transactions, BIP371 Taproot fields and nested SegWit redeem scripts (checked on a Trezor emulator)
+- [x] Speed up pending transactions: RBF for our own, CPFP for incoming or stuck ones
+- [x] PSBT inspector before signing: inputs, outputs, verified change, fee and warnings, for built and imported PSBTs
 
 ## Later
 

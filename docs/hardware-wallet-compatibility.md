@@ -52,6 +52,7 @@ complete and signable; it is not a substitute for real-device runs.
 | Single-sig P2PKH, P2SH-P2WPKH, P2WPKH, P2TR: build, device sign, finalize, Core accepts | Pass | Pass |
 | 2-of-3 P2WSH and P2SH-P2WSH (local seed + device) | Pass | Pass |
 | 2-of-3 legacy P2SH with change | Pass | Fails: HWI 2 sends change as a multisig address output, which the firmware rejects |
+| Fee bumps, single-sig all four types: device signs a payment, its RBF replacement and a CPFP child; Core accepts each | Pass | Not run |
 
 Each run also checks that Core's `analyzepsbt` reports the unsigned PSBT
 as ready for the signer, that `finalizepsbt` produces the same
@@ -72,6 +73,8 @@ To repeat it:
    ```
 
 The test starts its own regtest node in a temporary directory.
+`-run TestRegtest` needs only `HAX_BITCOIND`: it checks RBF and CPFP
+with a seed wallet against Core's own replacement and package rules.
 
 ## Device Validation Table
 
