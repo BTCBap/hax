@@ -534,7 +534,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			debugLog("[ROOT] Skipping notification - no balance change")
 		}
-		if msg.Gen == m.listenGen {
+		if msg.Gen == m.listenGen && !msg.FromBlock {
 			cmds = append(cmds, ContinueListening(m.walletManager, m.listenGen, m.listenStop))
 		}
 		if m.mainDashboardModel != nil {
@@ -560,6 +560,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.alertModel.NewAlertCmd(AlertTypeNewBlock, fmt.Sprintf("New Block: #%d", msg.Height)))
 		cmds = append(cmds, ContinueListening(m.walletManager, m.listenGen, m.listenStop))
+		if b := m.walletManager.GetBackend(); b != nil && b.Type() == backend.BackendTypeRPC {
+			// Core has no address subscriptions; a new block is when
+			// confirmed payments show up, so check the balance now.
+			cmds = append(cmds, balanceCheckAfterBlock(m.walletManager, m.listenGen))
+		}
 
 		m.walletManager.GetStatePtr().UpdateBlockHeight(msg.Height)
 		stateMsg := StateChangedMsg{State: m.walletManager.GetState()}

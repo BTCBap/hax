@@ -13,6 +13,9 @@ type BalanceChangeMsg struct {
 	Change api.Satoshi
 	State  wallet.WalletStateSnapshot
 	Gen    int // listener generation of the notification that caused it
+	// FromBlock marks a check triggered by a polled block (Bitcoin Core);
+	// the block handler already re-armed the listener.
+	FromBlock bool
 }
 
 // PostBroadcastRefreshDoneMsg is sent after the post-broadcast lightweight refresh completes
@@ -42,8 +45,7 @@ func ContinueListening(walletManager WalletService, gen int, stop <-chan struct{
 	return func() tea.Msg {
 		debugLog("[LISTENER] ContinueListening called")
 		b := walletManager.GetBackend()
-		if b == nil || b.Type() != backend.BackendTypeElectrum {
-			debugLog("[LISTENER] Backend is not Electrum in ContinueListening")
+		if b == nil {
 			return nil
 		}
 
@@ -54,14 +56,14 @@ func ContinueListening(walletManager WalletService, gen int, stop <-chan struct{
 
 // StartListeningWithSubscriptions subscribes to block headers and then starts listening.
 // This should be called once when the wallet is unlocked.
-// SubscribeHeaders is called inline — errors are logged, then we proceed to listen
+// Electrum pushes headers and address updates; Bitcoin Core RPC polls for
+// new blocks. SubscribeHeaders is called inline — errors are logged, then we proceed to listen
 // for notifications regardless (scripthash notifications still work without headers).
 func StartListeningWithSubscriptions(walletManager WalletService, gen int, stop <-chan struct{}) tea.Cmd {
 	return func() tea.Msg {
 		debugLog("[LISTENER] StartListeningWithSubscriptions called")
 		b := walletManager.GetBackend()
-		if b == nil || b.Type() != backend.BackendTypeElectrum {
-			debugLog("[LISTENER] Backend is not Electrum, returning nil")
+		if b == nil {
 			return nil
 		}
 
@@ -81,6 +83,19 @@ func asyncRefreshAndEmitState(walletManager WalletService) tea.Cmd {
 	return func() tea.Msg {
 		walletManager.RefreshCache()
 		return StateChangedMsg{State: walletManager.GetState()}
+	}
+}
+
+// balanceCheckAfterBlock looks for a balance change after a new block on
+// backends without address push notifications (Bitcoin Core RPC).
+func balanceCheckAfterBlock(walletManager WalletService, gen int) tea.Cmd {
+	return func() tea.Msg {
+		change, err := walletManager.GetTotalBalanceChange()
+		if err != nil {
+			debugLog("[ROOT] Error calculating balance change after block: %v", err)
+			change = 0
+		}
+		return BalanceChangeMsg{Change: change, State: walletManager.GetState(), Gen: gen, FromBlock: true}
 	}
 }
 
