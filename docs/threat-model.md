@@ -2,9 +2,9 @@
 
 ## Status
 
-This document describes the current beta threat model for `hax`.
+This document describes the threat model for `hax`.
 
-It is intentionally narrow and should be read together with the public-beta warning in the README.
+It is intentionally narrow and should be read together with the audit warning in the README.
 
 ## Scope
 
@@ -42,7 +42,7 @@ Out of scope for now:
 ## Assumptions
 
 - Users verify backups before depending on them.
-- Users understand the current beta is testnet4-first.
+- Users try new workflows on testnet4 before mainnet.
 - Hardware wallet firmware and HWI installations come from trusted sources.
 - The operator is not running the app on a hostile or shared machine.
 

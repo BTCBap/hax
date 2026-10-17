@@ -4,7 +4,7 @@
 
 Manual checks; they need a person, real funds, or real devices.
 
-- [ ] Unfunded smoke test in a clean environment: create, restore, unlock, receive, navigation, PSBT import/export
+- [ ] Unfunded [smoke test](docs/smoke-test.md) in a clean environment: create, restore, unlock, receive, navigation, PSBT import/export
 - [ ] Funded smoke test: send, sign, broadcast (testnet4 faucet or a local chain)
 - [ ] Run the [recovery drill](docs/recovery-drill.md) and record the result
 - [ ] Fill in the [hardware wallet and multisig matrix](docs/hardware-wallet-compatibility.md) with real-device results

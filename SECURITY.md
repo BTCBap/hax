@@ -1,6 +1,6 @@
 # Security Policy
 
-hax is beta software for Bitcoin mainnet and testnet4. It has not been independently audited.
+hax is a wallet for Bitcoin mainnet and testnet4. It has not been independently audited; see the [threat model](docs/threat-model.md).
 
 ## Reporting a vulnerability
 
