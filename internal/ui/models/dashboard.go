@@ -391,7 +391,7 @@ func (m MainDashboardModel) viewGrid() string {
 	case wallet.SyncStatusSynced:
 		dotStyle := m.breathingDotStyle(styles.PastelGreen)
 		statusIndicator = dotStyle.Render("●") + " " + dotStyle.Render("Synced") +
-			styles.DimText.Render(fmt.Sprintf(" · block %d", state.BlockHeight))
+			styles.DimText.Render(fmt.Sprintf(" · block %d", state.BlockHeight)+syncAgeSuffix(time.Now(), state.LastSyncAt))
 	case wallet.SyncStatusError:
 		errMsg := "Error"
 		if state.LastError != nil {
@@ -775,4 +775,26 @@ func walletNetwork(w WalletService) string {
 		return n
 	}
 	return wallet.NetworkTestnet
+}
+
+// syncAgeSuffix returns " · 3m ago" for the time since the last completed
+// sync, or "" when the wallet has not synced yet.
+func syncAgeSuffix(now, last time.Time) string {
+	if last.IsZero() {
+		return ""
+	}
+	return " · " + formatAge(now.Sub(last))
+}
+
+func formatAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d/time.Hour))
+	default:
+		return fmt.Sprintf("%dd ago", int(d/(24*time.Hour)))
+	}
 }

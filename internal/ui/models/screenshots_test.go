@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -105,6 +106,7 @@ func TestScreenshots(t *testing.T) {
 		Status:       wallet.SyncStatusSynced,
 		Balance:      balance,
 		BlockHeight:  98_412,
+		LastSyncAt:   time.Now().Add(-20 * time.Second),
 		Transactions: demoTxs,
 		UTXOs:        demoUTXOs,
 		FeeEstimates: fees,
