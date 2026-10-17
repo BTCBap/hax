@@ -4,6 +4,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
+	"github.com/btcsuite/btcd/btcutil/psbt"
 )
 
 // MockWalletManager implements WalletService for testing.
@@ -91,6 +92,7 @@ type MockWalletManager struct {
 	ImportPSBTFromBase64Fn   func(string) (*wallet.PSBTResult, error)
 	FinalizePSBTFn           func(*wallet.PSBTResult) (string, error)
 	BroadcastPSBTFn          func(*wallet.PSBTResult) (string, error)
+	InspectPSBTFn            func(*psbt.Packet) *wallet.PSBTInspection
 
 	// Hardware
 	GetHWIClientFn        func() *wallet.HWIClient
@@ -589,6 +591,13 @@ func (m *MockWalletManager) FinalizePSBTTransaction(result *wallet.PSBTResult) (
 		return m.FinalizePSBTFn(result)
 	}
 	return "", nil
+}
+
+func (m *MockWalletManager) InspectPSBT(packet *psbt.Packet) *wallet.PSBTInspection {
+	if m.InspectPSBTFn != nil {
+		return m.InspectPSBTFn(packet)
+	}
+	return nil
 }
 
 func (m *MockWalletManager) BroadcastPSBT(result *wallet.PSBTResult) (string, error) {

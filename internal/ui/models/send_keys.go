@@ -717,7 +717,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.psbtBase64 = b64
-			m.psbtResult = result
+			m.setPSBTResult(result)
 			m.psbtSigsAdded = wallet.CountPSBTSigners(result.Packet)
 			m.estimatedFee = result.Fee
 			m.showURInput = false
@@ -834,6 +834,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.psbtBase64 = newBase64
+			m.refreshInspection()
 			// Count unique signers in PSBT (not per-input signatures)
 			m.psbtSigsAdded = wallet.CountPSBTSigners(m.psbtResult.Packet)
 			m.showCopied = true

@@ -136,12 +136,13 @@ type SendModel struct {
 	lastAction string // "copied", "signed", "imported", "saved"
 
 	// PSBT export state
-	psbtBase64     string             // Exported PSBT in base64 format
-	showPSBTExport bool               // Whether to show PSBT export view
-	psbtExportErr  error              // Error during PSBT export
-	psbtSigsAdded  int                // Signatures added locally
-	psbtSigsTotal  int                // Total signatures needed (M for multisig)
-	psbtResult     *wallet.PSBTResult // The actual PSBT for further signing
+	psbtBase64     string                 // Exported PSBT in base64 format
+	showPSBTExport bool                   // Whether to show PSBT export view
+	psbtExportErr  error                  // Error during PSBT export
+	psbtSigsAdded  int                    // Signatures added locally
+	psbtSigsTotal  int                    // Total signatures needed (M for multisig)
+	psbtResult     *wallet.PSBTResult     // The actual PSBT for further signing
+	inspection     *wallet.PSBTInspection // What psbtResult does, for review before signing
 
 	// Hardware wallet / file-based PSBT support
 	psbtFilePath  string          // Path where PSBT was saved/loaded
@@ -594,7 +595,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			m.psbtResult = msg.Result
+			m.setPSBTResult(msg.Result)
 			m.err = nil
 			m.scrollOffset = 0
 			m.scrollViewport.SetYOffset(0)
@@ -622,7 +623,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.psbtBase64 = msg.Base64
 			m.psbtSigsAdded = msg.SigsAdded
 			m.psbtSigsTotal = msg.SigsTotal
-			m.psbtResult = msg.Result
+			m.setPSBTResult(msg.Result)
 			m.showPSBTExport = true
 			m.scrollOffset = 0
 			m.scrollViewport.SetYOffset(0)
@@ -658,7 +659,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Successfully loaded PSBT from file
 			m.psbtFilePath = msg.FilePath
 			m.psbtBase64 = msg.Base64
-			m.psbtResult = msg.Result
+			m.setPSBTResult(msg.Result)
 			m.psbtSigsAdded = msg.SigsAdded
 			m.psbtExportErr = nil
 			m.showCopied = true
@@ -723,7 +724,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				m.psbtExportErr = fmt.Errorf("failed to parse signed PSBT: %w", err)
 			} else {
-				m.psbtResult = result
+				m.setPSBTResult(result)
 				// Update fee from PSBT (in case it wasn't set earlier)
 				m.estimatedFee = result.Fee
 				m.showCopied = true
@@ -854,7 +855,7 @@ func (m *SendModel) resetTransaction() {
 
 	// Reset UTXO selection
 	m.utxoSelected = nil
-	m.psbtResult = nil
+	m.setPSBTResult(nil)
 
 	// Reset UI state
 	m.showCopied = false
