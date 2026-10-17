@@ -7,6 +7,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -22,6 +23,7 @@ type AddrDisplayInfo struct {
 	Index   uint32
 	Used    bool
 	Balance api.Satoshi
+	Label   string
 }
 
 type addressVisualState int
@@ -75,6 +77,13 @@ type AddressesModel struct {
 
 	// Screen visibility
 	isActive bool
+
+	// Label editing
+	labelCol   bool // table has a Label column
+	labelColW  int
+	editing    bool
+	editAddr   string
+	labelInput textinput.Model
 }
 
 // AddressesInitMsg triggers initial load
@@ -101,7 +110,13 @@ func NewAddressesModel(walletManager WalletService, configManager *config.Config
 		Background(lipgloss.Color(""))
 	t.SetStyles(tableStyles)
 
+	li := textinput.New()
+	li.Placeholder = "Label for this address"
+	li.CharLimit = 255
+	li.Width = 40
+
 	return AddressesModel{
+		labelInput:    li,
 		walletManager: walletManager,
 		configManager: configManager,
 		loading:       false,
@@ -147,7 +162,7 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.resizeColumnsForWidth()
 		// Keep table height stable across scroll/selection states.
-		tableHeight := m.height - 8
+		tableHeight := m.height - 9 // leaves a line for the label
 		if tableHeight < 3 {
 			tableHeight = 3
 		}
@@ -179,6 +194,9 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Any keyboard interaction should cancel queued wheel momentum globally.
 		cmds = append(cmds, SuppressWheelFor(150*time.Millisecond))
+		if m.editing {
+			return m.handleLabelKey(msg)
+		}
 		switch msg.String() {
 		case "esc", "q":
 			m.isActive = false
@@ -209,6 +227,16 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return TickMsg(t)
 					}))
 				}
+			}
+
+		case "e":
+			if a, ok := m.selected(); ok {
+				m.editing = true
+				m.editAddr = a.Address
+				m.err = nil
+				m.labelInput.SetValue(a.Label)
+				m.labelInput.CursorEnd()
+				return m, m.labelInput.Focus()
 			}
 
 		case "r":
@@ -250,13 +278,30 @@ func (m *AddressesModel) resizeColumnsForWidth() {
 		addressW = 43
 	}
 
-	m.table.SetColumns([]table.Column{
+	cols := []table.Column{
 		{Title: "#", Width: indexW},
 		{Title: "Address", Width: addressW},
 		{Title: "Status", Width: statusW},
 		{Title: "Balance", Width: balanceW},
-	})
+	}
+	// Wide terminals get a Label column; narrow ones show the selected
+	// row's label under the table.
+	if w := available - indexW - addressW - statusW - balanceW - overhead - 2; w >= addressLabelColMin {
+		if w > 30 {
+			w = 30
+		}
+		cols = append(cols, table.Column{Title: "Label", Width: w})
+	}
+	m.labelCol = len(cols) == 5
+	m.labelColW = 0
+	if m.labelCol {
+		m.labelColW = cols[4].Width
+	}
+	m.table.SetColumns(cols)
 }
+
+// addressLabelColMin is the narrowest Label column worth showing.
+const addressLabelColMin = 12
 
 func (m *AddressesModel) loadAddresses() {
 	// Use only cached data - NO network calls
@@ -339,6 +384,7 @@ func (m *AddressesModel) loadAddresses() {
 				Index:   addr.Index,
 				Used:    addr.Used,
 				Balance: balance,
+				Label:   acc.Labels[addr.Address],
 			}
 
 			if addr.Change {
@@ -395,12 +441,16 @@ func (m *AddressesModel) updateTable() {
 		// Balance
 		balanceStr := wallet.FormatAmountCompact(addr.Balance, displayUnit)
 
-		rows = append(rows, table.Row{
+		row := table.Row{
 			indexStr,
 			addrDisplay,
 			status,
 			balanceStr,
-		})
+		}
+		if m.labelCol {
+			row = append(row, truncateRunes(sanitizeLine(addr.Label), m.labelColW, "…"))
+		}
+		rows = append(rows, row)
 	}
 
 	m.table.SetRows(rows)
@@ -525,23 +575,81 @@ func (m AddressesModel) View() string {
 	}
 
 	// Help footer
-	help := styles.RenderHelp(
+	help := styles.RenderHelpWrapped(m.width,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("PgUp/PgDn", "scroll"),
 		styles.HK("tab", "recv/change"),
 		styles.HK("c", "copy"),
+		styles.HK("e", "label"),
 		styles.HK("esc", "back"),
 	)
+	if m.editing {
+		help = styles.RenderHelp(
+			styles.HK("enter", "save"),
+			styles.HK("esc", "cancel"),
+		)
+	}
 
 	// Build layout
-	output := strings.Join([]string{
-		header + copyStatus,
-		tabs,
-		statsLine,
-		"",
-		content,
-		help,
-	}, "\n")
+	parts := []string{header + copyStatus, tabs, statsLine, "", content}
+	if l := m.labelLine(); l != "" {
+		parts = append(parts, l)
+	}
+	output := strings.Join(append(parts, help), "\n")
 
 	return output
+}
+
+// selected returns the address under the cursor.
+func (m AddressesModel) selected() (AddrDisplayInfo, bool) {
+	addrs := m.receiveAddresses
+	if m.viewMode == 1 {
+		addrs = m.changeAddresses
+	}
+	idx := m.table.Cursor()
+	if idx < 0 || idx >= len(addrs) {
+		return AddrDisplayInfo{}, false
+	}
+	return addrs[idx], true
+}
+
+// handleLabelKey edits the selected address's label.
+func (m AddressesModel) handleLabelKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.editing = false
+		m.labelInput.Blur()
+		return m, nil
+	case "enter":
+		if err := m.walletManager.SetAddressLabel(m.editAddr, m.labelInput.Value()); err != nil {
+			m.err = fmt.Errorf("label not saved: %w", err)
+		}
+		m.editing = false
+		m.labelInput.Blur()
+		m.loadAddresses()
+		m.updateTable()
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.labelInput, cmd = m.labelInput.Update(msg)
+	return m, cmd
+}
+
+// labelLine shows the label editor, a save error, or the selected
+// address's label.
+func (m AddressesModel) labelLine() string {
+	if m.editing {
+		return styles.DimText.Render("Label: ") + m.labelInput.View()
+	}
+	if m.err != nil && !m.loading {
+		return styles.ErrorText.Render(truncateRunes(m.err.Error(), 76, "…"))
+	}
+	a, ok := m.selected()
+	if !ok {
+		return ""
+	}
+	if a.Label == "" {
+		return styles.DimText.Render("No label · press e to add one")
+	}
+	return styles.DimText.Render("Label: ") + styles.NormalText.Render(truncateRunes(sanitizeLine(a.Label), 68, "…"))
 }

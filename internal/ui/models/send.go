@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -37,6 +38,7 @@ const (
 type Recipient struct {
 	Address string
 	Amount  api.Satoshi
+	Label   string // from a BIP21 payment request; becomes the tx label
 }
 
 // FeeLevel represents different fee priority levels
@@ -99,9 +101,10 @@ type SendModel struct {
 	amountInput  textinput.Model
 
 	// Data - supports batch transactions (multiple recipients)
-	recipients       []Recipient // List of all recipients
-	recipientAddress string      // Current recipient being edited
-	amountSats       api.Satoshi // Current amount being edited
+	recipients       []Recipient        // List of all recipients
+	recipientAddress string             // Current recipient being edited
+	pendingRequest   *wallet.PaymentURI // BIP21 request that filled the current recipient
+	amountSats       api.Satoshi        // Current amount being edited
 	amountBTC        float64
 	usesBTC          bool // true = BTC input, false = satoshi input
 	sendAll          bool // true = user selected MAX spend mode (amount derived after fee + UTXO selection)
@@ -249,9 +252,9 @@ type QRFrameTickMsg struct{}
 func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cachedUTXOs []api.UTXO) SendModel {
 	// Create address input
 	addrInput := textinput.New()
-	addrInput.Placeholder = "tb1q... (testnet address)"
+	addrInput.Placeholder = "Address or bitcoin: URI"
 	addrInput.Width = 60
-	addrInput.CharLimit = 100
+	addrInput.CharLimit = 2048 // room for a pasted BIP21 URI
 	addrInput.Focus()
 
 	// Create amount input with validation
@@ -606,6 +609,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.step = SendStepReview // Go back to review
 		} else {
 			m.txID = msg.TxID
+			m.labelFromRequest()
 			m.step = SendStepComplete
 		}
 
@@ -836,6 +840,7 @@ func (m *SendModel) resetTransaction() {
 	// Reset data
 	m.recipients = nil
 	m.recipientAddress = ""
+	m.pendingRequest = nil
 	m.amountSats = 0
 	m.amountBTC = 0
 	m.usesBTC = true
@@ -1020,4 +1025,33 @@ func (m SendModel) getFeeRateForLevel(level FeeLevel) float64 {
 		return 0.1
 	}
 	return feeRate
+}
+
+// requestLabel is the label carried by the recipients' payment requests.
+func (m SendModel) requestLabel() string {
+	var labels []string
+	seen := map[string]bool{}
+	for _, r := range m.recipients {
+		if r.Label != "" && !seen[r.Label] {
+			seen[r.Label] = true
+			labels = append(labels, r.Label)
+		}
+	}
+	return strings.Join(labels, ", ")
+}
+
+// labelFromRequest labels a just-broadcast transaction with its payment
+// request label, unless the user already labelled it. Best effort: a
+// failed save is shown but doesn't affect the broadcast.
+func (m *SendModel) labelFromRequest() {
+	label := m.requestLabel()
+	if label == "" || m.txID == "" || m.walletManager == nil {
+		return
+	}
+	if m.walletManager.GetTransactionLabel(m.txID) != "" {
+		return
+	}
+	if err := m.walletManager.SetTransactionLabel(m.txID, label); err != nil {
+		m.err = fmt.Errorf("sent, but the label could not be saved: %v", err)
+	}
 }
