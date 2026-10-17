@@ -12,6 +12,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/version"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -21,6 +22,8 @@ func TestMain(m *testing.M) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	// Pin the local zone so rendered timestamps match on every machine.
 	time.Local = time.UTC
+	// Pin the version so a release bump doesn't change the snapshots.
+	version.Version, version.Prerelease = "0.0.0", ""
 	os.Exit(m.Run())
 }
 
