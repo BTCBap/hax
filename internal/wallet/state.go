@@ -17,6 +17,7 @@ const (
 	SyncStatusSyncing
 	SyncStatusSynced
 	SyncStatusError
+	SyncStatusReconnecting
 )
 
 // String returns a human-readable status string
@@ -34,6 +35,8 @@ func (s SyncStatus) String() string {
 		return "Synced"
 	case SyncStatusError:
 		return "Error"
+	case SyncStatusReconnecting:
+		return "Reconnecting..."
 	default:
 		return "Unknown"
 	}
@@ -62,6 +65,10 @@ type WalletState struct {
 	BlockHeight int64
 	LastError   error
 	LastSyncAt  time.Time
+
+	// Set while reconnecting after the server went away
+	ReconnectAttempt int
+	NextReconnectAt  time.Time
 
 	// Core wallet data
 	Balance      api.Satoshi
@@ -97,6 +104,8 @@ func (s *WalletState) ResetWalletData() {
 	s.StatusMsg = ""
 	s.LastError = nil
 	s.LastSyncAt = time.Time{}
+	s.ReconnectAttempt = 0
+	s.NextReconnectAt = time.Time{}
 	s.Balance = 0
 	s.Transactions = nil
 	s.UTXOs = nil
@@ -121,6 +130,8 @@ type WalletStateSnapshot struct {
 	Version          uint64
 	LastSyncAt       time.Time
 	LastError        error
+	ReconnectAttempt int
+	NextReconnectAt  time.Time
 }
 
 // Snapshot returns an immutable copy of current state
@@ -149,6 +160,8 @@ func (s *WalletState) Snapshot() WalletStateSnapshot {
 		Version:          s.Version,
 		LastSyncAt:       s.LastSyncAt,
 		LastError:        s.LastError,
+		ReconnectAttempt: s.ReconnectAttempt,
+		NextReconnectAt:  s.NextReconnectAt,
 	}
 }
 
@@ -172,6 +185,19 @@ func (s *WalletState) SetStatusWithHeight(status SyncStatus, height int64) {
 }
 
 // SetError sets an error status
+// SetReconnecting records that the server is unreachable and when the
+// next attempt is due. Balance and history stay as last synced.
+func (s *WalletState) SetReconnecting(cause error, attempt int, next time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Status = SyncStatusReconnecting
+	s.LastError = cause
+	s.ReconnectAttempt = attempt
+	s.NextReconnectAt = next
+	s.StatusMsg = "Reconnecting..."
+	s.Version++
+}
+
 func (s *WalletState) SetError(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -240,6 +266,8 @@ func (s *WalletState) MarkSynced(height int64) {
 	s.BlockHeight = height
 	s.LastSyncAt = time.Now()
 	s.LastError = nil
+	s.ReconnectAttempt = 0
+	s.NextReconnectAt = time.Time{}
 	s.Version++
 }
 

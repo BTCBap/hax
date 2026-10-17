@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 )
 
 // RefreshOptions controls which parts of the cache refresh to perform
@@ -355,45 +357,128 @@ func (m *WalletManager) StopBackgroundSync() {
 	m.syncWg.Wait()
 }
 
+// Reconnect backoff: first retry after reconnectBaseDelay, doubling up
+// to reconnectMaxDelay. Variables so tests can shorten them.
+var (
+	reconnectBaseDelay = 2 * time.Second
+	reconnectMaxDelay  = 60 * time.Second
+	syncInterval       = 30 * time.Second
+)
+
 // backgroundSync performs periodic data synchronization
 // Note: Electrum notification channels (scripthash, headers) are handled by the UI layer
 // in root.go via StartListeningWithSubscriptions/ContinueListening, which shows toast
 // notifications and triggers RefreshCache. This avoids channel read conflicts.
+//
+// When the server goes away (a refresh fails to reach it, or an Electrum
+// connection drops) it switches to reconnecting with backoff and shows
+// that in the status line, rather than waiting silently for the next tick.
 func (m *WalletManager) backgroundSync(stop <-chan struct{}) {
+	var drops <-chan error
+	if dn, ok := m.backend.(backend.DropNotifier); ok {
+		drops = dn.Drops()
+		// Forget drops from before this sync started.
+		select {
+		case <-drops:
+		default:
+		}
+	}
+
 	// Set status to connecting before initial sync
 	m.state.SetStatus(SyncStatusConnecting, "Connecting to server...")
 
 	// Initial sync immediately (show syncing status)
-	m.refreshCacheInternal(RefreshOptions{})
+	if err := m.refreshCacheInternal(RefreshOptions{}); retryable(err) {
+		m.reconnect(stop, err)
+	}
+	drainDrops(drops)
 
-	// Periodic refresh every 30 seconds (quiet - don't change status)
-	// This is a fallback for non-Electrum backends or if notifications are missed
-	ticker := time.NewTicker(30 * time.Second)
+	// Periodic refresh (quiet - don't change status). This is a fallback
+	// for missed notifications and the main update path on Bitcoin Core.
+	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-stop:
 			return
+		case err := <-drops:
+			if m.unlocked {
+				m.reconnect(stop, err)
+				drainDrops(drops)
+			}
 		case <-ticker.C:
 			if m.unlocked {
-				// Quiet refresh - stays synced, doesn't show "Syncing..."
-				m.refreshCacheInternal(RefreshOptions{Quiet: true})
+				if err := m.refreshCacheInternal(RefreshOptions{Quiet: true}); retryable(err) {
+					m.reconnect(stop, err)
+					drainDrops(drops)
+				}
 			}
 		}
 	}
 }
 
+// reconnect retries a full refresh with exponential backoff until it
+// succeeds, the error stops being retryable, or the sync is stopped.
+func (m *WalletManager) reconnect(stop <-chan struct{}, cause error) {
+	delay := reconnectBaseDelay
+	for attempt := 1; ; attempt++ {
+		m.state.SetReconnecting(cause, attempt, time.Now().Add(delay))
+		t := time.NewTimer(delay)
+		select {
+		case <-stop:
+			t.Stop()
+			return
+		case <-t.C:
+		}
+		if !m.unlocked {
+			return
+		}
+		m.state.SetStatus(SyncStatusConnecting, "Reconnecting...")
+		err := m.refreshCacheInternal(RefreshOptions{Quiet: true})
+		if err == nil || !retryable(err) {
+			return
+		}
+		cause = err
+		delay *= 2
+		if delay > reconnectMaxDelay {
+			delay = reconnectMaxDelay
+		}
+	}
+}
+
+// drainDrops discards a drop already handled by a reconnect.
+func drainDrops(drops <-chan error) {
+	select {
+	case <-drops:
+	default:
+	}
+}
+
+// retryable reports whether a failed refresh is worth retrying on its
+// own. A server on the wrong network or with a changed key needs the user.
+func retryable(err error) bool {
+	if err == nil || errors.Is(err, errRefreshBusy) {
+		return false
+	}
+	var nm *NetworkMismatchError
+	var pe *backend.PinMismatchError
+	return !errors.As(err, &nm) && !errors.As(err, &pe)
+}
+
+// errRefreshBusy means another refresh was already running.
+var errRefreshBusy = errors.New("refresh already running")
+
 // RefreshCache updates all cached wallet data (shows "Syncing..." status)
 // Used when triggered by new block/transaction notifications
 func (m *WalletManager) RefreshCache() {
-	m.refreshCacheInternal(RefreshOptions{})
+	_ = m.refreshCacheInternal(RefreshOptions{})
 }
 
 // RefreshCacheWithOptions updates cached wallet data with configurable behavior
 // Use SkipAddressScan/SkipFeeEstimates for faster post-send refreshes
 func (m *WalletManager) RefreshCacheWithOptions(opts RefreshOptions) {
-	m.refreshCacheInternal(opts)
+	_ = m.refreshCacheInternal(opts)
 }
 
 // refreshCacheInternal updates all cached wallet data
@@ -401,14 +486,14 @@ func (m *WalletManager) RefreshCacheWithOptions(opts RefreshOptions) {
 //   - Quiet: don't change status (for periodic background refreshes)
 //   - SkipAddressScan: skip SyncAddressUsage (faster post-send refresh)
 //   - SkipFeeEstimates: skip GetFeeEstimates (not needed post-send)
-func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
+func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) error {
 	if !m.unlocked || m.cache == nil {
-		return
+		return nil
 	}
 
 	// Dedup guard: skip if another refresh is already running
 	if !atomic.CompareAndSwapInt32(&m.refreshing, 0, 1) {
-		return
+		return errRefreshBusy
 	}
 	defer atomic.StoreInt32(&m.refreshing, 0)
 
@@ -432,12 +517,13 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 	setStatus("Connecting to server...")
 	if m.backend != nil {
 		if err := m.backend.Connect(); err != nil {
-			m.state.SetError(fmt.Errorf("connection failed: %w", err))
-			return
+			err = fmt.Errorf("connection failed: %w", err)
+			m.state.SetError(err)
+			return err
 		}
 		if err := m.ensureNetworkVerified(); err != nil {
 			m.state.SetError(err)
-			return
+			return err
 		}
 	}
 
@@ -462,7 +548,7 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 	m.dataMu.RUnlock()
 	if !hasAccount {
 		m.state.MarkSynced(m.cache.GetBlockHeight())
-		return
+		return nil
 	}
 
 	// Fetch UTXOs first (needed for accurate balance)
@@ -472,7 +558,7 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 		// Keep the last good balance and history; report the failure
 		// instead of showing a zero balance as "synced".
 		m.state.SetError(err)
-		return
+		return err
 	}
 	m.cache.SetUTXOs(utxos)
 	m.state.UpdateUTXOs(utxos)
@@ -491,7 +577,7 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 	txs, err := m.GetTransactions(0)
 	if err != nil {
 		m.state.SetError(err)
-		return
+		return err
 	}
 	m.cache.SetTransactions(txs)
 	m.state.UpdateTransactions(txs)
@@ -513,6 +599,7 @@ func (m *WalletManager) refreshCacheInternal(opts RefreshOptions) {
 
 	// Mark as synced with block height
 	m.state.MarkSynced(m.cache.GetBlockHeight())
+	return nil
 }
 
 // persistCache saves the current cache to the wallet file for instant load on next unlock
