@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -54,7 +56,16 @@ type electrumResponse struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 	}
+	Err error // transport failure (connection lost before a reply)
 }
+
+// ErrConnectionLost is returned to requests in flight when the server
+// connection drops.
+var ErrConnectionLost = errors.New("connection to server lost")
+
+// defaultIdleTimeout is how long the reader waits in silence before it
+// pings the server to check the connection is still alive.
+const defaultIdleTimeout = 60 * time.Second
 
 // ElectrumBackend implements BitcoinBackend using the Electrum protocol
 type ElectrumBackend struct {
@@ -78,6 +89,17 @@ type ElectrumBackend struct {
 	readerDone       chan struct{}
 	subscriptions    map[string]bool // scripthash -> subscribed
 	subMu            sync.RWMutex
+
+	// Resilience: subscriptions are per connection, so they are replayed
+	// after a reconnect, and changes missed while offline are reported.
+	subStatus         map[string]string // scripthash -> last known status
+	headersSubscribed bool
+	lastTip           int64
+	hadSession        bool // a previous connection existed (reconnects replay subscriptions)
+
+	drops       chan error // unexpected connection loss, see Drops
+	pinging     atomic.Bool
+	idleTimeout time.Duration
 }
 
 // NewElectrumBackend creates a new Electrum backend
@@ -97,7 +119,15 @@ func NewElectrumBackend(config *BackendConfig) (*ElectrumBackend, error) {
 		headerChan:       make(chan HeaderNotification, 10),
 		pendingResponses: make(map[uint64]chan electrumResponse),
 		subscriptions:    make(map[string]bool),
+		subStatus:        make(map[string]string),
+		drops:            make(chan error, 1),
 	}, nil
+}
+
+// Drops reports unexpected connection losses (not Disconnect calls), so
+// the sync loop can show the outage and reconnect right away.
+func (b *ElectrumBackend) Drops() <-chan error {
+	return b.drops
 }
 
 // ScripthashNotifications returns the channel for scripthash notifications
@@ -218,43 +248,200 @@ func (b *ElectrumBackend) Connect() error {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
 
+	b.mu.Lock()
+	replay := b.hadSession
+	b.hadSession = true
+	b.mu.Unlock()
+	if replay {
+		go b.resubscribe()
+	}
+
 	return nil
 }
 
-// readLoop runs in background reading all server messages
+// resubscribe replays header and address subscriptions on a fresh
+// connection and reports anything that changed while we were offline.
+func (b *ElectrumBackend) resubscribe() {
+	b.subMu.RLock()
+	// Headers are always replayed: the UI listens for blocks whenever a
+	// wallet is open, even if the first subscribe failed while offline.
+	headers := true
+	hashes := make([]string, 0, len(b.subscriptions))
+	for sh := range b.subscriptions {
+		hashes = append(hashes, sh)
+	}
+	b.subMu.RUnlock()
+
+	if headers {
+		if res, err := b.request("blockchain.headers.subscribe", []interface{}{}); err == nil {
+			var h struct {
+				Height int64  `json:"height"`
+				Hex    string `json:"hex"`
+			}
+			if json.Unmarshal(res, &h) == nil {
+				b.subMu.Lock()
+				// Only report blocks we missed, not the first tip we learn.
+				newer := b.lastTip > 0 && h.Height > b.lastTip
+				if h.Height > b.lastTip {
+					b.lastTip = h.Height
+				}
+				b.headersSubscribed = true
+				b.subMu.Unlock()
+				if newer {
+					select {
+					case b.headerChan <- HeaderNotification{Height: h.Height, Hex: h.Hex}:
+					default:
+					}
+				}
+			}
+		} else {
+			return // dropped again; the next reconnect retries
+		}
+	}
+
+	for _, sh := range hashes {
+		res, err := b.request("blockchain.scripthash.subscribe", []interface{}{sh})
+		if err != nil {
+			return
+		}
+		var status *string
+		if json.Unmarshal(res, &status) != nil {
+			continue
+		}
+		s := ""
+		if status != nil {
+			s = *status
+		}
+		if b.recordStatus(sh, s) {
+			select {
+			case b.scripthashChan <- ScripthashNotification{Scripthash: sh, Status: s}:
+			default:
+			}
+		}
+	}
+}
+
+// recordStatus stores an address status and reports whether it changed
+// from a previously known value.
+func (b *ElectrumBackend) recordStatus(scripthash, status string) (changed bool) {
+	b.subMu.Lock()
+	defer b.subMu.Unlock()
+	if b.subStatus == nil {
+		b.subStatus = make(map[string]string)
+	}
+	old, known := b.subStatus[scripthash]
+	b.subStatus[scripthash] = status
+	return known && old != status
+}
+
+// markBroken closes a connection that stopped working. The reader then
+// exits and reports the drop; the next request reconnects.
+func (b *ElectrumBackend) markBroken(conn net.Conn) {
+	_ = conn.Close()
+	b.mu.Lock()
+	if b.conn == conn {
+		b.connected = false
+	}
+	b.mu.Unlock()
+}
+
+// handleDrop cleans up after the connection owned by a reader ends. If it
+// ended unexpectedly, requests in flight fail now (instead of waiting for
+// their timeout) and the loss is reported on Drops.
+func (b *ElectrumBackend) handleDrop(conn net.Conn, err error) {
+	b.mu.Lock()
+	if b.conn != conn {
+		// A newer connection replaced ours; leave it alone.
+		b.mu.Unlock()
+		return
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
+	b.conn = nil
+	b.reader = nil
+	b.connected = false
+	b.mu.Unlock()
+
+	b.pendingMu.Lock()
+	for id, ch := range b.pendingResponses {
+		select {
+		case ch <- electrumResponse{Err: ErrConnectionLost}:
+		default:
+		}
+		delete(b.pendingResponses, id)
+	}
+	b.pendingMu.Unlock()
+
+	if err != nil {
+		debugLog("[ELECTRUM] connection lost: %v", err)
+		select {
+		case b.drops <- fmt.Errorf("%w: %v", ErrConnectionLost, err):
+		default:
+		}
+	}
+}
+
+// readLoop runs in background reading all server messages. It owns the
+// connection that was current when it started. After a quiet period it
+// pings the server; a failed ping closes the connection, which ends the
+// loop and reports the drop.
 func (b *ElectrumBackend) readLoop() {
+	b.mu.RLock()
+	conn, reader, done := b.conn, b.reader, b.readerDone
+	idle := b.idleTimeout
+	b.mu.RUnlock()
+	if idle <= 0 {
+		idle = defaultIdleTimeout
+	}
+
+	var dropErr error
 	defer func() {
 		if r := recover(); r != nil {
 			debugLog("[ELECTRUM] readLoop panic recovered: %v", r)
+			dropErr = fmt.Errorf("reader panic: %v", r)
 		}
-		b.mu.Lock()
-		b.connected = false
-		b.mu.Unlock()
+		select {
+		case <-done:
+			dropErr = nil // Disconnect() was called; not a drop
+		default:
+		}
+		b.handleDrop(conn, dropErr)
 	}()
 
-	for {
-		b.mu.RLock()
-		if !b.connected || b.reader == nil {
-			b.mu.RUnlock()
-			return
-		}
-		reader := b.reader
-		conn := b.conn
-		b.mu.RUnlock()
+	if conn == nil || reader == nil {
+		return
+	}
 
-		// Set read deadline
-		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	var partial []byte
+	for {
+		_ = conn.SetReadDeadline(time.Now().Add(idle))
 
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			// Check if we're shutting down
 			select {
-			case <-b.readerDone:
+			case <-done:
 				return
 			default:
 			}
-			// Connection error - mark disconnected
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				// Quiet, not necessarily dead: keep what we have and ping.
+				partial = append(partial, line...)
+				if b.pinging.CompareAndSwap(false, true) {
+					go func() {
+						defer b.pinging.Store(false)
+						_, _ = b.request("server.ping", []interface{}{})
+					}()
+				}
+				continue
+			}
+			dropErr = err
 			return
+		}
+		if len(partial) > 0 {
+			line = append(partial, line...)
+			partial = nil
 		}
 
 		var msg struct {
@@ -305,6 +492,7 @@ func (b *ElectrumBackend) handleNotification(method string, params json.RawMessa
 			return
 		}
 		debugLog("[ELECTRUM] Scripthash notification: %s", scripthash[:16])
+		b.recordStatus(scripthash, status)
 		select {
 		case b.scripthashChan <- ScripthashNotification{Scripthash: scripthash, Status: status}:
 			debugLog("[ELECTRUM] Sent scripthash notification to channel")
@@ -322,6 +510,11 @@ func (b *ElectrumBackend) handleNotification(method string, params json.RawMessa
 			return
 		}
 		debugLog("[ELECTRUM] Header notification: block %d", p[0].Height)
+		b.subMu.Lock()
+		if p[0].Height > b.lastTip {
+			b.lastTip = p[0].Height
+		}
+		b.subMu.Unlock()
 		select {
 		case b.headerChan <- HeaderNotification{Height: p[0].Height, Hex: p[0].Hex}:
 			debugLog("[ELECTRUM] Sent header notification to channel")
@@ -492,25 +685,26 @@ func (b *ElectrumBackend) request(method string, params []interface{}) (json.Raw
 	// Send request (newline-delimited JSON)
 	_, err = conn.Write(append(data, '\n'))
 	if err != nil {
-		// Mark as disconnected so next request will reconnect
-		b.mu.Lock()
-		b.connected = false
-		b.mu.Unlock()
+		// Closing the connection ends the reader, which reports the drop
+		// and lets the next request reconnect.
+		b.markBroken(conn)
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	// Wait for response with timeout
 	select {
 	case resp := <-respChan:
+		if resp.Err != nil {
+			return nil, resp.Err
+		}
 		if resp.Error != nil {
 			return nil, fmt.Errorf("electrum error [%d]: %s", resp.Error.Code, resp.Error.Message)
 		}
 		return resp.Result, nil
 	case <-time.After(30 * time.Second):
-		// Mark as disconnected so next request will reconnect
-		b.mu.Lock()
-		b.connected = false
-		b.mu.Unlock()
+		// A server that stops answering is treated as gone: close the
+		// connection so the drop is reported and the next request reconnects.
+		b.markBroken(conn)
 		return nil, fmt.Errorf("request timeout - connection may be stale")
 	}
 }
@@ -537,6 +731,13 @@ func (b *ElectrumBackend) SubscribeHeaders() (int64, error) {
 	if err := json.Unmarshal(result, &header); err != nil {
 		return 0, fmt.Errorf("failed to parse header: %w", err)
 	}
+
+	b.subMu.Lock()
+	b.headersSubscribed = true
+	if header.Height > b.lastTip {
+		b.lastTip = header.Height
+	}
+	b.subMu.Unlock()
 
 	return header.Height, nil
 }
@@ -572,8 +773,10 @@ func (b *ElectrumBackend) SubscribeAddress(address string) (string, error) {
 	}
 
 	if status == nil {
+		b.recordStatus(scriptHash, "")
 		return "", nil // No transaction history
 	}
+	b.recordStatus(scriptHash, *status)
 	return *status, nil
 }
 
