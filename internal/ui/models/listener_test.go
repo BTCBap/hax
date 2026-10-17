@@ -85,3 +85,13 @@ func TestUnlock_ChooseServerCarriesWalletNetwork(t *testing.T) {
 		t.Fatalf("got %#v, want ChooseServerMsg for mainnet", msg)
 	}
 }
+
+func TestRoot_BlockBalanceCheckDoesNotDoubleListen(t *testing.T) {
+	r := NewRootModel(NewMockWalletManager(), nil)
+	if _, cmd := r.Update(BalanceChangeMsg{Gen: r.listenGen, FromBlock: true}); cmd != nil {
+		t.Fatal("a block-triggered balance check must not re-arm the listener")
+	}
+	if _, cmd := r.Update(BalanceChangeMsg{Gen: r.listenGen}); cmd == nil {
+		t.Fatal("a notification-triggered balance check should re-arm the listener")
+	}
+}
