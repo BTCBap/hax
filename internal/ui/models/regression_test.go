@@ -89,13 +89,13 @@ func TestRegression_PasswordClearedOnSecondFailure(t *testing.T) {
 
 // --- Bug: History export labels crash ---
 // Exporting labels when no labels exist or when transactions are nil caused a crash.
-// Fix: ExportLabelsBIP329 returns an error ("no transaction labels to export")
+// Fix: ExportLabelsBIP329 returns an error (wallet.ErrNoLabels)
 // which the UI handles gracefully instead of panicking.
 
 func TestRegression_ExportLabelsNoLabels(t *testing.T) {
 	mock := NewMockWalletManager()
 	mock.ExportLabelsBIP329Fn = func() (string, error) {
-		return "", fmt.Errorf("no transaction labels to export")
+		return "", wallet.ErrNoLabels
 	}
 	mock.GetTransactionLabelFn = func(string) string { return "" }
 
@@ -120,7 +120,7 @@ func TestRegression_ExportLabelsNoLabels(t *testing.T) {
 func TestRegression_ExportLabelsWithNilTransactions(t *testing.T) {
 	mock := NewMockWalletManager()
 	mock.ExportLabelsBIP329Fn = func() (string, error) {
-		return "", fmt.Errorf("no transaction labels to export")
+		return "", wallet.ErrNoLabels
 	}
 
 	m := NewTransactionHistoryModel(mock)

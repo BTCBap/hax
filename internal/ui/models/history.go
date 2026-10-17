@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -467,8 +468,8 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "E":
 			output, err := m.walletManager.ExportLabelsBIP329()
 			if err != nil {
-				if err.Error() == "no transaction labels to export" {
-					m.err = fmt.Errorf("no labels to export - press 'e' to add labels to transactions first")
+				if errors.Is(err, wallet.ErrNoLabels) {
+					m.err = fmt.Errorf("no labels to export - press 'e' to label a transaction, or label addresses on the Addresses screen")
 				} else {
 					m.err = fmt.Errorf("export failed: %v", err)
 				}

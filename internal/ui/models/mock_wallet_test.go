@@ -101,6 +101,8 @@ type MockWalletManager struct {
 	// Labels
 	GetTransactionLabelFn func(string) string
 	SetTransactionLabelFn func(string, string) error
+	GetAddressLabelFn     func(string) string
+	SetAddressLabelFn     func(string, string) error
 	ExportLabelsBIP329Fn  func() (string, error)
 	ImportLabelsBIP329Fn  func(string) (int, error)
 	ExportKoinlyFn        func([]api.Transaction) (string, error)
@@ -764,4 +766,18 @@ func (m *MockWalletManager) CreateHardwareWalletOnNetwork(name, password, xpub, 
 func (m *MockWalletManager) CreateMultisigWalletOnNetwork(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType, network string) error {
 	m.CreatedNetwork = network
 	return m.CreateMultisigWallet(name, password, requiredSigs, cosigners, scriptType)
+}
+
+func (m *MockWalletManager) GetAddressLabel(address string) string {
+	if m.GetAddressLabelFn != nil {
+		return m.GetAddressLabelFn(address)
+	}
+	return ""
+}
+
+func (m *MockWalletManager) SetAddressLabel(address, label string) error {
+	if m.SetAddressLabelFn != nil {
+		return m.SetAddressLabelFn(address, label)
+	}
+	return nil
 }

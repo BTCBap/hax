@@ -2,7 +2,9 @@ package wallet
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,21 +52,114 @@ func (m *WalletManager) SetTransactionLabel(txid string, label string) error {
 	return nil
 }
 
-// ExportLabelsBIP329 exports transaction labels in BIP-329 JSON Lines format
+// ErrNoLabels is returned when there is nothing to export.
+var ErrNoLabels = errors.New("no labels to export")
+
+// GetAddressLabel returns the label of one of the wallet's addresses.
+func (m *WalletManager) GetAddressLabel(address string) string {
+	m.dataMu.RLock()
+	defer m.dataMu.RUnlock()
+	if m.data == nil {
+		return ""
+	}
+	for _, acc := range m.data.Accounts {
+		if l, ok := acc.Labels[address]; ok {
+			return l
+		}
+	}
+	return ""
+}
+
+// SetAddressLabel labels one of the wallet's own addresses (BIP-329
+// "addr"). Labels live in the account's Labels map inside the encrypted
+// wallet file. An empty label removes it.
+func (m *WalletManager) SetAddressLabel(address, label string) error {
+	if !m.unlocked {
+		return fmt.Errorf("wallet is locked")
+	}
+	m.dataMu.Lock()
+	defer m.dataMu.Unlock()
+	acc := m.accountForAddressLocked(address)
+	if acc == nil {
+		return fmt.Errorf("%s is not an address of this wallet", address)
+	}
+	setLabel(&acc.Labels, address, label)
+	if err := m.saveWalletTracked(m.data.Name, m.data); err != nil {
+		return fmt.Errorf("failed to save label: %w", err)
+	}
+	return nil
+}
+
+// accountForAddressLocked finds the account that derived address.
+// Callers hold dataMu.
+func (m *WalletManager) accountForAddressLocked(address string) *AccountData {
+	if m.data == nil {
+		return nil
+	}
+	for i := range m.data.Accounts {
+		for _, a := range m.data.Accounts[i].Addresses {
+			if a.Address == address {
+				return &m.data.Accounts[i]
+			}
+		}
+	}
+	return nil
+}
+
+// setLabel sets or (for an empty label) deletes a label, capping it at
+// 255 characters without splitting a UTF-8 sequence.
+func setLabel(labels *map[string]string, key, label string) {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		if *labels != nil {
+			delete(*labels, key)
+		}
+		return
+	}
+	if r := []rune(label); len(r) > 255 {
+		label = string(r[:255])
+	}
+	if *labels == nil {
+		*labels = make(map[string]string)
+	}
+	(*labels)[key] = label
+}
+
+// ExportLabelsBIP329 exports transaction and address labels in BIP-329
+// JSON Lines format, sorted for stable output.
 func (m *WalletManager) ExportLabelsBIP329() (string, error) {
 	if !m.unlocked {
 		return "", fmt.Errorf("wallet is locked")
 	}
+	m.dataMu.RLock()
+	defer m.dataMu.RUnlock()
 
-	if len(m.data.TransactionLabels) == 0 {
-		return "", fmt.Errorf("no transaction labels to export")
+	type rec struct{ typ, ref, label string }
+	var recs []rec
+	for txid, label := range m.data.TransactionLabels {
+		recs = append(recs, rec{"tx", txid, label})
 	}
+	for _, acc := range m.data.Accounts {
+		for addr, label := range acc.Labels {
+			recs = append(recs, rec{"addr", addr, label})
+		}
+	}
+	if len(recs) == 0 {
+		return "", ErrNoLabels
+	}
+	sort.Slice(recs, func(i, j int) bool {
+		if recs[i].typ != recs[j].typ {
+			return recs[i].typ > recs[j].typ // tx first, then addr
+		}
+		return recs[i].ref < recs[j].ref
+	})
 
 	var output string
-	for txid, label := range m.data.TransactionLabels {
+	for _, r := range recs {
+		txid, label, typ := r.ref, r.label, r.typ
 		// Create BIP-329 record for each transaction label
 		record := map[string]string{
-			"type":  "tx",
+			"type":  typ,
 			"ref":   txid,
 			"label": label,
 		}
@@ -119,14 +214,18 @@ func (m *WalletManager) ImportLabelsBIP329(data string) (int, error) {
 			continue
 		}
 
-		// Only import transaction labels (type="tx")
-		if labelType != "tx" {
-			continue
+		switch labelType {
+		case "tx":
+			// Import the label (overwrites existing)
+			m.data.TransactionLabels[ref] = label
+			imported++
+		case "addr":
+			// Only addresses this wallet derived; others are skipped.
+			if acc := m.accountForAddressLocked(ref); acc != nil {
+				setLabel(&acc.Labels, ref, label)
+				imported++
+			}
 		}
-
-		// Import the label (overwrites existing)
-		m.data.TransactionLabels[ref] = label
-		imported++
 	}
 
 	// Save wallet with new labels

@@ -102,6 +102,8 @@ type WalletService interface {
 	// Labels
 	GetTransactionLabel(txid string) string
 	SetTransactionLabel(txid, label string) error
+	GetAddressLabel(address string) string
+	SetAddressLabel(address, label string) error
 	ExportLabelsBIP329() (string, error)
 	ImportLabelsBIP329(data string) (int, error)
 	ExportKoinly(transactions []api.Transaction) (string, error)
