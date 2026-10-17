@@ -844,7 +844,7 @@ func (m SettingsModel) View() string {
 
 	items = append(items, styles.HK("esc", "back"))
 
-	help := styles.RenderHelp(items...)
+	help := styles.RenderHelpWrapped(m.width, items...)
 
 	// Split into fixed header and scrollable content
 	fixedHeader := header + copyStatus + "\n" + subtitle

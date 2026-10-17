@@ -640,13 +640,15 @@ func (m *TransactionHistoryModel) updateTableData() {
 		sortIndicator = " ↓"
 	}
 
+	widths := m.effectiveColumnWidths()
+	txIDHidden := widths[4] == 0
 	columns := []table.Column{
-		{Title: "Time" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 0], Width: m.columnWidths[0]},
-		{Title: "Type" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 1], Width: m.columnWidths[1]},
-		{Title: "Amount" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 2], Width: m.columnWidths[2]},
-		{Title: "Status" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 3], Width: m.columnWidths[3]},
-		{Title: "TxID" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 4], Width: m.columnWidths[4]},
-		{Title: "Label" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 5], Width: m.columnWidths[5]},
+		{Title: "Time" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 0], Width: widths[0]},
+		{Title: "Type" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 1], Width: widths[1]},
+		{Title: "Amount" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 2], Width: widths[2]},
+		{Title: "Status" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 3], Width: widths[3]},
+		{Title: "TxID" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 4], Width: widths[4]},
+		{Title: "Label" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 5], Width: widths[5]},
 	}
 	m.table.SetColumns(columns)
 
@@ -794,7 +796,11 @@ func (m *TransactionHistoryModel) updateTableData() {
 			label = "-" // Show dash if no label
 		} else {
 			// Truncate label to fit column width without splitting runes
-			label = truncateRunes(label, m.columnWidths[5], "...")
+			label = truncateRunes(label, widths[5], "...")
+		}
+
+		if txIDHidden {
+			txID = "" // full TxID is in the details pane
 		}
 
 		rows = append(rows, table.Row{
@@ -1152,7 +1158,7 @@ func (m TransactionHistoryModel) renderEmptyState() string {
 	}
 
 	emptyText := fmt.Sprintf("%s No transactions yet\n\n", icon) +
-		"Once you receive testnet Bitcoin, your\n" +
+		"Once you receive bitcoin, your\n" +
 		"transactions will appear here!\n\n" +
 		styles.DimText.Render("Press 'r' to receive coins first")
 
@@ -1354,4 +1360,34 @@ func writePrivateFile(path string, data []byte) error {
 	}
 	// WriteFile does not change the mode of an existing file; enforce it.
 	return os.Chmod(path, 0600)
+}
+
+// effectiveColumnWidths fits the user's column widths into the terminal.
+// When the table would overflow, the TxID column is hidden first (the full
+// TxID is shown in the details pane), then Label shrinks to a minimum of 6.
+func (m TransactionHistoryModel) effectiveColumnWidths() [6]int {
+	w := m.columnWidths
+	if m.width <= 0 {
+		return w
+	}
+	// Border and padding of the box (4) plus one cell of padding each side
+	// of every column (2 per column).
+	budget := m.width - 4 - 2*len(w)
+	sum := func() int {
+		t := 0
+		for _, c := range w {
+			t += c
+		}
+		return t
+	}
+	if sum() > budget {
+		w[4] = 0
+	}
+	if over := sum() - budget; over > 0 {
+		w[5] -= over
+		if w[5] < 6 {
+			w[5] = 6
+		}
+	}
+	return w
 }

@@ -389,6 +389,33 @@ func RenderHelpLines(lines ...[]HelpItem) string {
 	return FooterStyle.Render(strings.Join(rendered, "\n"))
 }
 
+// RenderHelpWrapped is RenderHelp, but starts a new line whenever the next
+// item would push a line past width cells. width <= 0 means no limit.
+func RenderHelpWrapped(width int, items ...HelpItem) string {
+	if width <= 0 {
+		return RenderHelp(items...)
+	}
+	var lines [][]HelpItem
+	var cur []HelpItem
+	curW := 0
+	for _, item := range items {
+		w := lipgloss.Width(item.Key) + 1 + lipgloss.Width(item.Desc)
+		if len(cur) > 0 && curW+3+w > width {
+			lines = append(lines, cur)
+			cur, curW = nil, 0
+		}
+		if len(cur) > 0 {
+			curW += 3 // " • "
+		}
+		cur = append(cur, item)
+		curW += w
+	}
+	if len(cur) > 0 {
+		lines = append(lines, cur)
+	}
+	return RenderHelpLines(lines...)
+}
+
 // Helper functions
 func WithWidth(style lipgloss.Style, width int) lipgloss.Style {
 	return style.Width(width)
