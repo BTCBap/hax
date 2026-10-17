@@ -87,6 +87,25 @@ func NewWalletState() *WalletState {
 	}
 }
 
+// ResetWalletData drops everything that belongs to the open wallet
+// (balance, history, UTXOs, addresses, sync status) so the next wallet
+// starts empty. Chain-wide data, the block height and fee estimates, is kept.
+func (s *WalletState) ResetWalletData() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Status = SyncStatusDisconnected
+	s.StatusMsg = ""
+	s.LastError = nil
+	s.LastSyncAt = time.Time{}
+	s.Balance = 0
+	s.Transactions = nil
+	s.UTXOs = nil
+	s.Addresses = make(map[string]*UnifiedAddressEntry)
+	s.NextReceiveIndex = 0
+	s.NextChangeIndex = 0
+	s.Version++
+}
+
 // WalletStateSnapshot is an immutable snapshot passed to UI
 // Safe to read without locks after creation
 type WalletStateSnapshot struct {

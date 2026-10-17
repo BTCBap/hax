@@ -44,9 +44,8 @@ func TestUnlock_NetworkMismatchOffersServerChoice(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ctrl+s produced no command")
 	}
-	nav, ok := cmd().(NavigateMsg)
-	if !ok || nav.Target != StateConnectionSetup {
-		t.Fatalf("ctrl+s = %#v, want navigate to connection setup", nav)
+	if _, ok := cmd().(ChooseServerMsg); !ok {
+		t.Fatal("ctrl+s should ask to choose a server")
 	}
 
 	m.err = fmt.Errorf("wrong password")

@@ -11,6 +11,21 @@ import (
 // than the wallet was created for.
 var ErrNetworkMismatch = errors.New("server network does not match wallet network")
 
+// NetworkMismatchError is returned when the server serves another network.
+// It matches ErrNetworkMismatch with errors.Is and records the wallet's
+// network so the UI can offer servers for it.
+type NetworkMismatchError struct {
+	WalletNetwork string
+	Detail        string
+}
+
+func (e *NetworkMismatchError) Error() string {
+	return ErrNetworkMismatch.Error() + ": " + e.Detail
+}
+
+// Is reports whether target is ErrNetworkMismatch.
+func (e *NetworkMismatchError) Is(target error) bool { return target == ErrNetworkMismatch }
+
 // checkBackendNetwork verifies the backend's genesis block matches network.
 // It returns (verified, err): verified=false with err=nil means the check
 // could not be performed (offline or backend lacks support) and should be
@@ -32,9 +47,9 @@ func checkBackendNetwork(b backend.BitcoinBackend, network string) (bool, error)
 		return false, nil
 	}
 	if got != *params.GenesisHash {
-		return false, fmt.Errorf("%w: wallet is %s but the server's genesis block is %s. "+
-			"Choose a %s server",
-			ErrNetworkMismatch, NetworkDisplayName(network), describeGenesis(got.String()), NetworkDisplayName(network))
+		return false, &NetworkMismatchError{WalletNetwork: network, Detail: fmt.Sprintf(
+			"wallet is %s but the server's genesis block is %s. Choose a %s server",
+			NetworkDisplayName(network), describeGenesis(got.String()), NetworkDisplayName(network))}
 	}
 	return true, nil
 }
@@ -87,13 +102,32 @@ func (m *WalletManager) alignBackendNetwork(network string) (verified bool, err 
 	if m.backend == nil {
 		return false, nil
 	}
-	if cfgNet := backend.ConfiguredNetwork(m.backend); cfgNet != "" && cfgNet != network {
-		return false, fmt.Errorf("%w: wallet is %s but the selected server is configured for %s. "+
-			"Choose a %s server",
-			ErrNetworkMismatch, NetworkDisplayName(network), NetworkDisplayName(cfgNet), NetworkDisplayName(network))
+	if err := configuredNetworkMatches(m.backend, network); err != nil {
+		return false, err
 	}
 	if err := m.backend.Connect(); err != nil {
 		return false, nil
 	}
 	return checkBackendNetwork(m.backend, network)
+}
+
+// configuredNetworkMatches rejects a backend configured for another network.
+func configuredNetworkMatches(b backend.BitcoinBackend, network string) error {
+	network = backend.NormalizeNetwork(network)
+	if cfgNet := backend.ConfiguredNetwork(b); cfgNet != "" && cfgNet != network {
+		return &NetworkMismatchError{WalletNetwork: network, Detail: fmt.Sprintf(
+			"wallet is %s but the selected server is configured for %s. Choose a %s server",
+			NetworkDisplayName(network), NetworkDisplayName(cfgNet), NetworkDisplayName(network))}
+	}
+	return nil
+}
+
+// checkServerNetwork verifies a connected backend serves network, by its
+// configuration and, when available, its genesis block.
+func checkServerNetwork(b backend.BitcoinBackend, network string) error {
+	if err := configuredNetworkMatches(b, network); err != nil {
+		return err
+	}
+	_, err := checkBackendNetwork(b, backend.NormalizeNetwork(network))
+	return err
 }

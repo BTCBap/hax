@@ -52,3 +52,19 @@ func TestAlignBackendNetwork(t *testing.T) {
 		})
 	}
 }
+
+func TestSetBackend_RejectsOtherNetworkWhileUnlocked(t *testing.T) {
+	old := newNetBackend("mainnet", *chaincfg.MainNetParams.GenesisHash)
+	m := &WalletManager{backend: old, unlocked: true, data: &WalletData{Network: NetworkMainnet}}
+	for _, b := range []*netBackend{
+		newNetBackend("testnet", *TestNet4Params.GenesisHash), // configured for testnet4
+		newNetBackend("mainnet", *TestNet4Params.GenesisHash), // mislabelled testnet4 server
+	} {
+		if err := m.SetBackend(b); !errors.Is(err, ErrNetworkMismatch) {
+			t.Fatalf("SetBackend err = %v, want network mismatch", err)
+		}
+		if m.backend != old {
+			t.Fatal("current backend replaced by a server on another network")
+		}
+	}
+}

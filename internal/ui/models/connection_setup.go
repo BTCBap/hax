@@ -93,9 +93,30 @@ type ConnectionSetupModel struct {
 	returnToUnlock bool
 }
 
+// ChooseServerMsg opens connection setup from the unlock screen, listing
+// servers for Network (the locked wallet's network, if known).
+type ChooseServerMsg struct{ Network string }
+
+// BackendChangedMsg reports that the wallet manager switched to a new
+// backend; the root model restarts the notification listener on it.
+type BackendChangedMsg struct {
+	Then AppState
+	Err  error // set when the saved backend could not be applied
+}
+
+// setNetwork selects which network's servers are offered.
+func (m *ConnectionSetupModel) setNetwork(network string) {
+	switch backend.NormalizeNetwork(network) {
+	case "mainnet":
+		m.network = "mainnet"
+	case "testnet":
+		m.network = "testnet"
+	}
+}
+
 // BackendChosenMsg asks the root model to apply the saved backend config to
 // the wallet manager and return to the unlock screen.
-type BackendChosenMsg struct{}
+type BackendChosenMsg struct{ Then AppState }
 
 // NewConnectionSetupModel creates a new connection setup model
 func NewConnectionSetupModel(configManager *config.ConfigManager, returnToSettings bool) ConnectionSetupModel {
@@ -379,7 +400,9 @@ func (m ConnectionSetupModel) handleConfigureElectrum(msg tea.KeyMsg) (tea.Model
 				m.customServer = true
 			}
 			// Persist the deletion
-			m.saveRecentServers()
+			if err := m.saveRecentServers(); err != nil {
+				m.err = fmt.Errorf("could not save recent servers: %w", err)
+			}
 		}
 		return m, nil
 	}
@@ -458,10 +481,10 @@ func (m ConnectionSetupModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	switch msg.String() {
 	case "enter":
 		if m.returnToSettings {
-			return m, Navigate(StateSettings)
+			return m, func() tea.Msg { return BackendChosenMsg{Then: StateSettings} }
 		}
 		if m.returnToUnlock {
-			return m, func() tea.Msg { return BackendChosenMsg{} }
+			return m, func() tea.Msg { return BackendChosenMsg{Then: StateUnlock} }
 		}
 		return m, Navigate(StateWalletSetup)
 	}
@@ -634,15 +657,23 @@ func (m ConnectionSetupModel) saveConfig() error {
 }
 
 // saveRecentServers persists the current recent servers list (for deletions)
-func (m ConnectionSetupModel) saveRecentServers() {
-	existing, _ := m.configManager.Load()
+func (m ConnectionSetupModel) saveRecentServers() error {
+	if m.configManager == nil {
+		return nil
+	}
+	existing, err := m.configManager.Load()
+	if err != nil {
+		return err
+	}
 	if existing == nil {
-		return
+		return nil
 	}
 	existing.RecentServers = m.recentServers
 	if err := m.configManager.Save(existing); err != nil {
 		debugLog("[CONNECTION] saving recent servers failed: %v", err)
+		return err
 	}
+	return nil
 }
 
 func (m ConnectionSetupModel) getPreviousStep() ConnectionSetupStep {
