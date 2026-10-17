@@ -29,9 +29,9 @@
 - **PSBT (BIP174)** create, import, export, sign, finalize, and broadcast, including animated QR (UR / BBQr) for air-gapped signers
 - **Hardware wallets** through [HWI](https://github.com/bitcoin-core/HWI): Coldcard, Trezor, Ledger, BitBox02, Jade, KeepKey. Includes on-device address verification
 - **Multisig:** BIP48 P2WSH / P2SH-P2WSH / P2SH, with Sparrow-compatible descriptor import/export
-- **Coin control:** Branch-and-Bound selection, send-all, batch payments, and dust and fee-anomaly warnings at review
+- **Coin control:** Branch-and-Bound selection, frozen coins, send-all, batch payments, and dust and fee-anomaly warnings at review
 - **Fee bumping:** RBF and CPFP for pending transactions, and a PSBT inspector before every signature
-- **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC
+- **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC (full history needs `-blockfilterindex=1`)
 - **BIP21 payment URIs:** paste a `bitcoin:` link to fill the address, amount and label
 - **BIP-329 labels** for transactions and addresses, searchable history, and Koinly CSV export
 - **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory

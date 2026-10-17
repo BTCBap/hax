@@ -18,6 +18,8 @@ This is a lightweight project changelog, not a strict release ledger.
 - Hardware wallet end-to-end check against a device emulator and a regtest node (`go test -tags emulator`)
 - Speed up a pending transaction from History (`b`): replace it at a higher fee (RBF, BIP125 rules enforced) or spend our output with a child (CPFP) sized to the package feerate
 - The Sign & Broadcast screen shows what the PSBT does before signing: each input and output, change proven by the wallet's own keys, fee and feerate, and warnings (inputs or outputs that aren't ours, mismatched amounts, non-default sighash, dust, high or too-low fee)
+- Freeze coins from the UTXO screen (`f`): frozen coins stay in the encrypted wallet file, are never picked by coin selection, MAX or fee bumps, and travel in BIP-329 exports as `spendable: false`
+- History warns when Bitcoin Core has no block filter index (`-blockfilterindex=1`) and can only show transactions behind unspent coins
 
 ### Changed
 - Project naming now keeps the repo and module as `hax` while the binary remains `hax`
@@ -25,6 +27,11 @@ This is a lightweight project changelog, not a strict release ledger.
 - Public launch stance is source-first until release verification is in place
 
 ### Fixed
+- Hardware wallet descriptor export ended at the account xpub; it now carries `/<0;1>/*`, so Core and Sparrow derive the wallet's receive and change addresses
+- Bitcoin Core history missed transactions that spent a coin without paying the same address again
+- On-device address verification no longer falls back to another connected device, and no longer reports a match when the device returns no address
+- BIP-329 import skipped any line with a non-string value, such as Sparrow's output records
+- Multisig address paths showed coin type `1'` on mainnet
 - Hardware wallets can sign `hax` PSBTs: inputs now carry the previous transaction (legacy and SegWit v0), Taproot inputs and change carry the BIP371 key origin and internal key, and nested SegWit inputs and change carry their redeem script
 - Signing an imported nested SegWit (P2SH-P2WPKH) PSBT produced an invalid signature
 - The README release badge showed "invalid"

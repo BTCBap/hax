@@ -20,6 +20,11 @@ Manual checks; they need a person, real funds, or real devices.
 - [x] Hardware signing: PSBTs carry previous transactions, BIP371 Taproot fields and nested SegWit redeem scripts (checked on a Trezor emulator)
 - [x] Speed up pending transactions: RBF for our own, CPFP for incoming or stuck ones
 - [x] PSBT inspector before signing: inputs, outputs, verified change, fee and warnings, for built and imported PSBTs
+- [x] Freeze and unfreeze coins
+- [x] Receive address verification on the device (checked on a Trezor emulator)
+- [x] Bitcoin Core history: spends found through block filters, and a clear warning without `-blockfilterindex=1`
+- [x] Descriptor exports checked against Core's `deriveaddresses` and `importdescriptors`
+- [ ] Check descriptor and UR exports by importing them into Sparrow
 
 ## Later
 
