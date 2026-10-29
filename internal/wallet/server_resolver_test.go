@@ -71,48 +71,34 @@ func TestAlignBackendNetwork(t *testing.T) {
 	}
 }
 
-func TestAlignBackendNetwork_FallbackWhenDefaultUnreachable(t *testing.T) {
-	mainG := *chaincfg.MainNetParams.GenesisHash
-	primary := newNetBackend("mainnet", mainG)
-	primary.connectErr = errors.New("dial failed")
-	second := newNetBackend("mainnet", mainG)
+func TestAlignBackendNetwork_UnreachableKeepsSelectedServer(t *testing.T) {
+	selected := newNetBackend("mainnet", *chaincfg.MainNetParams.GenesisHash)
+	selected.connectErr = errors.New("dial failed")
 
-	m := &WalletManager{backend: primary}
-	m.SetBackendFallbacks(func(network string) []backend.BitcoinBackend {
-		if network != NetworkMainnet {
-			t.Errorf("fallback network = %q, want %q", network, NetworkMainnet)
-		}
-		return []backend.BitcoinBackend{second}
-	})
-
+	m := &WalletManager{backend: selected}
 	ok, err := m.alignBackendNetwork(NetworkMainnet)
-	if err != nil || !ok {
-		t.Fatalf("align: ok=%v err=%v", ok, err)
+	if err != nil || ok {
+		t.Fatalf("align: ok=%v err=%v, want ok=false err=nil", ok, err)
 	}
-	if m.backend != second {
-		t.Fatal("backend was not switched to the fallback server")
+	if m.backend != selected {
+		t.Fatal("backend was switched away from the selected server")
 	}
 }
 
-func TestAlignBackendNetwork_FallbackSkipsWrongGenesis(t *testing.T) {
-	mainG := *chaincfg.MainNetParams.GenesisHash
-	t4G := *TestNet4Params.GenesisHash
-	primary := newNetBackend("mainnet", mainG)
-	primary.connectErr = errors.New("dial failed")
-	mislabelled := newNetBackend("mainnet", t4G) // claims mainnet but serves testnet4
-	good := newNetBackend("mainnet", mainG)
+func TestAlignBackendNetwork_WrongGenesisReturnsErrorWithoutSwitching(t *testing.T) {
+	selected := newNetBackend("mainnet", *TestNet4Params.GenesisHash)
 
-	m := &WalletManager{backend: primary}
-	m.SetBackendFallbacks(func(string) []backend.BitcoinBackend {
-		return []backend.BitcoinBackend{mislabelled, good}
-	})
-
+	m := &WalletManager{backend: selected}
 	ok, err := m.alignBackendNetwork(NetworkMainnet)
-	if err != nil || !ok {
-		t.Fatalf("align: ok=%v err=%v", ok, err)
+	if err == nil || ok {
+		t.Fatalf("align: ok=%v err=%v, want ok=false with an error", ok, err)
 	}
-	if m.backend != good {
-		t.Fatal("backend was not switched to the correctly-labelled server")
+	var mismatch *NetworkMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("err = %v, want *NetworkMismatchError", err)
+	}
+	if m.backend != selected {
+		t.Fatal("backend was switched away from the selected server")
 	}
 }
 

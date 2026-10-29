@@ -83,38 +83,6 @@ func main() {
 		return backend.NewBackend(backend.ResolveBackendConfig(saved, network))
 	})
 
-	// When no server was saved for the wallet's network, the default server
-	// is only a starting point: try the other public servers before giving
-	// up. A saved server is a manual choice and is never replaced.
-	walletManager.SetBackendFallbacks(func(network string) []backend.BitcoinBackend {
-		cfg, err := configManager.Load()
-		if err == nil && cfg != nil && cfg.Backend != nil &&
-			backend.NormalizeNetwork(cfg.Backend.Network) == backend.NormalizeNetwork(network) {
-			return nil
-		}
-		n := backend.NormalizeNetwork(network)
-		def := backend.DefaultElectrumConfig(n)
-		var fallbacks []backend.BitcoinBackend
-		for _, srv := range backend.PublicElectrumServers[n] {
-			if def.Electrum != nil && srv.Host == def.Electrum.Host && srv.Port == def.Electrum.Port {
-				continue
-			}
-			b, err := backend.NewBackend(&backend.BackendConfig{
-				Type:    backend.BackendTypeElectrum,
-				Network: n,
-				Electrum: &backend.ElectrumConfig{
-					Host:   srv.Host,
-					Port:   srv.Port,
-					UseSSL: srv.UseSSL,
-				},
-			})
-			if err == nil {
-				fallbacks = append(fallbacks, b)
-			}
-		}
-		return fallbacks
-	})
-
 	if cfg != nil && cfg.GapLimit > 0 {
 		walletManager.SetGapLimit(cfg.GapLimit)
 	}

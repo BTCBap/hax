@@ -12,7 +12,7 @@ This is a lightweight project changelog, not a strict release ledger.
 - Menus show the highlighted option's description on the same line, and screens reserve space for errors and hints so content no longer jumps
 
 ### Fixed
-- First connection could fail with no way forward; if the default public server can't be reached or serves another chain, hax now tries the other public servers for the wallet's network (a server you saved yourself is never replaced)
+- First connection could fail with no way forward; hax now connects only to the server for the wallet's network (the one you saved, or that network's default), shows the error if it can't connect, and lets you choose another server for that network from the unlock screen (Ctrl+S on a network mismatch) or Settings
 - Wallets whose saved server was for the other network now open on their own network's default server automatically
 - The seed backup check no longer shifts as you type or when a wrong word is entered
 
