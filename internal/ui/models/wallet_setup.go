@@ -180,42 +180,47 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	nameInput := textinput.New()
 	nameInput.Placeholder = "My Bitcoin Wallet"
 	nameInput.CharLimit = 50
+	nameInput.Width = 40
 
 	passwordInput := textinput.New()
 	passwordInput.Placeholder = ""
 	passwordInput.EchoMode = textinput.EchoPassword
 	passwordInput.CharLimit = 100
+	passwordInput.Width = 40
 
 	confirmPasswordInput := textinput.New()
 	confirmPasswordInput.Placeholder = "Confirm password"
 	confirmPasswordInput.EchoMode = textinput.EchoPassword
 	confirmPasswordInput.CharLimit = 100
+	confirmPasswordInput.Width = 40
 
 	passphraseInput := textinput.New()
 	passphraseInput.Placeholder = "optional"
 	passphraseInput.EchoMode = textinput.EchoPassword
 	passphraseInput.CharLimit = 256
+	passphraseInput.Width = 40
 
 	confirmPassphraseInput := textinput.New()
 	confirmPassphraseInput.Placeholder = "Confirm passphrase"
 	confirmPassphraseInput.EchoMode = textinput.EchoPassword
 	confirmPassphraseInput.CharLimit = 256
+	confirmPassphraseInput.Width = 40
 
 	mnemonicInput := textinput.New()
 	mnemonicInput.Placeholder = "word1 word2 word3 ..."
-	mnemonicInput.Width = 80
+	mnemonicInput.Width = 60
 	mnemonicInput.CharLimit = 300
 
 	// Multisig xpub input
 	multisigXpubInput := textinput.New()
 	multisigXpubInput.Placeholder = "tpub... (BIP48 xpub from cosigner)"
-	multisigXpubInput.Width = 80
+	multisigXpubInput.Width = 60
 	multisigXpubInput.CharLimit = 200
 
 	// Multisig cosigner seed input (for deriving BIP48 xpub)
 	multisigSeedInput := textinput.New()
 	multisigSeedInput.Placeholder = "word1 word2 word3 ... (12 or 24 words)"
-	multisigSeedInput.Width = 80
+	multisigSeedInput.Width = 60
 	multisigSeedInput.CharLimit = 300
 
 	// Custom derivation path input
@@ -227,7 +232,7 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	// Descriptor import text input (single line - descriptors don't have newlines)
 	descriptorInput := textinput.New()
 	descriptorInput.Placeholder = "wsh(sortedmulti(2,[fp/48h/1h/0h/2h]tpub...))#checksum"
-	descriptorInput.Width = 70
+	descriptorInput.Width = 60
 	descriptorInput.CharLimit = 2000
 
 	// Check for last used wallet (auto-login feature)

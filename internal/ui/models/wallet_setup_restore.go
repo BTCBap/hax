@@ -5,6 +5,7 @@ import (
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Restore flow view functions
@@ -38,7 +39,7 @@ func (m WalletSetupModel) viewRestoreEnterName() string {
 
 	content := title + "\n" +
 		instruction + "\n" +
-		m.nameInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -53,7 +54,7 @@ func (m WalletSetupModel) viewRestoreEnterMnemonic() string {
 	content := title + "\n" +
 		info + "\n" +
 		instruction + "\n" +
-		m.mnemonicInput.View() + "\n" +
+		lipgloss.NewStyle().Width(63).Render(m.mnemonicInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -77,10 +78,13 @@ func (m WalletSetupModel) viewRestoreChooseScriptType() string {
 	customPathSection := ""
 	if m.showCustomPath {
 		customPathSection = "\n" + styles.BoldText.Render("Custom derivation path:") + "\n" +
-			m.customPathInput.View() + "\n"
+			lipgloss.NewStyle().Width(33).Render(m.customPathInput.View()) + "\n"
+		errorLine := ""
 		if m.err != nil {
-			customPathSection += styles.ErrorText.Render(m.err.Error()) + "\n"
+			errorLine = lipgloss.NewStyle().MaxWidth(lipgloss.Width(menu)).
+				Render(styles.ErrorText.Render(m.err.Error()))
 		}
+		customPathSection += errorLine + "\n"
 		customPathSection += styles.DimText.Render("enter: confirm • esc: cancel") + "\n"
 	}
 
@@ -116,8 +120,8 @@ func (m WalletSetupModel) viewRestoreEnterPassword() string {
 	content := title + "\n" +
 		warning + "\n" +
 		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
-		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -130,7 +134,7 @@ func (m WalletSetupModel) viewRestoreConfirmPassword() string {
 
 	content := title + "\n" +
 		instruction + "\n" +
-		m.confirmPasswordInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -197,7 +201,7 @@ func (m WalletSetupModel) viewRestoreFilePassword() string {
 	content := title + "\n" +
 		subtitle + "\n" +
 		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -218,7 +222,7 @@ func (m WalletSetupModel) viewMultisigImportDescriptor() string {
 
 	content := title + "\n\n" +
 		info + "\n\n" +
-		"Descriptor: " + m.descriptorInput.View() + "\n\n" +
+		"Descriptor: " + lipgloss.NewStyle().Width(63).Render(m.descriptorInput.View()) + "\n\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -322,7 +326,7 @@ func (m WalletSetupModel) viewMultisigImportReview() string {
 		details + "\n" +
 		warningsSection +
 		instructions + "\n" +
-		m.nameInput.View() + "\n\n" +
+		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

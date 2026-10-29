@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ConnectionSetupStep represents the current step in connection setup
@@ -125,24 +126,29 @@ func NewConnectionSetupModel(configManager *config.ConfigManager, returnToSettin
 	hostInput := textinput.New()
 	hostInput.Placeholder = "hostname or IP"
 	hostInput.CharLimit = 100
+	hostInput.Width = 30
 
 	portInput := textinput.New()
 	portInput.Placeholder = "port"
 	portInput.CharLimit = 5
+	portInput.Width = 10
 
 	userInput := textinput.New()
 	userInput.Placeholder = "username"
 	userInput.CharLimit = 50
+	userInput.Width = 20
 
 	passInput := textinput.New()
 	passInput.Placeholder = "password"
 	passInput.EchoMode = textinput.EchoPassword
 	passInput.CharLimit = 100
+	passInput.Width = 20
 
 	torPortInput := textinput.New()
 	torPortInput.Placeholder = "9050"
 	torPortInput.SetValue("9050")
 	torPortInput.CharLimit = 5
+	torPortInput.Width = 10
 
 	var recentServers []backend.SavedServer
 	if configManager != nil {
@@ -814,8 +820,10 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 		cursor = styles.HighlightText.Render("▶ ")
 		menu += cursor + styles.SelectedItemStyle.Render("Custom Server") + "\n"
 		menu += "\n"
-		menu += styles.InputLabelStyle.Render("Host: ") + m.hostInput.View() + "\n"
-		menu += styles.InputLabelStyle.Render("Port: ") + m.portInput.View() + "\n"
+		menu += styles.InputLabelStyle.Render("Host: ") +
+			lipgloss.NewStyle().Width(33).Render(m.hostInput.View()) + "\n"
+		menu += styles.InputLabelStyle.Render("Port: ") +
+			lipgloss.NewStyle().Width(13).Render(m.portInput.View()) + "\n"
 		// SSL toggle
 		sslToggle := "[ ] Use SSL/TLS"
 		if m.useSSL {
@@ -835,7 +843,8 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 	}
 	menu += styles.InputLabelStyle.Render("  ") + torToggle + "\n"
 	if m.useTor {
-		menu += styles.InputLabelStyle.Render("  SOCKS5 Port: ") + m.torPortInput.View() + "\n"
+		menu += styles.InputLabelStyle.Render("  SOCKS5 Port: ") +
+			lipgloss.NewStyle().Width(13).Render(m.torPortInput.View()) + "\n"
 	}
 
 	items := []styles.HelpItem{
@@ -855,7 +864,16 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 		styles.HK("enter", "test"),
 		styles.HK("esc", "back"),
 	)
-	help := styles.RenderHelp(items...)
+	helpWidth := lipgloss.Width(styles.RenderHelp(
+		styles.HK("↑/↓", "navigate"),
+		styles.HK("t", "toggle Tor"),
+		styles.HK("s", "toggle SSL"),
+		styles.HK("x", "remove"),
+		styles.HK("tab", "fields"),
+		styles.HK("enter", "test"),
+		styles.HK("esc", "back"),
+	))
+	help := lipgloss.NewStyle().Width(helpWidth).Render(styles.RenderHelp(items...))
 
 	return styles.CenterHorizontal(title+"\n"+subtitle+menu+"\n"+help, m.width)
 }
@@ -865,10 +883,14 @@ func (m ConnectionSetupModel) viewConfigureRPC() string {
 	subtitle := styles.SubtitleStyle.Render("Enter your node connection details")
 
 	form := "\n"
-	form += styles.InputLabelStyle.Render("Host:     ") + m.hostInput.View() + "\n"
-	form += styles.InputLabelStyle.Render("Port:     ") + m.portInput.View() + "\n"
-	form += styles.InputLabelStyle.Render("Username: ") + m.userInput.View() + "\n"
-	form += styles.InputLabelStyle.Render("Password: ") + m.passInput.View() + "\n"
+	form += styles.InputLabelStyle.Render("Host:     ") +
+		lipgloss.NewStyle().Width(33).Render(m.hostInput.View()) + "\n"
+	form += styles.InputLabelStyle.Render("Port:     ") +
+		lipgloss.NewStyle().Width(13).Render(m.portInput.View()) + "\n"
+	form += styles.InputLabelStyle.Render("Username: ") +
+		lipgloss.NewStyle().Width(23).Render(m.userInput.View()) + "\n"
+	form += styles.InputLabelStyle.Render("Password: ") +
+		lipgloss.NewStyle().Width(23).Render(m.passInput.View()) + "\n"
 
 	help := styles.RenderHelp(
 		styles.HK("tab", "next field"),
@@ -909,9 +931,16 @@ func (m ConnectionSetupModel) viewTestConnection() string {
 	case ButtonRetry:
 		button = styles.ErrorText.Render("✗ Connection failed - Press Enter to retry")
 	}
+	buttonWidth := max(
+		lipgloss.Width(styles.HighlightText.Render("[ Connect ]")),
+		lipgloss.Width(m.spinner.View()+" "+styles.TestingStatusStyle.Render("Testing connection...")),
+		lipgloss.Width(styles.SuccessText.Render("✓ Connected! Press Enter to continue")),
+		lipgloss.Width(styles.ErrorText.Render("✗ Connection failed - Press Enter to retry")),
+	)
+	button = lipgloss.NewStyle().Width(buttonWidth).Render(button)
 
 	// Server info section (shown after successful connection)
-	var serverInfo string
+	var serverInfoBody string
 	if m.buttonState == ButtonSuccess && m.serverSoftware != "" {
 		parts := []string{}
 		parts = append(parts, fmt.Sprintf("Server: %s", m.serverSoftware))
@@ -927,15 +956,29 @@ func (m ConnectionSetupModel) viewTestConnection() string {
 			}
 			parts = append(parts, fmt.Sprintf("Cert: %s", fp))
 		}
-		serverInfo = "\n\n" + styles.InfoBoxStyle.MarginBottom(0).Render(strings.Join(parts, "\n"))
+		serverInfoBody = strings.Join(parts, "\n")
 	}
 
 	help := styles.RenderHelp(
 		styles.HK("enter", m.getButtonAction()),
 		styles.HK("esc", "back"),
 	)
+	helpWidth := max(
+		lipgloss.Width(styles.RenderHelp(styles.HK("enter", "connect"), styles.HK("esc", "back"))),
+		lipgloss.Width(styles.RenderHelp(styles.HK("enter", "testing..."), styles.HK("esc", "back"))),
+		lipgloss.Width(styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))),
+		lipgloss.Width(styles.RenderHelp(styles.HK("enter", "retry"), styles.HK("esc", "back"))),
+	)
+	help = lipgloss.NewStyle().Width(helpWidth).Render(help)
 
-	return styles.CenterHorizontal(title+"\n\n"+info+"\n\n"+button+serverInfo+"\n\n"+help, m.width)
+	// Keep the success details from widening the centered block.
+	serverInfo := ""
+	if serverInfoBody != "" {
+		contentWidth := max(lipgloss.Width(title), lipgloss.Width(info), lipgloss.Width(button), lipgloss.Width(help))
+		serverInfo = "\n\n" + styles.InfoBoxStyle.MarginBottom(0).Width(contentWidth).Render(serverInfoBody)
+	}
+
+	return styles.CenterHorizontal(title+"\n\n"+info+"\n\n"+button+"\n\n"+help+serverInfo, m.width)
 }
 
 func (m ConnectionSetupModel) getButtonAction() string {

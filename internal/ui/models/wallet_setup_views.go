@@ -228,8 +228,8 @@ func (m WalletSetupModel) View() string {
 		content.WriteString("Unknown step")
 	}
 
-	// Show error if present
-	if m.err != nil {
+	// Show error if present. The backup check reserves its own error rows.
+	if m.err != nil && m.step != StepConfirmMnemonic {
 		content.WriteString("\n\n")
 		content.WriteString(styles.RenderErrorBox("Error: "+m.err.Error(), m.width))
 	}
@@ -298,7 +298,7 @@ func (m WalletSetupModel) viewEnterName() string {
 		content = title + "\n"
 	}
 	content += instruction + "\n" +
-		m.nameInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -319,8 +319,8 @@ func (m WalletSetupModel) viewEnterPassword() string {
 	}
 	content += warning + "\n" +
 		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
-		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -339,7 +339,7 @@ func (m WalletSetupModel) viewConfirmPassword() string {
 		content = title + "\n"
 	}
 	content += instruction + "\n" +
-		m.confirmPasswordInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -368,7 +368,7 @@ func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
 	}
 	content += info + "\n\n" +
 		instruction + "\n" +
-		m.passphraseInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.passphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -387,7 +387,7 @@ func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 		content = title + "\n"
 	}
 	content += instruction + "\n" +
-		m.confirmPassphraseInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(m.confirmPassphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -409,10 +409,13 @@ func (m WalletSetupModel) viewChooseScriptType() string {
 	customPathSection := ""
 	if m.showCustomPath {
 		customPathSection = "\n" + styles.BoldText.Render("Custom derivation path:") + "\n" +
-			m.customPathInput.View() + "\n"
+			lipgloss.NewStyle().Width(33).Render(m.customPathInput.View()) + "\n"
+		errorLine := ""
 		if m.err != nil {
-			customPathSection += styles.ErrorText.Render(m.err.Error()) + "\n"
+			errorLine = lipgloss.NewStyle().MaxWidth(lipgloss.Width(menu)).
+				Render(styles.ErrorText.Render(m.err.Error()))
 		}
+		customPathSection += errorLine + "\n"
 		customPathSection += styles.DimText.Render("enter: confirm • esc: cancel") + "\n"
 	}
 

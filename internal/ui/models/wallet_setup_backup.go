@@ -10,6 +10,7 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // backupCheckWords is how many seed words the user re-enters after creating
@@ -125,13 +126,31 @@ func (m WalletSetupModel) viewConfirmMnemonic() string {
 		help := styles.RenderHelp(styles.HK("y", "skip"), styles.HK("n", "check words"), styles.HK("esc", "cancel"))
 		return styles.CenterHorizontal(header+"\n\n"+body+"\n\n"+help, m.width)
 	}
+
+	words := strings.Fields(m.generatedMnemonic)
+	errorSample := fmt.Sprintf("Error: that is not word #%d; check your backup or press esc to see the seed again", len(words))
+	errorHeight := lipgloss.Height(styles.RenderErrorBox(errorSample, m.width))
+	errorSlot := lipgloss.NewStyle().Height(errorHeight).Render("")
+	if m.err != nil {
+		errorSlot = lipgloss.NewStyle().
+			Height(errorHeight).
+			MaxHeight(errorHeight).
+			Render(styles.RenderErrorBox("Error: "+m.err.Error(), m.width))
+	}
+
 	if m.backupPos >= len(m.backupWords) {
-		return styles.CenterHorizontal(header, m.width)
+		return styles.CenterHorizontal(header+"\n\n"+errorSlot, m.width)
 	}
 	pos := m.backupWords[m.backupPos]
-	progress := styles.DimText.Render(fmt.Sprintf("%d of %d", m.backupPos+1, len(m.backupWords)))
-	prompt := styles.NormalText.Render(fmt.Sprintf("Enter word #%d:", pos+1))
-	content := header + "  " + progress + "\n\n" + prompt + "\n" + m.backupInput.View()
+	progressWidth := len(fmt.Sprintf("%d of %d", len(m.backupWords), len(m.backupWords)))
+	progress := styles.DimText.Width(progressWidth).Render(fmt.Sprintf("%d of %d", m.backupPos+1, len(m.backupWords)))
+	promptWidth := lipgloss.Width(styles.NormalText.Render(fmt.Sprintf("Enter word #%d:", len(words))))
+	prompt := styles.NormalText.Width(promptWidth).Render(fmt.Sprintf("Enter word #%d:", pos+1))
+	titleLine := lipgloss.NewStyle().
+		Width(lipgloss.Width(header) + 2 + progressWidth).
+		Render(header + "  " + progress)
+	content := titleLine + "\n\n" + prompt + "\n" +
+		lipgloss.NewStyle().Width(23).Render(m.backupInput.View())
 	help := styles.RenderHelp(styles.HK("enter", "check"), styles.HK("esc", "show seed"), styles.HK("ctrl+s", "skip"))
-	return styles.CenterHorizontal(content+"\n\n"+help, m.width)
+	return styles.CenterHorizontal(content+"\n\n"+help+"\n\n"+errorSlot, m.width)
 }

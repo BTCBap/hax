@@ -536,9 +536,9 @@ func (m SettingsModel) viewMnemonic() string {
 		"",
 		mnemonicBox,
 		"",
-		copyStatus,
-		"",
 		help,
+		"",
+		copyStatus,
 	)
 }
 

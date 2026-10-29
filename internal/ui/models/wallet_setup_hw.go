@@ -89,7 +89,7 @@ func (m WalletSetupModel) viewHWISetup() string {
 		Foreground(styles.TextSecondary).
 		Render("More info: https://github.com/bitcoin-core/HWI") + "\n\n")
 
-	// Verification status
+	// Verification status, on a row that is reserved when there is no status.
 	if m.hwiVerifying {
 		content.WriteString(m.spinner.View() + " " +
 			styles.DimText.Render("Verifying installation...") + "\n")
@@ -99,6 +99,8 @@ func (m WalletSetupModel) viewHWISetup() string {
 		} else {
 			content.WriteString(styles.ErrorText.Render("  "+m.hwiVerifyMsg) + "\n")
 		}
+	} else {
+		content.WriteString("\n")
 	}
 
 	enterDesc := "verify installation"

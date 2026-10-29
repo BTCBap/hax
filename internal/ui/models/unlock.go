@@ -329,20 +329,22 @@ func (m UnlockModel) View() string {
 		content = m.renderPasswordEntry()
 	}
 
-	var errorBox string
-	if m.err != nil {
-		shakeOffset := int(m.shakeIntensity * 3.0)
-		padding := strings.Repeat(" ", shakeOffset)
-
-		errorBox = "\n\n" + padding +
-			styles.RenderErrorBox("❌ "+m.err.Error(), width)
-	}
-
 	// Help text
 	help := m.renderHelp()
 
+	// The error row stays reserved so the help line does not move, and it is
+	// capped to the stable content width so it cannot re-center the block.
+	contentWidth := max(lipgloss.Width(header), lipgloss.Width(content), lipgloss.Width(help))
+	errorLine := ""
+	if m.err != nil {
+		shakeOffset := int(m.shakeIntensity * 3.0)
+		errorLine = strings.Repeat(" ", shakeOffset) +
+			styles.ErrorText.Render("❌ "+truncateRunes(m.err.Error(), max(10, width-8), "…"))
+		errorLine = lipgloss.NewStyle().MaxWidth(contentWidth).Render(errorLine)
+	}
+
 	return styles.CenterHorizontal(
-		header+"\n\n"+content+errorBox+"\n\n"+help,
+		header+"\n\n"+content+"\n\n"+errorLine+"\n"+help,
 		width,
 	)
 }
@@ -424,7 +426,7 @@ func (m UnlockModel) renderPasswordEntry() string {
 
 	return walletInfo + "\n\n" +
 		instruction + "\n" +
-		m.passwordInput.View()
+		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View())
 }
 
 func (m UnlockModel) renderUnlocking() string {
@@ -454,17 +456,20 @@ func (m UnlockModel) renderHelp() string {
 	if len(m.walletList) > 1 {
 		escDesc = "back"
 	}
-	if m.networkMismatch() {
-		return styles.RenderHelp(
-			styles.HK("ctrl+s", "choose server"),
-			styles.HK("enter", "unlock"),
-			styles.HK("esc", escDesc),
-		)
-	}
-	return styles.RenderHelp(
+	normalHelp := styles.RenderHelp(
 		styles.HK("enter", "unlock"),
 		styles.HK("esc", escDesc),
 	)
+	mismatchHelp := styles.RenderHelp(
+		styles.HK("ctrl+s", "choose server"),
+		styles.HK("enter", "unlock"),
+		styles.HK("esc", escDesc),
+	)
+	helpWidth := max(lipgloss.Width(normalHelp), lipgloss.Width(mismatchHelp))
+	if m.networkMismatch() {
+		return lipgloss.NewStyle().Width(helpWidth).Render(mismatchHelp)
+	}
+	return lipgloss.NewStyle().Width(helpWidth).Render(normalHelp)
 }
 
 // networkMismatch reports whether the last unlock failed because the
