@@ -146,11 +146,9 @@ func (m WalletSetupModel) viewConfirmMnemonic() string {
 	progress := styles.DimText.Width(progressWidth).Render(fmt.Sprintf("%d of %d", m.backupPos+1, len(m.backupWords)))
 	promptWidth := lipgloss.Width(styles.NormalText.Render(fmt.Sprintf("Enter word #%d:", len(words))))
 	prompt := styles.NormalText.Width(promptWidth).Render(fmt.Sprintf("Enter word #%d:", pos+1))
-	titleLine := lipgloss.NewStyle().
-		Width(lipgloss.Width(header) + 2 + progressWidth).
-		Render(header + "  " + progress)
-	content := titleLine + "\n\n" + prompt + "\n" +
-		lipgloss.NewStyle().Width(23).Render(m.backupInput.View())
+	titleLine := lipgloss.JoinHorizontal(lipgloss.Center, header, "  ", progress)
+	inputBlock := lipgloss.NewStyle().Width(23).Render(prompt + "\n" + m.backupInput.View())
+	content := titleLine + "\n\n" + inputBlock
 	help := styles.RenderHelp(styles.HK("enter", "check"), styles.HK("esc", "show seed"), styles.HK("ctrl+s", "skip"))
 	return styles.CenterHorizontal(content+"\n\n"+help+"\n\n"+errorSlot, m.width)
 }

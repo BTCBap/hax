@@ -20,6 +20,8 @@ func (m WalletSetupModel) getStepProgress() float64 {
 		return 0.40
 	case StepChooseScriptType:
 		return 0.60
+	case StepChooseKeySource:
+		return 0.60
 	case StepChooseNetwork:
 		return 0.75
 	case StepEnterPassphrase, StepConfirmPassphrase:
@@ -27,6 +29,12 @@ func (m WalletSetupModel) getStepProgress() float64 {
 	case StepChooseWordCount:
 		return 0.80
 	case StepShowMnemonic, StepConfirmMnemonic:
+		return 1.0
+
+	// Single-sig hardware wallet flow
+	case StepHWISetup, StepHardwareWalletConnect:
+		return 0.70
+	case StepHardwareWalletReview:
 		return 1.0
 
 	// Restore wallet flow from seed
@@ -86,6 +94,8 @@ func (m WalletSetupModel) renderProgressBar() string {
 		stepNum, totalSteps = 2, 5
 	case StepChooseScriptType:
 		stepNum, totalSteps = 3, 5
+	case StepChooseKeySource:
+		stepNum, totalSteps = 3, 5
 	case StepChooseNetwork:
 		stepNum, totalSteps = 4, 5
 		if m.isRestore {
@@ -96,6 +106,12 @@ func (m WalletSetupModel) renderProgressBar() string {
 	case StepChooseWordCount:
 		stepNum, totalSteps = 4, 5
 	case StepShowMnemonic, StepConfirmMnemonic:
+		stepNum, totalSteps = 5, 5
+
+	// Single-sig hardware wallet flow
+	case StepHWISetup, StepHardwareWalletConnect:
+		stepNum, totalSteps = 4, 5
+	case StepHardwareWalletReview:
 		stepNum, totalSteps = 5, 5
 
 	// Restore wallet flow from seed
@@ -297,8 +313,7 @@ func (m WalletSetupModel) viewEnterName() string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -318,8 +333,7 @@ func (m WalletSetupModel) viewEnterPassword() string {
 		content = title + "\n"
 	}
 	content += warning + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
 		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
@@ -338,8 +352,7 @@ func (m WalletSetupModel) viewConfirmPassword() string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.confirmPasswordInput.View()) + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -367,8 +380,7 @@ func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
 		content = title + "\n"
 	}
 	content += info + "\n\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.passphraseInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -386,8 +398,7 @@ func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.confirmPassphraseInput.View()) + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPassphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

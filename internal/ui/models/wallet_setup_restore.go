@@ -38,8 +38,7 @@ func (m WalletSetupModel) viewRestoreEnterName() string {
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
 
 	content := title + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -53,8 +52,7 @@ func (m WalletSetupModel) viewRestoreEnterMnemonic() string {
 
 	content := title + "\n" +
 		info + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(63).Render(m.mnemonicInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(63).Render(instruction+"\n"+m.mnemonicInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -119,8 +117,7 @@ func (m WalletSetupModel) viewRestoreEnterPassword() string {
 
 	content := title + "\n" +
 		warning + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
 		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
@@ -133,8 +130,7 @@ func (m WalletSetupModel) viewRestoreConfirmPassword() string {
 	help := styles.RenderHelp(styles.HK("enter", "restore"), styles.HK("esc", "back"))
 
 	content := title + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.confirmPasswordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -200,8 +196,7 @@ func (m WalletSetupModel) viewRestoreFilePassword() string {
 
 	content := title + "\n" +
 		subtitle + "\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -325,8 +320,7 @@ func (m WalletSetupModel) viewMultisigImportReview() string {
 		summary + "\n\n" +
 		details + "\n" +
 		warningsSection +
-		instructions + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.nameInput.View()) + "\n\n" +
+		lipgloss.NewStyle().Width(43).Render(instructions+"\n"+m.nameInput.View()) + "\n\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

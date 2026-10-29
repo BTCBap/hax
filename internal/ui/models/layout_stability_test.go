@@ -62,6 +62,10 @@ func TestSeedQuizLayoutStable(t *testing.T) {
 			input := requireTextPosition(t, view, "> ")
 			lines := requireLineCount(t, view)
 
+			if progress.line != title.line {
+				t.Fatalf("progress at %+v is not on the title line %+v", progress, title)
+			}
+
 			if i == 0 {
 				wantTitle, wantProgress = title, progress
 				wantPrompt, wantInput, wantLines = prompt, input, lines
@@ -206,6 +210,28 @@ func TestConnectionRPCFormLayoutStable(t *testing.T) {
 		}
 		if lines != wantLines {
 			t.Fatalf("view has %d lines, want %d", lines, wantLines)
+		}
+	}
+}
+
+// Every step the create flow can show must have a step number; a missing case
+// renders "Step 0/0" and makes the progress bar jump backwards.
+func TestCreateFlowProgressHasNoZeroStep(t *testing.T) {
+	steps := []WalletSetupStep{
+		StepChooseNetwork, StepChooseAction, StepChooseWalletType,
+		StepEnterName, StepEnterPassword, StepConfirmPassword,
+		StepChooseScriptType, StepChooseKeySource,
+		StepEnterPassphrase, StepConfirmPassphrase, StepChooseWordCount,
+		StepShowMnemonic, StepConfirmMnemonic,
+		StepHWISetup, StepHardwareWalletConnect, StepHardwareWalletReview,
+	}
+	m := NewWalletSetupModel(NewMockWalletManager(), nil)
+	m.width, m.height = 100, 40
+	for _, step := range steps {
+		m.step = step
+		view := stripANSI(m.View())
+		if strings.Contains(view, "Step 0/0") {
+			t.Fatalf("step %d renders Step 0/0:\n%s", step, view)
 		}
 	}
 }

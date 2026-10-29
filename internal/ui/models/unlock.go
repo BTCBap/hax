@@ -425,8 +425,7 @@ func (m UnlockModel) renderPasswordEntry() string {
 	instruction := styles.NormalText.Render("Password:")
 
 	return walletInfo + "\n\n" +
-		instruction + "\n" +
-		lipgloss.NewStyle().Width(43).Render(m.passwordInput.View())
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View())
 }
 
 func (m UnlockModel) renderUnlocking() string {
