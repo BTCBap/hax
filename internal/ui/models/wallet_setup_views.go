@@ -269,27 +269,12 @@ func (m WalletSetupModel) viewChooseWalletType() string {
 	title := styles.TitleStyle.Render("Create New Wallet")
 	subtitle := styles.SubtitleStyle.Render("Choose wallet type:")
 
-	options := []string{
-		"Single-Signature Wallet",
-		"Multisig Wallet (M-of-N)",
+	options := []choiceOption{
+		{name: "Single-Signature Wallet", desc: "Standard wallet with one key - simple and secure"},
+		{name: "Multisig Wallet (M-of-N)", desc: "Requires multiple keys to spend - for shared custody"},
 	}
 
-	descriptions := []string{
-		"Standard wallet with one key - simple and secure",
-		"Requires multiple keys to spend - for shared custody",
-	}
-
-	menu := ""
-	for i, option := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			menu += styles.SelectedItemStyle.Render(cursor+" "+option) + "\n"
-			menu += styles.DimText.Render("   "+descriptions[i]) + "\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(cursor+" "+option) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -411,33 +396,14 @@ func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 func (m WalletSetupModel) viewChooseScriptType() string {
 	info := styles.DimText.Render("Address format for your wallet")
 
-	options := []struct {
-		name string
-		desc string
-		path string
-	}{
-		{"Legacy (P2PKH)", "Original Bitcoin format", "m/44'/..."},
-		{"Nested SegWit (P2SH-P2WPKH)", "Compatible with older wallets", "m/49'/..."},
-		{"Native SegWit (Bech32)", "Recommended - lowest fees", "m/84'/..."},
-		{"Taproot (P2TR)", "Latest - privacy & efficiency", "m/86'/..."},
+	options := []choiceOption{
+		{name: "Legacy (P2PKH)", desc: "Original Bitcoin format m/44'/..."},
+		{name: "Nested SegWit (P2SH-P2WPKH)", desc: "Compatible with older wallets m/49'/..."},
+		{name: "Native SegWit (Bech32)", desc: "Recommended - lowest fees m/84'/...", check: " ✓"}, // Mark Native SegWit as recommended
+		{name: "Taproot (P2TR)", desc: "Latest - privacy & efficiency m/86'/..."},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 2 {
-				line += " ✓" // Mark Native SegWit as recommended
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc+" "+opt.path) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	// Show custom path input if active
 	customPathSection := ""

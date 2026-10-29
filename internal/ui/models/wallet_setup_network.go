@@ -36,19 +36,11 @@ func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyMsg) (tea.Model, tea.Cm
 
 func (m WalletSetupModel) viewChooseNetwork() string {
 	info := styles.DimText.Render("Which Bitcoin network is this wallet for?")
-	options := []struct{ name, desc string }{
-		{"Mainnet", "Bitcoin network."},
-		{"Testnet4", "Test network; coins have no value."},
+	options := []choiceOption{
+		{name: "Mainnet", desc: "Bitcoin network."},
+		{name: "Testnet4", desc: "Test network; coins have no value."},
 	}
-	menu := ""
-	for i, opt := range options {
-		if m.cursor == i {
-			menu += styles.SelectedItemStyle.Render("▶ "+opt.name) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc) + "\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render("  "+opt.name) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("enter", "select"),

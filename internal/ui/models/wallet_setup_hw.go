@@ -13,30 +13,11 @@ import (
 func (m WalletSetupModel) viewChooseKeySource() string {
 	info := styles.DimText.Render("How do you want to store your keys?")
 
-	options := []struct {
-		name string
-		desc string
-	}{
-		{"Generate New Seed", "Create a new 12 or 24 word seed phrase"},
-		{"Import from Hardware Wallet", "Use a Trezor, Ledger, Coldcard, etc."},
+	options := []choiceOption{
+		{name: "Generate New Seed", desc: "Create a new 12 or 24 word seed phrase", check: " ✓"},
+		{name: "Import from Hardware Wallet", desc: "Use a Trezor, Ledger, Coldcard, etc."},
 	}
-
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 0 {
-				line += " ✓" // Mark generate as recommended for most users
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),

@@ -12,28 +12,14 @@ import (
 func (m WalletSetupModel) viewRestoreChooseMethod() string {
 	title := styles.TitleStyle.Render("Restore Wallet")
 
-	options := []struct {
-		name string
-		desc string
-	}{
-		{"From Seed Phrase", "Single-sig wallet from 12/24 word seed"},
-		{"Import Multisig (Manual)", "Enter cosigner xpubs one by one"},
-		{"Import from Descriptor", "Single-sig or multisig from Sparrow/Coldcard"},
-		{"From Wallet File", "Open existing .wallet file"},
+	options := []choiceOption{
+		{name: "From Seed Phrase", desc: "Single-sig wallet from 12/24 word seed"},
+		{name: "Import Multisig (Manual)", desc: "Enter cosigner xpubs one by one"},
+		{name: "Import from Descriptor", desc: "Single-sig or multisig from Sparrow/Coldcard"},
+		{name: "From Wallet File", desc: "Open existing .wallet file"},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "▶ "
-			menu += styles.SelectedItemStyle.Render(cursor+opt.name) + "\n"
-			menu += styles.DimText.Render("    "+opt.desc) + "\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(cursor+opt.name) + "\n"
-			menu += styles.DimText.Render("    "+opt.desc) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -78,33 +64,14 @@ func (m WalletSetupModel) viewRestoreChooseScriptType() string {
 	info := styles.DimText.Render("Select the address format used by your original wallet")
 	warning := styles.WarningText.Render("⚠ Must match your original wallet's format")
 
-	options := []struct {
-		name string
-		desc string
-		path string
-	}{
-		{"Legacy (P2PKH)", "Addresses start with 1 or m/n", "m/44'/..."},
-		{"Nested SegWit (P2SH-P2WPKH)", "Addresses start with 3 or 2", "m/49'/..."},
-		{"Native SegWit (Bech32)", "Addresses start with bc1q/tb1q", "m/84'/..."},
-		{"Taproot (P2TR)", "Addresses start with bc1p/tb1p", "m/86'/..."},
+	options := []choiceOption{
+		{name: "Legacy (P2PKH)", desc: "Addresses start with 1 or m/n m/44'/..."},
+		{name: "Nested SegWit (P2SH-P2WPKH)", desc: "Addresses start with 3 or 2 m/49'/..."},
+		{name: "Native SegWit (Bech32)", desc: "Addresses start with bc1q/tb1q m/84'/...", check: " ✓"}, // Mark Native SegWit as recommended
+		{name: "Taproot (P2TR)", desc: "Addresses start with bc1p/tb1p m/86'/..."},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 2 {
-				line += " ✓" // Mark Native SegWit as recommended
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc+" "+opt.path) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	// Show custom path input if active
 	customPathSection := ""
