@@ -139,9 +139,48 @@ func (m *WalletManager) alignBackendNetwork(network string) (verified bool, err 
 		return false, err
 	}
 	if err := m.backend.Connect(); err != nil {
-		return false, nil
+		return m.tryFallbackBackends(network, nil)
 	}
-	return checkBackendNetwork(m.backend, network)
+	ok, checkErr := checkBackendNetwork(m.backend, network)
+	if checkErr != nil {
+		// Never use a server that serves another chain; try the next public
+		// server when the current one came from the default resolver.
+		return m.tryFallbackBackends(network, checkErr)
+	}
+	return ok, nil
+}
+
+// tryFallbackBackends connects to the alternative public servers for network
+// and adopts the first one whose genesis block matches. cause is a mismatch
+// already found on the primary server, returned when no alternative works.
+func (m *WalletManager) tryFallbackBackends(network string, cause error) (bool, error) {
+	if m.backendFallbacks == nil {
+		return false, cause
+	}
+
+	mismatch := cause
+	for _, b := range m.backendFallbacks(network) {
+		if b == nil {
+			continue
+		}
+		if err := b.Connect(); err != nil {
+			_ = b.Disconnect()
+			continue
+		}
+		ok, err := checkBackendNetwork(b, network)
+		if err != nil {
+			mismatch = err
+			_ = b.Disconnect()
+			continue
+		}
+		if m.backend != nil && m.backend != b {
+			_ = m.backend.Disconnect()
+		}
+		m.backend = b
+		m.resetNetworkVerified()
+		return ok, nil
+	}
+	return false, mismatch
 }
 
 // configuredNetworkMatches rejects a backend configured for another network.

@@ -34,7 +34,6 @@ func TestPassphrase_EmptyAllowed_Create(t *testing.T) {
 	m.walletName = "w"
 	m.password = "longenough"
 	m.network = wallet.NetworkTestnet
-	m.networkFor = networkForSoftware
 	m.step = StepEnterPassphrase
 	m.passphraseInput.Focus()
 
@@ -69,7 +68,6 @@ func TestPassphrase_Match_Create(t *testing.T) {
 	m.walletName = "w"
 	m.password = "longenough"
 	m.network = wallet.NetworkTestnet
-	m.networkFor = networkForSoftware
 	m.step = StepEnterPassphrase
 	m.passphraseInput.Focus()
 
@@ -141,6 +139,9 @@ func TestPassphrase_Restore_PassedToBackend(t *testing.T) {
 	if mock.CreatedPassphrase != "TREZOR" {
 		t.Fatalf("restore passphrase=%q", mock.CreatedPassphrase)
 	}
+	if mock.CreatedNetwork != wallet.NetworkTestnet {
+		t.Fatalf("restore network=%q", mock.CreatedNetwork)
+	}
 }
 
 func TestPassphrase_ViewCopy(t *testing.T) {
@@ -157,13 +158,12 @@ func TestPassphrase_ViewCopy(t *testing.T) {
 
 func TestPassphrase_WipeOnEsc(t *testing.T) {
 	m := NewWalletSetupModel(&MockWalletManager{}, nil)
-	m.networkFor = networkForSoftware
 	m.step = StepEnterPassphrase
 	m.passphrase = "secret"
 	m.passphraseInput.SetValue("secret")
 	out, _ := m.Update(ppKey("esc"))
 	m = out.(WalletSetupModel)
-	if m.step != StepChooseNetwork {
+	if m.step != StepChooseKeySource {
 		t.Fatalf("step=%v", m.step)
 	}
 	if m.passphrase != "" || m.passphraseInput.Value() != "" {

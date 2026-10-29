@@ -63,16 +63,18 @@ func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyMsg) (tea.Model, tea.
 		}
 	case "enter":
 		if m.cursor == 0 {
-			// Generate new seed - choose network, then word count
-			m.networkFor = networkForSoftware
-			m.step = StepChooseNetwork
+			// Generate new seed - network was already chosen
+			m.step = StepEnterPassphrase
 			m.cursor = 0
-		} else {
-			// Hardware wallet - choose network, then scan for devices
-			m.networkFor = networkForHardware
-			m.step = StepChooseNetwork
-			m.cursor = 0
+			return m, m.passphraseInput.Focus()
 		}
+		// Hardware wallet - network was already chosen, scan for devices
+		m.step = StepHardwareWalletConnect
+		m.cursor = 0
+		m.hwiLoading = true
+		m.hwiError = nil
+		m.hwiDevices = nil
+		return m, tea.Batch(m.spinner.Tick, m.enumerateHWIDevicesForSingleSig())
 	}
 	return m, nil
 }

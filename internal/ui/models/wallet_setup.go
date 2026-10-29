@@ -95,8 +95,6 @@ type WalletSetupModel struct {
 	passphrase           string // BIP39 passphrase (empty = none); wiped after use
 	wordCount            int
 	network              string // wallet.NetworkTestnet or wallet.NetworkMainnet
-	confirmMainnet       bool   // mainnet warning shown, awaiting y/n
-	networkFor           networkFlow
 	generatedMnemonic    string
 	selectedScriptType   wallet.AddressType
 	customDerivationPath string // Optional custom derivation path (e.g. "m/84'/0'/3'")
@@ -235,7 +233,7 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	// Check for last used wallet (auto-login feature)
 	var hasLastWallet bool
 	var lastWalletName string
-	var startStep = StepChooseAction
+	var startStep = StepChooseNetwork
 
 	if configManager != nil {
 		cfg, err := configManager.Load()
@@ -273,7 +271,7 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 		confirmPassphraseInput: confirmPassphraseInput,
 		mnemonicInput:          mnemonicInput,
 		wordCount:              12, // Default to 12 words
-		network:                wallet.NetworkTestnet,
+		network:                wallet.NetworkMainnet,
 		hasLastWallet:          hasLastWallet,
 		lastWalletName:         lastWalletName,
 		selectedWallet:         lastWalletName, // Pre-select the last wallet
@@ -411,12 +409,8 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showMultisigCustomPath || m.showCustomPath {
 				break
 			}
-			if m.step == StepChooseAction {
+			if m.step == StepChooseNetwork {
 				return m, tea.Quit
-			}
-			if m.step == StepChooseNetwork && m.confirmMainnet {
-				m.confirmMainnet = false
-				return m, nil
 			}
 			if m.step == StepConfirmMnemonic && m.backupSkipConfirm {
 				m.backupSkipConfirm = false
@@ -578,9 +572,8 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 
 					if m.isMultisig {
-						// Normal multisig flow - choose network, then M-of-N
-						m.networkFor = networkForMultisig
-						m.step = StepChooseNetwork
+						// Normal multisig flow - network was already chosen
+						m.step = StepMultisigChooseType
 						m.cursor = 0
 					} else {
 						// Single-sig flow - go to script type selection
@@ -957,10 +950,10 @@ func (m WalletSetupModel) proceedFromScriptType() (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	}
-	// Restore flow: choose network before setting the password
-	m.step = StepChooseNetwork
+	// Restore flow: network was already chosen before the seed was entered.
+	m.step = StepRestoreEnterPassword
 	m.cursor = 0
-	return m, nil
+	return m, m.passwordInput.Focus()
 }
 
 func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1088,6 +1081,12 @@ func (m *WalletSetupModel) saveLastWalletName(walletName string) {
 // getPreviousStep returns the correct previous step for ESC navigation
 func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 	switch m.step {
+	// Network is chosen before anything else.
+	case StepChooseAction:
+		return StepChooseNetwork
+	case StepChooseNetwork:
+		return StepChooseNetwork
+
 	// Create wallet flow
 	case StepChooseWalletType:
 		return StepChooseAction
@@ -1105,16 +1104,8 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 		return StepConfirmPassword
 	case StepChooseKeySource:
 		return StepChooseScriptType
-	case StepChooseNetwork:
-		if m.isRestore {
-			return StepRestoreChooseScriptType
-		}
-		if m.networkFor == networkForMultisig {
-			return StepConfirmPassword
-		}
-		return StepChooseKeySource
 	case StepEnterPassphrase:
-		return StepChooseNetwork
+		return StepChooseKeySource
 	case StepConfirmPassphrase:
 		return StepEnterPassphrase
 	case StepChooseWordCount:
@@ -1126,15 +1117,15 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 
 	// Single-sig hardware wallet flow
 	case StepHWISetup:
-		return StepChooseNetwork
+		return StepChooseKeySource
 	case StepHardwareWalletConnect:
-		return StepChooseNetwork
+		return StepChooseKeySource
 	case StepHardwareWalletReview:
 		return StepHardwareWalletConnect
 
 	// Multisig flow (after password confirmation)
 	case StepMultisigChooseType:
-		return StepChooseNetwork
+		return StepConfirmPassword
 	case StepMultisigConfirm:
 		return StepMultisigChooseType
 	case StepMultisigEnterCosigners:
@@ -1162,7 +1153,7 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 	case StepRestoreChooseScriptType:
 		return StepRestoreConfirmPassphrase
 	case StepRestoreEnterPassword:
-		return StepChooseNetwork
+		return StepRestoreChooseScriptType
 	case StepRestoreConfirmPassword:
 		return StepRestoreEnterPassword
 
@@ -1170,9 +1161,9 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 	case StepRestoreChooseFile:
 		return StepRestoreChooseMethod
 	case StepRestoreFilePassword:
-		// If auto-login mode, go back to choose action
+		// If auto-login mode, go back to the start of onboarding.
 		if m.hasLastWallet {
-			return StepChooseAction
+			return StepChooseNetwork
 		}
 		return StepRestoreChooseFile
 

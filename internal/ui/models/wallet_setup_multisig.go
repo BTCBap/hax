@@ -887,18 +887,14 @@ func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model,
 // createWalletFromDescriptor creates either a single-sig or multisig wallet from parsed descriptor
 func (m *WalletSetupModel) createWalletFromDescriptor() error {
 	if m.descriptorIsMultisig {
-		// Create multisig wallet
-		network := wallet.NetworkTestnet
-		if len(m.multisigCosigners) > 0 {
-			network = wallet.NetworkOfXpub(m.multisigCosigners[0].Xpub)
-		}
+		// Create multisig wallet on the network chosen during onboarding
 		return m.walletManager.CreateMultisigWalletOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
-			network,
+			m.network,
 		)
 	}
 
@@ -918,6 +914,6 @@ func (m *WalletSetupModel) createWalletFromDescriptor() error {
 		keyOrigin,
 		cfg.AddressType,
 		"descriptor", // device type
-		wallet.NetworkOfXpub(cfg.Xpub),
+		m.network,
 	)
 }

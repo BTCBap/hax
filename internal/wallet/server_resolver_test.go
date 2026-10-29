@@ -11,10 +11,13 @@ import (
 
 type netBackend struct {
 	genesisBackend
-	network string
+	network    string
+	connectErr error
 }
 
 func (n *netBackend) ConfiguredNetwork() string { return n.network }
+
+func (n *netBackend) Connect() error { return n.connectErr }
 
 func newNetBackend(network string, genesis chainhash.Hash) *netBackend {
 	return &netBackend{genesisBackend: genesisBackend{h: genesis}, network: network}
@@ -65,6 +68,101 @@ func TestAlignBackendNetwork(t *testing.T) {
 				t.Fatal("matching backend was switched")
 			}
 		})
+	}
+}
+
+func TestAlignBackendNetwork_FallbackWhenDefaultUnreachable(t *testing.T) {
+	mainG := *chaincfg.MainNetParams.GenesisHash
+	primary := newNetBackend("mainnet", mainG)
+	primary.connectErr = errors.New("dial failed")
+	second := newNetBackend("mainnet", mainG)
+
+	m := &WalletManager{backend: primary}
+	m.SetBackendFallbacks(func(network string) []backend.BitcoinBackend {
+		if network != NetworkMainnet {
+			t.Errorf("fallback network = %q, want %q", network, NetworkMainnet)
+		}
+		return []backend.BitcoinBackend{second}
+	})
+
+	ok, err := m.alignBackendNetwork(NetworkMainnet)
+	if err != nil || !ok {
+		t.Fatalf("align: ok=%v err=%v", ok, err)
+	}
+	if m.backend != second {
+		t.Fatal("backend was not switched to the fallback server")
+	}
+}
+
+func TestAlignBackendNetwork_FallbackSkipsWrongGenesis(t *testing.T) {
+	mainG := *chaincfg.MainNetParams.GenesisHash
+	t4G := *TestNet4Params.GenesisHash
+	primary := newNetBackend("mainnet", mainG)
+	primary.connectErr = errors.New("dial failed")
+	mislabelled := newNetBackend("mainnet", t4G) // claims mainnet but serves testnet4
+	good := newNetBackend("mainnet", mainG)
+
+	m := &WalletManager{backend: primary}
+	m.SetBackendFallbacks(func(string) []backend.BitcoinBackend {
+		return []backend.BitcoinBackend{mislabelled, good}
+	})
+
+	ok, err := m.alignBackendNetwork(NetworkMainnet)
+	if err != nil || !ok {
+		t.Fatalf("align: ok=%v err=%v", ok, err)
+	}
+	if m.backend != good {
+		t.Fatal("backend was not switched to the correctly-labelled server")
+	}
+}
+
+func TestOpenWalletUsesWalletNetworkNotSavedServerNetwork(t *testing.T) {
+	mainG := *chaincfg.MainNetParams.GenesisHash
+	t4G := *TestNet4Params.GenesisHash
+	m, err := NewWalletManager(t.TempDir(), newNetBackend("testnet", t4G))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pw = "correct horse battery"
+	if _, err := m.CreateWalletOnNetwork("w", pw, 12, NetworkMainnet, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	saved := &backend.BackendConfig{
+		Type:    backend.BackendTypeElectrum,
+		Network: "testnet",
+		Electrum: &backend.ElectrumConfig{
+			Host: "mempool.space", Port: 40002, UseSSL: true,
+		},
+	}
+	m.SetBackendResolver(func(network string) (backend.BitcoinBackend, error) {
+		resolved := backend.ResolveBackendConfig(saved, network)
+		if resolved.Network != NetworkMainnet {
+			t.Fatalf("resolved network = %q, want mainnet", resolved.Network)
+		}
+		return newNetBackend(resolved.Network, mainG), nil
+	})
+
+	if err := m.UnlockWallet("w", pw); err != nil {
+		t.Fatalf("unlock: %v", err)
+	}
+	defer m.LockWallet()
+
+	if got := backend.ConfiguredNetwork(m.GetBackend()); got != NetworkMainnet {
+		t.Fatalf("backend network = %q, want mainnet", got)
+	}
+}
+
+func TestAlignBackendNetwork_RejectsMislabelledMainnetServer(t *testing.T) {
+	server := newNetBackend("mainnet", *TestNet4Params.GenesisHash)
+
+	m := &WalletManager{backend: server}
+	ok, err := m.alignBackendNetwork(NetworkMainnet)
+	if ok || !errors.Is(err, ErrNetworkMismatch) {
+		t.Fatalf("ok=%v err=%v, want network mismatch", ok, err)
+	}
+	if m.backend != server {
+		t.Fatal("rejected server must not be replaced without a fallback list")
 	}
 }
 

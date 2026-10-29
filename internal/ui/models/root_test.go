@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 )
 
@@ -102,6 +103,42 @@ func TestRootModel_NavigateToConnectionSetup(t *testing.T) {
 	}
 	if updated.connectionSetupModel == nil {
 		t.Error("expected connectionSetupModel to be created")
+	}
+}
+
+func TestRoot_ConnectionSetupFromSettingsUsesWalletNetwork(t *testing.T) {
+	cm, err := config.NewConfigManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock := NewMockWalletManager()
+	mock.IsUnlockedFn = func() bool { return true }
+	mock.GetNetworkFn = func() string { return "mainnet" }
+
+	m := NewRootModel(mock, cm)
+	model, _ := m.Update(NavigateMsg{Target: StateSettings})
+	r := model.(RootModel)
+	model, _ = r.Update(NavigateMsg{Target: StateConnectionSetup})
+	r = model.(RootModel)
+
+	cs := r.connectionSetupModel.(ConnectionSetupModel)
+	if cs.network != "mainnet" {
+		t.Fatalf("connection setup network = %q, want mainnet", cs.network)
+	}
+	cs.selectedBackendType = backend.BackendTypeElectrum
+	cs.selectedServer = 0
+	if err := cs.saveConfig(); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	cfg, err := cm.Load()
+	if err != nil || cfg == nil || cfg.Backend == nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Backend.Network != "mainnet" {
+		t.Fatalf("saved backend network = %q, want mainnet", cfg.Backend.Network)
+	}
+	if cfg.Backend.Electrum == nil || cfg.Backend.Electrum.Host != "electrum.blockstream.info" {
+		t.Fatalf("saved server = %+v, want a mainnet server", cfg.Backend.Electrum)
 	}
 }
 

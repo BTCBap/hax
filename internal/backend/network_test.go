@@ -22,6 +22,21 @@ func TestDefaultElectrumConfig_PerNetwork(t *testing.T) {
 	}
 }
 
+func TestPublicElectrumServers_DefaultFirst(t *testing.T) {
+	for _, network := range []string{"mainnet", "testnet4"} {
+		n := NormalizeNetwork(network)
+		def := DefaultElectrumConfig(n)
+		servers := PublicElectrumServers[n]
+		if len(servers) == 0 {
+			t.Fatalf("%s has no public servers", n)
+		}
+		if servers[0].Host != def.Electrum.Host || servers[0].Port != def.Electrum.Port {
+			t.Errorf("%s default server = %s:%d, want %s:%d first",
+				n, servers[0].Host, servers[0].Port, def.Electrum.Host, def.Electrum.Port)
+		}
+	}
+}
+
 func TestResolveBackendConfig(t *testing.T) {
 	savedTestnet := DefaultElectrumConfig("testnet")
 	savedMainnet := &BackendConfig{

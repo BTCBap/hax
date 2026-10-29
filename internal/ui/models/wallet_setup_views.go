@@ -68,7 +68,7 @@ func (m WalletSetupModel) getStepProgress() float64 {
 func (m WalletSetupModel) renderProgressBar() string {
 	// No progress bar on menu/selection screens
 	switch m.step {
-	case StepChooseAction, StepRestoreChooseMethod, StepChooseWalletType,
+	case StepChooseNetwork, StepChooseAction, StepRestoreChooseMethod, StepChooseWalletType,
 		StepMultisigImportDescriptor, StepMultisigImportReview:
 		return ""
 	}
@@ -145,7 +145,7 @@ func (m WalletSetupModel) View() string {
 	var content strings.Builder
 
 	// Add progress bar for all steps except initial/choose screens
-	if m.step != StepChooseAction && m.step != StepRestoreChooseMethod {
+	if m.step != StepChooseNetwork && m.step != StepChooseAction && m.step != StepRestoreChooseMethod {
 		content.WriteString(m.renderProgressBar())
 		content.WriteString("\n")
 	}

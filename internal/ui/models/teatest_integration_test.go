@@ -26,7 +26,7 @@ func TestRootTeatest_SplashToWalletSetup(t *testing.T) {
 	// The splash auto-navigates after 500ms via tea.Tick.
 	// Wait for the wallet setup screen to appear.
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("Wallet Setup"))
+		return bytes.Contains(bts, []byte("Which Bitcoin network"))
 	}, teatest.WithDuration(3*time.Second))
 
 	// Quit the program
@@ -50,7 +50,7 @@ func TestRootTeatest_SplashKeySkip(t *testing.T) {
 
 	// Should arrive at wallet setup
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("Wallet Setup"))
+		return bytes.Contains(bts, []byte("Which Bitcoin network"))
 	}, teatest.WithDuration(2*time.Second))
 
 	// Verify final model state

@@ -19,6 +19,9 @@ type WalletManager struct {
 	// backendResolver builds a backend for a wallet network, honoring saved
 	// server settings. Optional; defaults to the network's default server.
 	backendResolver func(network string) (backend.BitcoinBackend, error)
+	// backendFallbacks builds alternative backends for a wallet network when
+	// the default server cannot be used. Nil disables automatic fallback.
+	backendFallbacks func(network string) []backend.BitcoinBackend
 
 	wallet   *HDWallet
 	data     *WalletData
@@ -123,6 +126,13 @@ func (m *WalletManager) WaitForPersist() {
 // the network is used.
 func (m *WalletManager) SetBackendResolver(resolve func(network string) (backend.BitcoinBackend, error)) {
 	m.backendResolver = resolve
+}
+
+// SetBackendFallbacks sets the hook used to build alternative servers when a
+// default server cannot be reached or fails its genesis check. Callers should
+// leave it unset (or return nil) when a user-saved server must be honored.
+func (m *WalletManager) SetBackendFallbacks(build func(network string) []backend.BitcoinBackend) {
+	m.backendFallbacks = build
 }
 
 // SetBackend switches backends and refreshes wallet state against the new source.
