@@ -173,7 +173,7 @@ func TestRootModel_NavigateToUnlock_AlwaysFresh(t *testing.T) {
 	}
 }
 
-func TestRootModel_FirstRunRedirect(t *testing.T) {
+func TestRootModel_FirstRunGoesToWalletSetup(t *testing.T) {
 	// Fresh ConfigManager with empty temp dir → IsFirstRun() returns true
 	cm, err := config.NewConfigManager(t.TempDir())
 	if err != nil {
@@ -183,17 +183,20 @@ func TestRootModel_FirstRunRedirect(t *testing.T) {
 		t.Fatal("precondition: expected IsFirstRun=true for fresh config")
 	}
 
-	m := NewRootModel(nil, cm)
+	m := NewRootModel(&MockWalletManager{}, cm)
 	// Simulate splash trying to navigate to WalletSetup (what splash does on key press)
-	// The root model should redirect to ConnectionSetup on first run
+	// Onboarding goes straight there; no connection picker on first run.
 	model, _ := m.Update(NavigateMsg{Target: StateWalletSetup})
 	updated := model.(RootModel)
-	if updated.state != StateConnectionSetup {
-		t.Errorf("expected first-run redirect to StateConnectionSetup (%d), got %d",
-			StateConnectionSetup, updated.state)
+	if updated.state != StateWalletSetup {
+		t.Errorf("expected first run to reach StateWalletSetup (%d), got %d",
+			StateWalletSetup, updated.state)
 	}
-	if updated.connectionSetupModel == nil {
-		t.Error("expected connectionSetupModel to be created on first-run redirect")
+	if updated.walletSetupModel == nil {
+		t.Error("expected walletSetupModel to be created")
+	}
+	if updated.connectionSetupModel != nil {
+		t.Error("first run must not open connection setup")
 	}
 }
 

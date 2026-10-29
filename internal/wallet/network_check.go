@@ -92,17 +92,50 @@ func (m *WalletManager) resetNetworkVerified() {
 	m.netMu.Unlock()
 }
 
+// ensureBackendForNetwork makes sure m.backend serves network. A backend
+// configured for another network (or without network information) is
+// replaced with one built by the resolver, or with the network's default
+// server when no resolver is set. A backend already configured for network
+// is kept, so a manually chosen server for the wallet's network is honored.
+func (m *WalletManager) ensureBackendForNetwork(network string) error {
+	network = backend.NormalizeNetwork(network)
+	if m.backend != nil {
+		if configured := backend.ConfiguredNetwork(m.backend); configured != "" && configured == network {
+			return nil
+		}
+	}
+
+	var b backend.BitcoinBackend
+	var err error
+	if m.backendResolver != nil {
+		b, err = m.backendResolver(network)
+	} else {
+		b, err = backend.NewDefaultBackend(network)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create %s backend: %w", network, err)
+	}
+	if b == nil {
+		return fmt.Errorf("failed to create %s backend: resolver returned nil", network)
+	}
+
+	if m.backend != nil {
+		_ = m.backend.Disconnect()
+	}
+	m.backend = b
+	m.resetNetworkVerified()
+	return nil
+}
+
 // alignBackendNetwork checks that the backend serves network before a
-// wallet is opened. A server configured for another network, or whose genesis
-// block disagrees with the wallet's network, is rejected with
-// ErrNetworkMismatch so the user can pick a matching server. hax never
-// switches servers on its own. Unreachable servers defer the genesis check.
+// wallet is opened. The backend is first switched to one for the wallet's
+// network when it is missing or configured for another network; a saved
+// server for that network is honored through the resolver. The genesis check
+// then rejects a server that lies about its network. Unreachable servers
+// defer the genesis check to the next connection.
 func (m *WalletManager) alignBackendNetwork(network string) (verified bool, err error) {
 	network = backend.NormalizeNetwork(network)
-	if m.backend == nil {
-		return false, nil
-	}
-	if err := configuredNetworkMatches(m.backend, network); err != nil {
+	if err := m.ensureBackendForNetwork(network); err != nil {
 		return false, err
 	}
 	if err := m.backend.Connect(); err != nil {

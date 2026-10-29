@@ -1065,17 +1065,22 @@ func (m WalletSetupModel) handleRestoreChooseFile(msg tea.KeyMsg) (tea.Model, te
 	return m, nil
 }
 
-// saveLastWalletName saves the wallet name to config for auto-login
+// saveLastWalletName saves the wallet name to config for auto-login and
+// records that onboarding has completed.
 func (m *WalletSetupModel) saveLastWalletName(walletName string) {
 	if m.configManager == nil {
 		return
 	}
 
 	cfg, err := m.configManager.Load()
-	if err != nil || cfg == nil {
+	if err != nil {
 		return
 	}
+	if cfg == nil {
+		cfg = &config.AppConfig{Version: 1}
+	}
 
+	cfg.FirstRunComplete = true
 	cfg.LastWalletName = walletName
 	_ = m.configManager.Save(cfg) // Ignore error - non-critical
 }

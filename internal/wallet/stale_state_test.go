@@ -17,6 +17,8 @@ type flakyBackend struct {
 
 var errDropped = errors.New("connection reset by peer")
 
+func (b *flakyBackend) ConfiguredNetwork() string { return NetworkTestnet }
+
 func (b *flakyBackend) GetAddressUTXOs(address string) ([]api.UTXO, error) {
 	if b.down.Load() {
 		return nil, errDropped

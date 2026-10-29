@@ -45,6 +45,13 @@ func newChainBackend(params *chaincfg.Params) *chainBackend {
 	}
 }
 
+func (b *chainBackend) ConfiguredNetwork() string {
+	if b.params.Name == chaincfg.MainNetParams.Name {
+		return NetworkMainnet
+	}
+	return NetworkTestnet
+}
+
 func (b *chainBackend) script(t *testing.T, addr string) []byte {
 	t.Helper()
 	a, err := btcutil.DecodeAddress(addr, b.params)

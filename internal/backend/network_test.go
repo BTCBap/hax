@@ -21,3 +21,50 @@ func TestDefaultElectrumConfig_PerNetwork(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveBackendConfig(t *testing.T) {
+	savedTestnet := DefaultElectrumConfig("testnet")
+	savedMainnet := &BackendConfig{
+		Type:    BackendTypeElectrum,
+		Network: "mainnet",
+		Electrum: &ElectrumConfig{
+			Host:   "custom.example.com",
+			Port:   50002,
+			UseSSL: true,
+		},
+	}
+
+	cases := []struct {
+		name       string
+		saved      *BackendConfig
+		wallet     string
+		wantNet    string
+		wantHost   string
+		wantPort   int
+		wantSameAs *BackendConfig
+	}{
+		{"nil saved, mainnet wallet", nil, "mainnet", "mainnet", "electrum.blockstream.info", 50002, nil},
+		{"nil saved, testnet4 wallet", nil, "testnet4", "testnet", "mempool.space", 40002, nil},
+		{"nil saved, testnet wallet", nil, "testnet", "testnet", "mempool.space", 40002, nil},
+		{"testnet saved, mainnet wallet", savedTestnet, "mainnet", "mainnet", "electrum.blockstream.info", 50002, nil},
+		{"mainnet saved, mainnet wallet", savedMainnet, "mainnet", "mainnet", "custom.example.com", 50002, savedMainnet},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ResolveBackendConfig(c.saved, c.wallet)
+			if got.Network != c.wantNet {
+				t.Errorf("Network = %q, want %q", got.Network, c.wantNet)
+			}
+			if got.Electrum == nil {
+				t.Fatal("Electrum config is nil")
+			}
+			if got.Electrum.Host != c.wantHost || got.Electrum.Port != c.wantPort {
+				t.Errorf("server = %s:%d, want %s:%d", got.Electrum.Host, got.Electrum.Port, c.wantHost, c.wantPort)
+			}
+			if c.wantSameAs != nil && got != c.wantSameAs {
+				t.Error("saved config for the same network was not returned")
+			}
+		})
+	}
+}

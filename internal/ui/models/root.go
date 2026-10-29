@@ -282,12 +282,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, restart = m.restartListener()
 		return m, tea.Batch(restart, Navigate(msg.Then))
 	case NavigateMsg:
-		if msg.Target == StateWalletSetup && m.state == StateSplash {
-			if m.configManager != nil && m.configManager.IsFirstRun() {
-				msg.Target = StateConnectionSetup
-			}
-		}
-
 		prevState := m.state
 
 		m.state = msg.Target

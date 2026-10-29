@@ -16,6 +16,9 @@ import (
 type WalletManager struct {
 	storage *WalletStorage
 	backend backend.BitcoinBackend
+	// backendResolver builds a backend for a wallet network, honoring saved
+	// server settings. Optional; defaults to the network's default server.
+	backendResolver func(network string) (backend.BitcoinBackend, error)
 
 	wallet   *HDWallet
 	data     *WalletData
@@ -113,6 +116,13 @@ func (m *WalletManager) wipeKey() {
 // WaitForPersist blocks until all in-flight persist operations complete.
 func (m *WalletManager) WaitForPersist() {
 	m.persistWg.Wait()
+}
+
+// SetBackendResolver sets the hook used to build a backend for a wallet's
+// network before the wallet is opened. Without one, the default server for
+// the network is used.
+func (m *WalletManager) SetBackendResolver(resolve func(network string) (backend.BitcoinBackend, error)) {
+	m.backendResolver = resolve
 }
 
 // SetBackend switches backends and refreshes wallet state against the new source.

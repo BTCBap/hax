@@ -67,8 +67,21 @@ var PublicElectrumServers = map[string][]PublicElectrumServer{
 	},
 }
 
+// ResolveBackendConfig returns the backend config to use for a wallet on
+// walletNetwork. A saved config is honored only when it is for the same
+// network; otherwise the default server for the wallet's network is used.
+func ResolveBackendConfig(saved *BackendConfig, walletNetwork string) *BackendConfig {
+	network := NormalizeNetwork(walletNetwork)
+	if saved != nil && NormalizeNetwork(saved.Network) == network {
+		return saved
+	}
+	return DefaultElectrumConfig(network)
+}
+
 // DefaultElectrumConfig returns the default Electrum server configuration
 func DefaultElectrumConfig(network string) *BackendConfig {
+	network = NormalizeNetwork(network)
+
 	// Default to mempool.space for testnet4
 	host := "mempool.space"
 	port := 40002
@@ -77,7 +90,6 @@ func DefaultElectrumConfig(network string) *BackendConfig {
 		host = "electrum.blockstream.info"
 		port = 50002
 	}
-	network = NormalizeNetwork(network)
 
 	return &BackendConfig{
 		Type:    BackendTypeElectrum,
