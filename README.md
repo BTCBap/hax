@@ -46,14 +46,38 @@
 
 ## Install
 
-### Release binaries (recommended)
+### Quick install (release binary)
+
+Download the archive for your system from https://github.com/BTCBap/hax/releases/latest.
+
+| System | Asset |
+|---|---|
+| macOS Apple Silicon | `hax_1.2.0_darwin_arm64.tar.gz` |
+| macOS Intel | `hax_1.2.0_darwin_amd64.tar.gz` |
+| Linux x86_64 | `hax_1.2.0_linux_amd64.tar.gz` |
+| Linux ARM64 | `hax_1.2.0_linux_arm64.tar.gz` |
+| Windows x86_64 | `hax_1.2.0_windows_amd64.zip` |
+
+```bash
+tar -xzf hax_1.2.0_darwin_arm64.tar.gz   # use the file you downloaded
+chmod +x hax
+./hax
+```
+
+macOS: if Gatekeeper blocks it, run `xattr -d com.apple.quarantine hax` once.
+
+Windows: unzip and run `hax.exe` from a terminal.
+
+To check signatures and checksums before running, see [Verify a release download](#verify-a-release-download) below.
+
+### Verify a release download
 
 Each release publishes archives for Linux, macOS, and Windows, plus `checksums.txt`, a Sigstore bundle for it, and a SLSA build-provenance attestation.
 
 Verify before running:
 
 ```bash
-VERSION=v1.1.0   # the release you downloaded
+VERSION=v1.2.0   # the release you downloaded
 # 1. Verify the checksum manifest was signed by this repo's release workflow
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
