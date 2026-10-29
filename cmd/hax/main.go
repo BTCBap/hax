@@ -69,6 +69,20 @@ func main() {
 	}
 	defer walletManager.LockWallet()
 
+	// The wallet's network decides which server is used. Honor a saved
+	// server only when it matches that network.
+	walletManager.SetBackendResolver(func(network string) (backend.BitcoinBackend, error) {
+		cfg, err := configManager.Load()
+		if err != nil {
+			cfg = nil
+		}
+		var saved *backend.BackendConfig
+		if cfg != nil {
+			saved = cfg.Backend
+		}
+		return backend.NewBackend(backend.ResolveBackendConfig(saved, network))
+	})
+
 	if cfg != nil && cfg.GapLimit > 0 {
 		walletManager.SetGapLimit(cfg.GapLimit)
 	}

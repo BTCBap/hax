@@ -5,6 +5,7 @@ import (
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Restore flow view functions
@@ -12,28 +13,14 @@ import (
 func (m WalletSetupModel) viewRestoreChooseMethod() string {
 	title := styles.TitleStyle.Render("Restore Wallet")
 
-	options := []struct {
-		name string
-		desc string
-	}{
-		{"From Seed Phrase", "Single-sig wallet from 12/24 word seed"},
-		{"Import Multisig (Manual)", "Enter cosigner xpubs one by one"},
-		{"Import from Descriptor", "Single-sig or multisig from Sparrow/Coldcard"},
-		{"From Wallet File", "Open existing .wallet file"},
+	options := []choiceOption{
+		{name: "From Seed Phrase", desc: "Single-sig wallet from 12/24 word seed"},
+		{name: "Import Multisig (Manual)", desc: "Enter cosigner xpubs one by one"},
+		{name: "Import from Descriptor", desc: "Single-sig or multisig from Sparrow/Coldcard"},
+		{name: "From Wallet File", desc: "Open existing .wallet file"},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "▶ "
-			menu += styles.SelectedItemStyle.Render(cursor+opt.name) + "\n"
-			menu += styles.DimText.Render("    "+opt.desc) + "\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(cursor+opt.name) + "\n"
-			menu += styles.DimText.Render("    "+opt.desc) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -51,8 +38,7 @@ func (m WalletSetupModel) viewRestoreEnterName() string {
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
 
 	content := title + "\n" +
-		instruction + "\n" +
-		m.nameInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -66,8 +52,7 @@ func (m WalletSetupModel) viewRestoreEnterMnemonic() string {
 
 	content := title + "\n" +
 		info + "\n" +
-		instruction + "\n" +
-		m.mnemonicInput.View() + "\n" +
+		lipgloss.NewStyle().Width(63).Render(instruction+"\n"+m.mnemonicInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -78,42 +63,26 @@ func (m WalletSetupModel) viewRestoreChooseScriptType() string {
 	info := styles.DimText.Render("Select the address format used by your original wallet")
 	warning := styles.WarningText.Render("⚠ Must match your original wallet's format")
 
-	options := []struct {
-		name string
-		desc string
-		path string
-	}{
-		{"Legacy (P2PKH)", "Addresses start with 1 or m/n", "m/44'/..."},
-		{"Nested SegWit (P2SH-P2WPKH)", "Addresses start with 3 or 2", "m/49'/..."},
-		{"Native SegWit (Bech32)", "Addresses start with bc1q/tb1q", "m/84'/..."},
-		{"Taproot (P2TR)", "Addresses start with bc1p/tb1p", "m/86'/..."},
+	options := []choiceOption{
+		{name: "Legacy (P2PKH)", desc: "Addresses start with 1 or m/n m/44'/..."},
+		{name: "Nested SegWit (P2SH-P2WPKH)", desc: "Addresses start with 3 or 2 m/49'/..."},
+		{name: "Native SegWit (Bech32)", desc: "Addresses start with bc1q/tb1q m/84'/...", check: " ✓"}, // Mark Native SegWit as recommended
+		{name: "Taproot (P2TR)", desc: "Addresses start with bc1p/tb1p m/86'/..."},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 2 {
-				line += " ✓" // Mark Native SegWit as recommended
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc+" "+opt.path) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	// Show custom path input if active
 	customPathSection := ""
 	if m.showCustomPath {
 		customPathSection = "\n" + styles.BoldText.Render("Custom derivation path:") + "\n" +
-			m.customPathInput.View() + "\n"
+			lipgloss.NewStyle().Width(33).Render(m.customPathInput.View()) + "\n"
+		errorLine := ""
 		if m.err != nil {
-			customPathSection += styles.ErrorText.Render(m.err.Error()) + "\n"
+			errorLine = lipgloss.NewStyle().MaxWidth(lipgloss.Width(menu)).
+				Render(styles.ErrorText.Render(m.err.Error()))
 		}
+		customPathSection += errorLine + "\n"
 		customPathSection += styles.DimText.Render("enter: confirm • esc: cancel") + "\n"
 	}
 
@@ -148,9 +117,8 @@ func (m WalletSetupModel) viewRestoreEnterPassword() string {
 
 	content := title + "\n" +
 		warning + "\n" +
-		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
-		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -162,8 +130,7 @@ func (m WalletSetupModel) viewRestoreConfirmPassword() string {
 	help := styles.RenderHelp(styles.HK("enter", "restore"), styles.HK("esc", "back"))
 
 	content := title + "\n" +
-		instruction + "\n" +
-		m.confirmPasswordInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -229,8 +196,7 @@ func (m WalletSetupModel) viewRestoreFilePassword() string {
 
 	content := title + "\n" +
 		subtitle + "\n" +
-		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -251,7 +217,7 @@ func (m WalletSetupModel) viewMultisigImportDescriptor() string {
 
 	content := title + "\n\n" +
 		info + "\n\n" +
-		"Descriptor: " + m.descriptorInput.View() + "\n\n" +
+		"Descriptor: " + lipgloss.NewStyle().Width(63).Render(m.descriptorInput.View()) + "\n\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -354,8 +320,7 @@ func (m WalletSetupModel) viewMultisigImportReview() string {
 		summary + "\n\n" +
 		details + "\n" +
 		warningsSection +
-		instructions + "\n" +
-		m.nameInput.View() + "\n\n" +
+		lipgloss.NewStyle().Width(43).Render(instructions+"\n"+m.nameInput.View()) + "\n\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)

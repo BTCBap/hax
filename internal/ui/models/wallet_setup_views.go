@@ -20,6 +20,8 @@ func (m WalletSetupModel) getStepProgress() float64 {
 		return 0.40
 	case StepChooseScriptType:
 		return 0.60
+	case StepChooseKeySource:
+		return 0.60
 	case StepChooseNetwork:
 		return 0.75
 	case StepEnterPassphrase, StepConfirmPassphrase:
@@ -27,6 +29,12 @@ func (m WalletSetupModel) getStepProgress() float64 {
 	case StepChooseWordCount:
 		return 0.80
 	case StepShowMnemonic, StepConfirmMnemonic:
+		return 1.0
+
+	// Single-sig hardware wallet flow
+	case StepHWISetup, StepHardwareWalletConnect:
+		return 0.70
+	case StepHardwareWalletReview:
 		return 1.0
 
 	// Restore wallet flow from seed
@@ -68,7 +76,7 @@ func (m WalletSetupModel) getStepProgress() float64 {
 func (m WalletSetupModel) renderProgressBar() string {
 	// No progress bar on menu/selection screens
 	switch m.step {
-	case StepChooseAction, StepRestoreChooseMethod, StepChooseWalletType,
+	case StepChooseNetwork, StepChooseAction, StepRestoreChooseMethod, StepChooseWalletType,
 		StepMultisigImportDescriptor, StepMultisigImportReview:
 		return ""
 	}
@@ -86,6 +94,8 @@ func (m WalletSetupModel) renderProgressBar() string {
 		stepNum, totalSteps = 2, 5
 	case StepChooseScriptType:
 		stepNum, totalSteps = 3, 5
+	case StepChooseKeySource:
+		stepNum, totalSteps = 3, 5
 	case StepChooseNetwork:
 		stepNum, totalSteps = 4, 5
 		if m.isRestore {
@@ -96,6 +106,12 @@ func (m WalletSetupModel) renderProgressBar() string {
 	case StepChooseWordCount:
 		stepNum, totalSteps = 4, 5
 	case StepShowMnemonic, StepConfirmMnemonic:
+		stepNum, totalSteps = 5, 5
+
+	// Single-sig hardware wallet flow
+	case StepHWISetup, StepHardwareWalletConnect:
+		stepNum, totalSteps = 4, 5
+	case StepHardwareWalletReview:
 		stepNum, totalSteps = 5, 5
 
 	// Restore wallet flow from seed
@@ -145,7 +161,7 @@ func (m WalletSetupModel) View() string {
 	var content strings.Builder
 
 	// Add progress bar for all steps except initial/choose screens
-	if m.step != StepChooseAction && m.step != StepRestoreChooseMethod {
+	if m.step != StepChooseNetwork && m.step != StepChooseAction && m.step != StepRestoreChooseMethod {
 		content.WriteString(m.renderProgressBar())
 		content.WriteString("\n")
 	}
@@ -228,8 +244,8 @@ func (m WalletSetupModel) View() string {
 		content.WriteString("Unknown step")
 	}
 
-	// Show error if present
-	if m.err != nil {
+	// Show error if present. The backup check reserves its own error rows.
+	if m.err != nil && m.step != StepConfirmMnemonic {
 		content.WriteString("\n\n")
 		content.WriteString(styles.RenderErrorBox("Error: "+m.err.Error(), m.width))
 	}
@@ -269,27 +285,12 @@ func (m WalletSetupModel) viewChooseWalletType() string {
 	title := styles.TitleStyle.Render("Create New Wallet")
 	subtitle := styles.SubtitleStyle.Render("Choose wallet type:")
 
-	options := []string{
-		"Single-Signature Wallet",
-		"Multisig Wallet (M-of-N)",
+	options := []choiceOption{
+		{name: "Single-Signature Wallet", desc: "Standard wallet with one key - simple and secure"},
+		{name: "Multisig Wallet (M-of-N)", desc: "Requires multiple keys to spend - for shared custody"},
 	}
 
-	descriptions := []string{
-		"Standard wallet with one key - simple and secure",
-		"Requires multiple keys to spend - for shared custody",
-	}
-
-	menu := ""
-	for i, option := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			menu += styles.SelectedItemStyle.Render(cursor+" "+option) + "\n"
-			menu += styles.DimText.Render("   "+descriptions[i]) + "\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(cursor+" "+option) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -312,8 +313,7 @@ func (m WalletSetupModel) viewEnterName() string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		m.nameInput.View() + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.nameInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -333,9 +333,8 @@ func (m WalletSetupModel) viewEnterPassword() string {
 		content = title + "\n"
 	}
 	content += warning + "\n" +
-		instruction + "\n" +
-		m.passwordInput.View() + "\n" +
-		renderPasswordStrength(m.passwordInput.Value()) + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passwordInput.View()) + "\n" +
+		lipgloss.NewStyle().Width(14).Render(renderPasswordStrength(m.passwordInput.Value())) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -353,8 +352,7 @@ func (m WalletSetupModel) viewConfirmPassword() string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		m.confirmPasswordInput.View() + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPasswordInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -382,8 +380,7 @@ func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
 		content = title + "\n"
 	}
 	content += info + "\n\n" +
-		instruction + "\n" +
-		m.passphraseInput.View() + "\n" +
+		lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.passphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -401,8 +398,7 @@ func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 	if title != "" {
 		content = title + "\n"
 	}
-	content += instruction + "\n" +
-		m.confirmPassphraseInput.View() + "\n" +
+	content += lipgloss.NewStyle().Width(43).Render(instruction+"\n"+m.confirmPassphraseInput.View()) + "\n" +
 		help
 
 	return styles.CenterHorizontal(content, m.width)
@@ -411,42 +407,26 @@ func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 func (m WalletSetupModel) viewChooseScriptType() string {
 	info := styles.DimText.Render("Address format for your wallet")
 
-	options := []struct {
-		name string
-		desc string
-		path string
-	}{
-		{"Legacy (P2PKH)", "Original Bitcoin format", "m/44'/..."},
-		{"Nested SegWit (P2SH-P2WPKH)", "Compatible with older wallets", "m/49'/..."},
-		{"Native SegWit (Bech32)", "Recommended - lowest fees", "m/84'/..."},
-		{"Taproot (P2TR)", "Latest - privacy & efficiency", "m/86'/..."},
+	options := []choiceOption{
+		{name: "Legacy (P2PKH)", desc: "Original Bitcoin format m/44'/..."},
+		{name: "Nested SegWit (P2SH-P2WPKH)", desc: "Compatible with older wallets m/49'/..."},
+		{name: "Native SegWit (Bech32)", desc: "Recommended - lowest fees m/84'/...", check: " ✓"}, // Mark Native SegWit as recommended
+		{name: "Taproot (P2TR)", desc: "Latest - privacy & efficiency m/86'/..."},
 	}
 
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 2 {
-				line += " ✓" // Mark Native SegWit as recommended
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc+" "+opt.path) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	// Show custom path input if active
 	customPathSection := ""
 	if m.showCustomPath {
 		customPathSection = "\n" + styles.BoldText.Render("Custom derivation path:") + "\n" +
-			m.customPathInput.View() + "\n"
+			lipgloss.NewStyle().Width(33).Render(m.customPathInput.View()) + "\n"
+		errorLine := ""
 		if m.err != nil {
-			customPathSection += styles.ErrorText.Render(m.err.Error()) + "\n"
+			errorLine = lipgloss.NewStyle().MaxWidth(lipgloss.Width(menu)).
+				Render(styles.ErrorText.Render(m.err.Error()))
 		}
+		customPathSection += errorLine + "\n"
 		customPathSection += styles.DimText.Render("enter: confirm • esc: cancel") + "\n"
 	}
 

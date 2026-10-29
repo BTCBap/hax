@@ -7,6 +7,7 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m WalletSetupModel) viewMultisigChooseType() string {
@@ -23,7 +24,7 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 	menuContent += styles.BoldText.Render("Signature Scheme:") + "\n"
 
 	// Row 0: M (required signatures)
-	mLabel := fmt.Sprintf("Required signatures (M): ◄ %d ►", m.multisigM)
+	mLabel := fmt.Sprintf("Required signatures (M): ◄ %2d ►", m.multisigM)
 	if m.cursor == 0 {
 		menuContent += styles.SelectedItemStyle.Render("▶ "+mLabel) + "\n"
 	} else {
@@ -31,14 +32,14 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 	}
 
 	// Row 1: N (total cosigners)
-	nLabel := fmt.Sprintf("Total cosigners (N):     ◄ %d ►", m.multisigN)
+	nLabel := fmt.Sprintf("Total cosigners (N):     ◄ %2d ►", m.multisigN)
 	if m.cursor == 1 {
 		menuContent += styles.SelectedItemStyle.Render("▶ "+nLabel) + "\n"
 	} else {
 		menuContent += styles.UnselectedItemStyle.Render("  "+nLabel) + "\n"
 	}
 
-	menuContent += styles.DimText.Render(fmt.Sprintf("  %d-of-%d multisig", m.multisigM, m.multisigN)) + "\n"
+	menuContent += styles.DimText.Render(fmt.Sprintf("  %2d-of-%2d multisig", m.multisigM, m.multisigN)) + "\n"
 
 	// Script type options
 	scriptTypes := []struct {
@@ -59,7 +60,7 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 			cursor = "▶"
 			style = styles.SelectedItemStyle
 		}
-		check := ""
+		check := "  "
 		if m.multisigScriptType == opt.scriptType && m.multisigCustomDerivPath == "" {
 			check = " ✓"
 		}
@@ -73,7 +74,7 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 		customCursor = "▶"
 		customStyle = styles.SelectedItemStyle
 	}
-	customCheck := ""
+	customCheck := "  "
 	if m.multisigCustomDerivPath != "" {
 		customCheck = " ✓"
 	}
@@ -83,10 +84,13 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 	menuContent += "\n"
 	if m.showMultisigCustomPath {
 		pathBox := styles.BoldText.Render("Derivation Path") + "\n" +
-			m.customPathInput.View()
+			lipgloss.NewStyle().Width(33).Render(m.customPathInput.View())
+		errorLine := ""
 		if m.err != nil {
-			pathBox += "\n" + styles.ErrorText.Render(m.err.Error())
+			errorLine = lipgloss.NewStyle().MaxWidth(lipgloss.Width(menuContent)).
+				Render(styles.ErrorText.Render(m.err.Error()))
 		}
+		pathBox += "\n" + errorLine
 		pathBox += "\n" + styles.DimText.Render("enter: confirm • esc: cancel")
 		menuContent += styles.InfoBoxStyle.MarginBottom(0).Padding(0, 1).Render(pathBox) + "\n"
 	} else {
@@ -330,7 +334,8 @@ func (m WalletSetupModel) viewMultisigEnterCosigners() string {
 		info := styles.DimText.Render(
 			"Paste the BIP48 xpub from the cosigner's wallet.\n" +
 				"Just the tpub is fine, or with key origin: [fingerprint/48h/...]tpub...")
-		inputSection = inputLabel + " (xpub)\n" + info + "\n" + m.multisigCurrentXpub.View()
+		inputSection = inputLabel + " (xpub)\n" + info + "\n" +
+			lipgloss.NewStyle().Width(63).Render(m.multisigCurrentXpub.View())
 	case 1:
 		// Seed mode
 		derivInfo := "The BIP48 xpub will be derived automatically."
@@ -339,7 +344,8 @@ func (m WalletSetupModel) viewMultisigEnterCosigners() string {
 		}
 		info := styles.DimText.Render(
 			"Enter the cosigner's seed phrase (12 or 24 words).\n" + derivInfo)
-		inputSection = inputLabel + " (seed phrase)\n" + info + "\n" + m.multisigCosignerSeed.View()
+		inputSection = inputLabel + " (seed phrase)\n" + info + "\n" +
+			lipgloss.NewStyle().Width(63).Render(m.multisigCosignerSeed.View())
 	case 2:
 		// Hardware wallet mode
 		derivInfo := "The BIP48 xpub will be retrieved from the device."
@@ -349,7 +355,9 @@ func (m WalletSetupModel) viewMultisigEnterCosigners() string {
 		info := styles.DimText.Render(
 			"Connect a hardware wallet (Trezor, Ledger, Coldcard, etc.)\n" + derivInfo)
 
-		var statusLine string
+		// Keep one line for the detection status so it can appear or clear
+		// without moving the scan prompt and help below it.
+		statusLine := "\n"
 		if m.hwiLoading {
 			statusLine = "\n" + m.spinner.View() + " Detecting hardware wallets..."
 		} else if m.hwiError != nil {
@@ -373,9 +381,9 @@ func (m WalletSetupModel) viewMultisigEnterCosigners() string {
 	}
 	content += inputSection + "\n\n" + help
 
-	// Show general errors
+	// Show general errors without widening the centered block.
 	if m.err != nil {
-		content += "\n" + styles.RenderErrorBox("⚠ "+m.err.Error(), m.width)
+		content += "\n" + styles.RenderErrorBox("⚠ "+m.err.Error(), lipgloss.Width(content)+4)
 	}
 
 	return styles.CenterHorizontal(content, m.width)
@@ -887,18 +895,14 @@ func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model,
 // createWalletFromDescriptor creates either a single-sig or multisig wallet from parsed descriptor
 func (m *WalletSetupModel) createWalletFromDescriptor() error {
 	if m.descriptorIsMultisig {
-		// Create multisig wallet
-		network := wallet.NetworkTestnet
-		if len(m.multisigCosigners) > 0 {
-			network = wallet.NetworkOfXpub(m.multisigCosigners[0].Xpub)
-		}
+		// Create multisig wallet on the network chosen during onboarding
 		return m.walletManager.CreateMultisigWalletOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
-			network,
+			m.network,
 		)
 	}
 
@@ -918,6 +922,6 @@ func (m *WalletSetupModel) createWalletFromDescriptor() error {
 		keyOrigin,
 		cfg.AddressType,
 		"descriptor", // device type
-		wallet.NetworkOfXpub(cfg.Xpub),
+		m.network,
 	)
 }

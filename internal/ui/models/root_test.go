@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 )
 
@@ -105,6 +106,42 @@ func TestRootModel_NavigateToConnectionSetup(t *testing.T) {
 	}
 }
 
+func TestRoot_ConnectionSetupFromSettingsUsesWalletNetwork(t *testing.T) {
+	cm, err := config.NewConfigManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock := NewMockWalletManager()
+	mock.IsUnlockedFn = func() bool { return true }
+	mock.GetNetworkFn = func() string { return "mainnet" }
+
+	m := NewRootModel(mock, cm)
+	model, _ := m.Update(NavigateMsg{Target: StateSettings})
+	r := model.(RootModel)
+	model, _ = r.Update(NavigateMsg{Target: StateConnectionSetup})
+	r = model.(RootModel)
+
+	cs := r.connectionSetupModel.(ConnectionSetupModel)
+	if cs.network != "mainnet" {
+		t.Fatalf("connection setup network = %q, want mainnet", cs.network)
+	}
+	cs.selectedBackendType = backend.BackendTypeElectrum
+	cs.selectedServer = 0
+	if err := cs.saveConfig(); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	cfg, err := cm.Load()
+	if err != nil || cfg == nil || cfg.Backend == nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Backend.Network != "mainnet" {
+		t.Fatalf("saved backend network = %q, want mainnet", cfg.Backend.Network)
+	}
+	if cfg.Backend.Electrum == nil || cfg.Backend.Electrum.Host != "electrum.blockstream.info" {
+		t.Fatalf("saved server = %+v, want a mainnet server", cfg.Backend.Electrum)
+	}
+}
+
 func TestRootModel_View_Splash(t *testing.T) {
 	m := newTestRootModel(t)
 	view := m.View()
@@ -173,7 +210,7 @@ func TestRootModel_NavigateToUnlock_AlwaysFresh(t *testing.T) {
 	}
 }
 
-func TestRootModel_FirstRunRedirect(t *testing.T) {
+func TestRootModel_FirstRunGoesToWalletSetup(t *testing.T) {
 	// Fresh ConfigManager with empty temp dir → IsFirstRun() returns true
 	cm, err := config.NewConfigManager(t.TempDir())
 	if err != nil {
@@ -183,17 +220,20 @@ func TestRootModel_FirstRunRedirect(t *testing.T) {
 		t.Fatal("precondition: expected IsFirstRun=true for fresh config")
 	}
 
-	m := NewRootModel(nil, cm)
+	m := NewRootModel(&MockWalletManager{}, cm)
 	// Simulate splash trying to navigate to WalletSetup (what splash does on key press)
-	// The root model should redirect to ConnectionSetup on first run
+	// Onboarding goes straight there; no connection picker on first run.
 	model, _ := m.Update(NavigateMsg{Target: StateWalletSetup})
 	updated := model.(RootModel)
-	if updated.state != StateConnectionSetup {
-		t.Errorf("expected first-run redirect to StateConnectionSetup (%d), got %d",
-			StateConnectionSetup, updated.state)
+	if updated.state != StateWalletSetup {
+		t.Errorf("expected first run to reach StateWalletSetup (%d), got %d",
+			StateWalletSetup, updated.state)
 	}
-	if updated.connectionSetupModel == nil {
-		t.Error("expected connectionSetupModel to be created on first-run redirect")
+	if updated.walletSetupModel == nil {
+		t.Error("expected walletSetupModel to be created")
+	}
+	if updated.connectionSetupModel != nil {
+		t.Error("first run must not open connection setup")
 	}
 }
 

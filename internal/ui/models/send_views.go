@@ -397,17 +397,17 @@ func (m SendModel) viewFeeSelection() string {
 			customCursor, formatFeeRate(m.highFeePending), estimatedFee, highFeeConfirmWord, m.highFeeInput.View())
 	} else if m.editingCustom {
 		// Show input field when editing
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Enter rate: %s sat/vB",
+		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Enter rate: %s sat/vB\n",
 			customCursor, m.customFeeInput.View())
 	} else if m.customFeeRate > 0 {
 		// Show set custom rate (format nicely for fractional rates)
 		estimatedFee := m.optionFee(m.customFeeRate)
 		rateStr := formatFeeRate(m.customFeeRate)
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB • ~%d sats total",
+		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB • ~%d sats total\n",
 			customCursor, rateStr, estimatedFee)
 	} else {
 		// Show placeholder
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Press 'c' to set custom rate",
+		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Press 'c' to set custom rate\n",
 			customCursor)
 	}
 
@@ -831,9 +831,9 @@ func (m SendModel) viewComplete() string {
 
 	return header + "\n\n" +
 		successBox + "\n\n" +
-		info +
-		copiedIndicator + "\n\n" +
-		help
+		info + "\n\n" +
+		help +
+		copiedIndicator
 }
 
 // isViewportScrollActive returns true when Step 6/7 should use viewport scrolling.

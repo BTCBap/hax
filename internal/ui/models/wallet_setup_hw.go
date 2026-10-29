@@ -13,30 +13,11 @@ import (
 func (m WalletSetupModel) viewChooseKeySource() string {
 	info := styles.DimText.Render("How do you want to store your keys?")
 
-	options := []struct {
-		name string
-		desc string
-	}{
-		{"Generate New Seed", "Create a new 12 or 24 word seed phrase"},
-		{"Import from Hardware Wallet", "Use a Trezor, Ledger, Coldcard, etc."},
+	options := []choiceOption{
+		{name: "Generate New Seed", desc: "Create a new 12 or 24 word seed phrase", check: " ✓"},
+		{name: "Import from Hardware Wallet", desc: "Use a Trezor, Ledger, Coldcard, etc."},
 	}
-
-	menu := ""
-	for i, opt := range options {
-		cursor := " "
-		if m.cursor == i {
-			cursor = "▶"
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			if i == 0 {
-				line += " ✓" // Mark generate as recommended for most users
-			}
-			menu += styles.SelectedItemStyle.Render(line) + "\n"
-			menu += styles.DimText.Render("   "+opt.desc) + "\n"
-		} else {
-			line := fmt.Sprintf("%s %s", cursor, opt.name)
-			menu += styles.UnselectedItemStyle.Render(line) + "\n"
-		}
-	}
+	menu := renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -63,16 +44,18 @@ func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyMsg) (tea.Model, tea.
 		}
 	case "enter":
 		if m.cursor == 0 {
-			// Generate new seed - choose network, then word count
-			m.networkFor = networkForSoftware
-			m.step = StepChooseNetwork
+			// Generate new seed - network was already chosen
+			m.step = StepEnterPassphrase
 			m.cursor = 0
-		} else {
-			// Hardware wallet - choose network, then scan for devices
-			m.networkFor = networkForHardware
-			m.step = StepChooseNetwork
-			m.cursor = 0
+			return m, m.passphraseInput.Focus()
 		}
+		// Hardware wallet - network was already chosen, scan for devices
+		m.step = StepHardwareWalletConnect
+		m.cursor = 0
+		m.hwiLoading = true
+		m.hwiError = nil
+		m.hwiDevices = nil
+		return m, tea.Batch(m.spinner.Tick, m.enumerateHWIDevicesForSingleSig())
 	}
 	return m, nil
 }
@@ -106,7 +89,7 @@ func (m WalletSetupModel) viewHWISetup() string {
 		Foreground(styles.TextSecondary).
 		Render("More info: https://github.com/bitcoin-core/HWI") + "\n\n")
 
-	// Verification status
+	// Verification status, on a row that is reserved when there is no status.
 	if m.hwiVerifying {
 		content.WriteString(m.spinner.View() + " " +
 			styles.DimText.Render("Verifying installation...") + "\n")
@@ -116,6 +99,8 @@ func (m WalletSetupModel) viewHWISetup() string {
 		} else {
 			content.WriteString(styles.ErrorText.Render("  "+m.hwiVerifyMsg) + "\n")
 		}
+	} else {
+		content.WriteString("\n")
 	}
 
 	enterDesc := "verify installation"

@@ -347,10 +347,10 @@ func (m ReceiveModel) View() string {
 	// Skip loading state - happens too fast to see
 	// Just show the previous screen content or wait for the address
 
+	errorLine := ""
 	if m.err != nil {
-		return header + "\n\n" +
-			styles.RenderErrorBox("Error: "+m.err.Error(), width) + "\n\n" +
-			m.renderAnimatedHelp()
+		errorLine = styles.ErrorText.Render("Error: " +
+			truncateRunes(m.err.Error(), max(10, width-7), "…"))
 	}
 
 	// Single box with QR code and address together
@@ -373,8 +373,9 @@ func (m ReceiveModel) View() string {
 
 	// Final layout - ultra compact for small terminals
 	return header + copyStatus + "\n" +
-		combinedBox + hwiStatus + "\n" +
-		help
+		combinedBox + "\n" +
+		help + hwiStatus + "\n" +
+		errorLine
 }
 
 func (m ReceiveModel) renderCombinedQRAndAddress() string {
@@ -391,8 +392,9 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 	// Derivation path with index and status badge
 	pathLine := ""
 	if m.derivationPath != "" {
-		pathLine = styles.DerivationIndexStyle.
-			Render(fmt.Sprintf("Address #%d", m.currentIndex)) + " " +
+		indexLabel := lipgloss.NewStyle().Width(12).
+			Render(styles.DerivationIndexStyle.Render(fmt.Sprintf("Address #%d", m.currentIndex)))
+		pathLine = indexLabel + " " +
 			styles.DerivationPathStyle.Render(m.derivationPath)
 	}
 
@@ -409,6 +411,8 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 		// Address has received funds
 		statusBadge = styles.AddressUsedBadge.Render(" • USED")
 	}
+	// Reserve the badge column so it cannot re-center the path line.
+	statusBadge = lipgloss.NewStyle().Width(8).Render(statusBadge)
 
 	// Format address with pastel colors
 	coloredAddr := ui.FormatBitcoinAddressColored(m.selectedAddress, 8, 8)

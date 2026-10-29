@@ -37,6 +37,13 @@ func newFundedBackend(params *chaincfg.Params) *fundedBackend {
 	}
 }
 
+func (b *fundedBackend) ConfiguredNetwork() string {
+	if b.params.Name == chaincfg.MainNetParams.Name {
+		return NetworkMainnet
+	}
+	return NetworkTestnet
+}
+
 // fund creates a transaction paying value to addr at output 0.
 func (b *fundedBackend) fund(t *testing.T, addr string, value int64) *wire.MsgTx {
 	t.Helper()
