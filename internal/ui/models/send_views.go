@@ -80,24 +80,17 @@ func (m SendModel) View() string {
 }
 
 // sendFinalHintDesc is the primary action on the last step before signing.
-// Its width reserves the hint column so later hint items keep the same
-// position after the label morphs from "continue".
 const sendFinalHintDesc = "confirm & sign"
 
-const sendFinalHint = "enter " + sendFinalHintDesc
-
-var sendPrimaryHintWidth = lipgloss.Width(sendFinalHint)
-
 // renderSendHelp draws a send hint row with the primary action first. The
-// final step renders that action in the warning style; every step pads the
-// primary hint to the same width so the rest of the row cannot shift.
+// final step renders that action in the warning style.
 func renderSendHelp(primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
 	parts, _ := sendHelpParts(primary, final, rest...)
 	return styles.FooterStyle.Render(strings.Join(parts, " • "))
 }
 
-// renderSendHelpWrapped keeps the primary hint's fixed column but starts a
-// new line when the next item would pass width cells.
+// renderSendHelpWrapped starts a new line when the next item would pass
+// width cells.
 func renderSendHelpWrapped(width int, primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
 	parts, widths := sendHelpParts(primary, final, rest...)
 	if width <= 0 {
@@ -129,20 +122,16 @@ func renderSendHelpWrapped(width int, primary styles.HelpItem, final bool, rest 
 
 func sendHelpParts(primary styles.HelpItem, final bool, rest ...styles.HelpItem) ([]string, []int) {
 	text := primary.Key + " " + primary.Desc
-	pad := sendPrimaryHintWidth - lipgloss.Width(text)
-	if pad < 0 {
-		pad = 0
-	}
 
 	var first string
 	if final {
-		first = styles.WarningText.Render(text) + strings.Repeat(" ", pad)
+		first = styles.WarningText.Render(text)
 	} else {
 		first = styles.HelpKeyStyle.Render(primary.Key) + " " +
-			styles.HelpDescStyle.Render(primary.Desc) + strings.Repeat(" ", pad)
+			styles.HelpDescStyle.Render(primary.Desc)
 	}
 	parts := []string{first}
-	widths := []int{lipgloss.Width(text) + pad}
+	widths := []int{lipgloss.Width(text)}
 	for _, item := range rest {
 		parts = append(parts, styles.HelpKeyStyle.Render(item.Key)+" "+styles.HelpDescStyle.Render(item.Desc))
 		widths = append(widths, lipgloss.Width(item.Key)+1+lipgloss.Width(item.Desc))
