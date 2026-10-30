@@ -206,8 +206,10 @@ func (v AddressVerifyView) View() string {
 	lines = append(lines, v.addressRows(v.DeviceAddress, "Device", v.State == AddressVerifyMismatch)...)
 	lines = append(lines, padLine("", innerWidth))
 	lines = append(lines, padLine(v.statusLine(innerWidth), innerWidth))
+	// The screen's own hint row carries the retry/back keys; this row keeps
+	// the panel's reserved height so the outer row does not move.
 	lines = append(lines, padLine("", innerWidth))
-	lines = append(lines, padLine(styles.DimText.Render("v retry • esc back"), innerWidth))
+	lines = append(lines, padLine("", innerWidth))
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

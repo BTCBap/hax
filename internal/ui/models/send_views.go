@@ -79,6 +79,37 @@ func (m SendModel) View() string {
 	return content
 }
 
+// sendFinalHint is the primary action on the last step before signing. Its
+// width reserves the hint column so later hint items keep the same position
+// after the label morphs from "continue".
+const sendFinalHint = "enter confirm & broadcast"
+
+var sendPrimaryHintWidth = lipgloss.Width(sendFinalHint)
+
+// renderSendHelp draws a send hint row with the primary action first. The
+// final step renders that action in the warning style; every step pads the
+// primary hint to the same width so the rest of the row cannot shift.
+func renderSendHelp(primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
+	text := primary.Key + " " + primary.Desc
+	pad := sendPrimaryHintWidth - lipgloss.Width(text)
+	if pad < 0 {
+		pad = 0
+	}
+
+	var first string
+	if final {
+		first = styles.WarningText.Render(text) + strings.Repeat(" ", pad)
+	} else {
+		first = styles.HelpKeyStyle.Render(primary.Key) + " " +
+			styles.HelpDescStyle.Render(primary.Desc) + strings.Repeat(" ", pad)
+	}
+	parts := []string{first}
+	for _, item := range rest {
+		parts = append(parts, styles.HelpKeyStyle.Render(item.Key)+" "+styles.HelpDescStyle.Render(item.Desc))
+	}
+	return styles.FooterStyle.Render(strings.Join(parts, " • "))
+}
+
 func (m SendModel) viewAddressInput() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
 	subtitle := m.stepHeader(1, "Enter recipient address")
@@ -101,8 +132,8 @@ func (m SendModel) viewAddressInput() string {
 	// Hint about import option
 	importHint := styles.DimText.Render("Or press 'i' to import an existing PSBT")
 
-	help := styles.RenderHelp(
-		styles.HK("enter", "continue"),
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("i", "import PSBT"),
 		styles.HK("ctrl+v", "paste"),
 		styles.HK("esc", "cancel"),
@@ -160,8 +191,8 @@ func (m SendModel) viewAmountInput() string {
 		}
 	}
 
-	help := styles.RenderHelp(
-		styles.HK("enter", "continue"),
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("m", "send all"),
 		styles.HK("tab", "unit"),
 		styles.HK("esc", "back"),
@@ -214,11 +245,11 @@ func (m SendModel) viewRecipientList() string {
 		}
 	}
 
-	help := styles.RenderHelp(
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("a/+", "add recipient"),
 		styles.HK("d", "delete"),
-		styles.HK("enter", "continue"),
 		styles.HK("esc", "edit last"),
 	)
 
@@ -304,18 +335,18 @@ func (m SendModel) viewUTXOSelection() string {
 		}
 	}
 
-	help := styles.RenderHelp(
+	help := renderSendHelp(
+		styles.HK("tab", "continue"), false,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("space/enter", "toggle"),
 		styles.HK("a", "all"),
 		styles.HK("n", "none"),
-		styles.HK("tab", "continue"),
 		styles.HK("esc", "back"),
 	)
 	if m.sendAll {
-		help = styles.RenderHelp(
+		help = renderSendHelp(
+			styles.HK("tab", "continue"), false,
 			styles.HK("↑/↓", "navigate"),
-			styles.HK("tab", "continue"),
 			styles.HK("esc", "back"),
 		)
 	}
@@ -438,14 +469,13 @@ func (m SendModel) viewFeeSelection() string {
 		if m.bump.info != nil && m.bump.info.CanRBF && m.bump.info.CanCPFP {
 			items = append(items, styles.HK("m", "method"))
 		}
-		help = styles.RenderHelp(append(items,
-			styles.HK("enter", "continue"),
-			styles.HK("esc", "cancel"))...)
+		help = renderSendHelp(styles.HK("enter", "continue"), false,
+			append(items, styles.HK("esc", "cancel"))...)
 	} else {
-		help = styles.RenderHelp(
+		help = renderSendHelp(
+			styles.HK("enter", "continue"), false,
 			styles.HK("↑/↓", "navigate"),
 			styles.HK("c", "custom"),
-			styles.HK("enter", "continue"),
 			styles.HK("esc", "back"),
 		)
 	}
@@ -702,8 +732,8 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	}
 
 	// Unified help - all wallet types go to Sign & Broadcast
-	help := styles.RenderHelp(
-		styles.HK("enter", "sign & broadcast"),
+	help := renderSendHelp(
+		styles.HK("enter", "confirm & broadcast"), true,
 		styles.HK("v", "flow"),
 		styles.HK("esc", "change fee"),
 	)

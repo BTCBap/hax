@@ -683,6 +683,14 @@ func (m AddressesModel) View() string {
 	}
 	helpItems = append(helpItems, styles.HK("esc", "back"))
 	help := styles.RenderHelpWrapped(m.width, helpItems...)
+	if verifyActive {
+		// The verification panel owns the screen while it is open; its keys
+		// replace the list hints on the same footer row.
+		help = styles.RenderHelp(
+			styles.HK("v", "retry"),
+			styles.HK("esc", "back"),
+		)
+	}
 	if m.editing {
 		help = styles.RenderHelp(
 			styles.HK("enter", "save"),

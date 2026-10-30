@@ -31,7 +31,7 @@ func feesTestModel(t *testing.T) FeesModel {
 	}
 	m := NewFeesModel(mock, nil)
 	m.width, m.height = 80, 24
-	m.serverName = "mempool.space"
+	m.serverName = "electrum.example.com"
 	m.estimates = &api.FeeEstimates{
 		FastestFee:  12,
 		HalfHourFee: 8,
@@ -50,7 +50,7 @@ func TestFees_RendersAllTargets(t *testing.T) {
 	view := stripANSI(m.View())
 
 	for _, text := range []string{
-		"Fees", "from mempool.space",
+		"Fees", "from electrum.example.com",
 		"Next block", "30 minutes", "1 hour", "1 day", "Minimum",
 		"12.0 sat/vB", "8.0 sat/vB", "3.0 sat/vB", "1.0 sat/vB", "0.5 sat/vB",
 		"~10 min", "~30 min", "~1 hour", "~1 day", "~1 week",
@@ -201,7 +201,7 @@ func TestFees_FitAtSupportedSizes(t *testing.T) {
 
 func TestFees_ServerLabelStripsUserinfo(t *testing.T) {
 	cases := map[string]string{
-		"mempool.space":                                 "mempool.space",
+		"electrum.example.com":                          "electrum.example.com",
 		"user:value@node.example.com:8332":              "node.example.com:8332",
 		"https://user:value@node.example.com:8332/path": "node.example.com:8332",
 		"rpc://user:value@node.example.com:8332?x=1":    "node.example.com:8332",

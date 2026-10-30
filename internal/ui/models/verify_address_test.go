@@ -121,23 +121,23 @@ func TestAddressVerifyViewStates(t *testing.T) {
 	}{
 		{
 			state: AddressVerifyWaiting,
-			want:  []string{"Verify on device", verifyTestPath, "Wallet", "Device", "Confirm on your device…", "v retry • esc back"},
-			avoid: []string{"Matches device", "different address"},
+			want:  []string{"Verify on device", verifyTestPath, "Wallet", "Device", "Confirm on your device…"},
+			avoid: []string{"Matches device", "different address", "v retry"},
 		},
 		{
 			state: AddressVerifyMatch,
-			want:  []string{"Verify on device", "Wallet", "Device", "✓ Matches device", "v retry • esc back"},
-			avoid: []string{"Confirm on your device", "different address"},
+			want:  []string{"Verify on device", "Wallet", "Device", "✓ Matches device"},
+			avoid: []string{"Confirm on your device", "different address", "v retry"},
 		},
 		{
 			state: AddressVerifyMismatch,
-			want:  []string{"Verify on device", "Wallet", "Device", "✗ Device shows a different address", "0sl5 k8", "v retry • esc back"},
-			avoid: []string{"Matches device"},
+			want:  []string{"Verify on device", "Wallet", "Device", "✗ Device shows a different address", "0sl5 k8"},
+			avoid: []string{"Matches device", "v retry"},
 		},
 		{
 			state: AddressVerifyError,
-			want:  []string{"Verify on device", "Wallet", "Device", "device is in mainnet mode", "v retry • esc back"},
-			avoid: []string{"Matches device", "different address"},
+			want:  []string{"Verify on device", "Wallet", "Device", "device is in mainnet mode"},
+			avoid: []string{"Matches device", "different address", "v retry"},
 		},
 	}
 

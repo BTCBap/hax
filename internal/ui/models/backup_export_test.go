@@ -51,6 +51,9 @@ func TestSettings_BackupExportWritesFileOnlyAfterConfirm(t *testing.T) {
 	if !strings.Contains(confirm, "Writes public wallet data: descriptors, xpubs, labels.") {
 		t.Fatalf("confirm view is missing the public-data statement:\n%s", confirm)
 	}
+	if strings.Contains(confirm, "Contains") {
+		t.Fatalf("confirm view repeats the contents row:\n%s", confirm)
+	}
 
 	m = settingsUpdate(t, m, settingsKey("enter"))
 	if calls != 1 {

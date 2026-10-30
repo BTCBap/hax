@@ -40,9 +40,11 @@ func backupExportSummary(selected int, name string) []TraySummaryRow {
 	if selected == 1 {
 		destination = "clipboard"
 	}
+	// The note below already names the contents. The blank row keeps the
+	// tray at its previous height after dropping the redundant row.
 	return []TraySummaryRow{
 		{Label: "Destination", Value: destination},
-		{Label: "Contains", Value: "descriptors, xpubs, labels"},
+		{},
 	}
 }
 

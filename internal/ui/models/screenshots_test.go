@@ -218,7 +218,7 @@ func renderScreens(w, h int) []renderedScreen {
 	screens = append(screens, renderedScreen{"dashboard_stealth", dStealth.View()})
 
 	fm := sized(NewFeesModel(mock, nil), w, h)
-	fm.serverName = "mempool.space"
+	fm.serverName = "electrum.example.com"
 	fm.estimates = fees
 	fm.refreshing = false
 	fm.err = nil
@@ -244,6 +244,7 @@ func renderScreens(w, h int) []renderedScreen {
 		SelectedUTXOs: []wallet.UTXOWithPath{{UTXO: demoUTXOs[0], Address: ourRecv2, Path: "m/84'/1'/0'/0/1"}},
 	}
 	screens = append(screens, renderedScreen{"send", sm.View()})
+	screens = append(screens, renderedScreen{"send_review", sm.View()})
 
 	// Fee priority step: helpers line up in the column to the right of each
 	// target, like the inline speed-up tray.

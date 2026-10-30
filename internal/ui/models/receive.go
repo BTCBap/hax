@@ -460,6 +460,13 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 }
 
 func (m ReceiveModel) renderAnimatedHelp() string {
+	if m.verify.Active() {
+		return styles.RenderHelp(
+			styles.HK("v", "retry"),
+			styles.HK("esc", "back"),
+		)
+	}
+
 	items := []styles.HelpItem{
 		styles.HK("←/→", "navigate"),
 		styles.HK("n", "new"),

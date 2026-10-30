@@ -423,3 +423,47 @@ func TestReceive_VerifyOnDevice_Mismatch(t *testing.T) {
 		t.Fatalf("view does not show mismatch:\n%s", view)
 	}
 }
+
+// The verification panel no longer draws its own hint line; the screen footer
+// carries the retry/back keys on the same row in every panel state.
+func TestReceive_VerifyModeOuterHintRow(t *testing.T) {
+	m, _ := newHardwareReceive(t)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = model.(ReceiveModel)
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+
+	states := []struct {
+		state AddressVerifyState
+		err   error
+	}{
+		{AddressVerifyWaiting, nil},
+		{AddressVerifyMatch, nil},
+		{AddressVerifyMismatch, &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: verifyTestAddress}},
+		{AddressVerifyError, errors.New("device is in mainnet mode")},
+	}
+
+	var wantLine int
+	for i, tc := range states {
+		m.verify.Reset(verifyTestAddress, verifyTestPath)
+		m.verify.Begin()
+		if tc.state != AddressVerifyWaiting {
+			m.verify.Complete(tc.err)
+		}
+
+		view := m.View()
+		plain := stripANSI(view)
+		if got := strings.Count(plain, "v retry • esc back"); got != 1 {
+			t.Fatalf("state %d: hint appears %d times, want once:\n%s", tc.state, got, plain)
+		}
+		if strings.Contains(plain, "←/→ navigate") || strings.Contains(plain, "v verify on device") {
+			t.Fatalf("state %d: list hints still shown in verify mode:\n%s", tc.state, plain)
+		}
+
+		pos := requireTextPosition(t, view, "v retry • esc back")
+		if i == 0 {
+			wantLine = pos.line
+		} else if pos.line != wantLine {
+			t.Fatalf("state %d: outer hint moved from line %d to %d", tc.state, wantLine, pos.line)
+		}
+	}
+}

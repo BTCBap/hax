@@ -47,8 +47,20 @@ func TestPreviewBIP329CountsKnownTypes(t *testing.T) {
 	if preview != want {
 		t.Fatalf("preview = %+v, want %+v", preview, want)
 	}
-	if got, wantLine := preview.summary(), "2 tx labels · 1 address labels · 2 outputs (1 frozen)"; got != wantLine {
+	if got, wantLine := preview.summary(), "2 tx labels · 1 address label · 2 outputs (1 frozen)"; got != wantLine {
 		t.Fatalf("summary = %q, want %q", got, wantLine)
+	}
+}
+
+func TestPreviewBIP329SummarySingularForms(t *testing.T) {
+	preview := bip329Preview{Tx: 1, Addr: 1, Output: 1, Frozen: 1}
+	if got, want := preview.summary(), "1 tx label · 1 address label · 1 output (1 frozen)"; got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+
+	preview = bip329Preview{}
+	if got, want := preview.summary(), "0 tx labels · 0 address labels · 0 outputs (0 frozen)"; got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
 	}
 }
 
@@ -172,7 +184,7 @@ func TestSettings_LabelImportConfirmCallsWalletOnce(t *testing.T) {
 		t.Fatalf("import called %d times before confirm", calls)
 	}
 	previewView := m.View()
-	if !strings.Contains(stripANSI(previewView), "2 tx labels · 1 address labels · 2 outputs (1 frozen)") {
+	if !strings.Contains(stripANSI(previewView), "2 tx labels · 1 address label · 2 outputs (1 frozen)") {
 		t.Fatalf("preview counts missing:\n%s", stripANSI(previewView))
 	}
 

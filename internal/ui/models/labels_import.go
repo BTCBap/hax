@@ -41,8 +41,19 @@ type bip329Preview struct {
 }
 
 func (p bip329Preview) summary() string {
-	return fmt.Sprintf("%d tx labels · %d address labels · %d outputs (%d frozen)",
-		p.Tx, p.Addr, p.Output, p.Frozen)
+	return fmt.Sprintf("%d %s · %d %s · %d %s (%d frozen)",
+		p.Tx, pluralWord(p.Tx, "tx label", "tx labels"),
+		p.Addr, pluralWord(p.Addr, "address label", "address labels"),
+		p.Output, pluralWord(p.Output, "output", "outputs"),
+		p.Frozen)
+}
+
+// pluralWord picks the form that matches count.
+func pluralWord(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
 }
 
 type bip329PreviewRecord struct {
