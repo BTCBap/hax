@@ -831,6 +831,11 @@ func flowAmountReserve(colW int) int {
 	return 2
 }
 
+// flowAmountWidth is the cell width of a BTC amount. Shorter text such as
+// "unknown" is right-aligned inside it so every row spends the same number
+// of cells on the amount and the address column keeps a stable width.
+const flowAmountWidth = len("0.00000000")
+
 // flowRightAmountReserve adds the cell that the left column spends on its
 // leading blank, keeping both amount columns equally far from the band.
 func flowRightAmountReserve(colW int) int {
@@ -851,7 +856,7 @@ func flowRightConnectorEnd(rightStart, rightW int) int {
 
 func flowLeftItemText(item TxFlowItem, colW int) string {
 	reserve := flowAmountReserve(colW)
-	amount := flowAmountText(item)
+	amount := padFlowLeft(flowAmountText(item), flowAmountWidth)
 	amountW := ansi.StringWidth(amount)
 	amountStart := colW - reserve - amountW
 	if amountStart < 1 {
@@ -875,7 +880,7 @@ func flowLeftItemText(item TxFlowItem, colW int) string {
 
 func flowRightItemText(item TxFlowItem, colW int) string {
 	reserve := flowRightAmountReserve(colW)
-	amount := flowAmountText(item)
+	amount := padFlowLeft(flowAmountText(item), flowAmountWidth)
 	amountW := ansi.StringWidth(amount)
 	marker := flowMarker(item.Kind)
 	markerW := ansi.StringWidth(marker)
@@ -1020,8 +1025,10 @@ func (v TxFlowView) detailLines(width int) []string {
 		label = "no label"
 	}
 	third := flowOwnership(item.Kind) + " · " + label
-	if v.Side == FlowInput && item.OutPoint != "" {
-		third += " · " + item.OutPoint
+	if v.Side == FlowInput {
+		if outPoint := flowInputOutPoint(item, v.Cursor); outPoint != "" {
+			third += " · " + outPoint
+		}
 	}
 
 	return []string{
@@ -1029,6 +1036,18 @@ func (v TxFlowView) detailLines(width int) []string {
 		flowDetailRow("Amount   ", amount, width),
 		v.ownershipLine(item.Kind, third, width),
 	}
+}
+
+// flowInputOutPoint renders the spent outpoint. History transactions can
+// omit the previous txid; then the input position is the best identifier.
+func flowInputOutPoint(item TxFlowItem, index int) string {
+	if item.OutPoint == "" {
+		return ""
+	}
+	if txid, _, _ := strings.Cut(item.OutPoint, ":"); txid == "" {
+		return fmt.Sprintf("input %d", index)
+	}
+	return item.OutPoint
 }
 
 func flowDetailRow(label, value string, width int) string {

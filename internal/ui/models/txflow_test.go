@@ -595,6 +595,104 @@ func TestTxFlow_UnknownValueAndOpReturn(t *testing.T) {
 	}
 }
 
+func TestTxFlow_UnknownValueKeepsAmountColumnAligned(t *testing.T) {
+	known := api.Satoshi(42_000)
+	flow := TxFlow{
+		Fee: 500, FeeKnown: true, FeeRate: 1, VSize: 500,
+		Inputs: []TxFlowItem{
+			{
+				Address:    "bc1qknown0000000000000000000000000000000000",
+				Value:      known,
+				ValueKnown: true,
+				Kind:       KindOwnInput,
+			},
+			{
+				Address:  "bc1qunknown00000000000000000000000000000000",
+				OutPoint: "aa:1",
+				Kind:     KindForeignInput,
+			},
+		},
+		Outputs: []TxFlowItem{
+			{Address: "bc1qdest00000000000000000000000000000000000", Value: 41_500, ValueKnown: true, Kind: KindExternal},
+		},
+	}
+	v := TxFlowView{Flow: flow, Width: 80, Height: 24, Side: FlowInput}
+	lines := strings.Split(ansi.Strip(v.View()), "\n")
+	start, end := flowTestDiagram(lines)
+
+	entries := []struct {
+		prefix string
+		amount string
+	}{
+		{prefix: " ● ", amount: formatFlowCoin(known)},
+		{prefix: " ○ ", amount: "unknown"},
+	}
+	var starts []int
+	for _, entry := range entries {
+		found := false
+		for _, line := range lines[start:end] {
+			if !strings.HasPrefix(line, entry.prefix) {
+				continue
+			}
+			if !strings.Contains(line, entry.amount) {
+				continue
+			}
+			// The shortened address fills its field, then two cells
+			// separate it from the amount column.
+			rest := strings.TrimPrefix(line, entry.prefix)
+			end := strings.IndexByte(rest, ' ')
+			if end <= 0 {
+				t.Fatalf("input row has no address before the amount: %q", line)
+			}
+			starts = append(starts, ansi.StringWidth(entry.prefix)+end+2)
+			found = true
+			break
+		}
+		if !found {
+			t.Fatalf("input row with %q amount is missing:\n%s", entry.amount, strings.Join(lines, "\n"))
+		}
+	}
+	if starts[0] != starts[1] {
+		t.Fatalf("amount column starts at offsets %v, want one fixed offset:\n%s",
+			starts, strings.Join(lines, "\n"))
+	}
+}
+
+func TestTxFlow_EmptyOutPointTxIDShowsInputIndex(t *testing.T) {
+	tx := api.Transaction{
+		TxID: "history",
+		Fee:  500,
+		Size: 200,
+		Vin: []api.Vin{
+			{Vout: 0, Prevout: &api.Vout{ScriptpubkeyAddress: "bc1qspent", Value: 10_000}},
+			{TxID: "abcd", Vout: 1, Prevout: &api.Vout{ScriptpubkeyAddress: "bc1qother", Value: 20_000}},
+		},
+		Vout: []api.Vout{{ScriptpubkeyAddress: "bc1qdest", Value: 29_500}},
+	}
+	flow := TxFlowFromTransaction(tx, nil, nil, nil)
+	if flow.Inputs[0].OutPoint != ":0" {
+		t.Fatalf("empty-txid outpoint = %q, want %q", flow.Inputs[0].OutPoint, ":0")
+	}
+
+	v := TxFlowView{Flow: flow, Width: 80, Height: 24, Side: FlowInput}
+	plain := ansi.Strip(v.View())
+	if !strings.Contains(plain, "input 0") {
+		t.Fatalf("detail does not name the empty-txid input:\n%s", plain)
+	}
+	if strings.Contains(plain, ":0") {
+		t.Fatalf("detail still shows the bare vout:\n%s", plain)
+	}
+
+	v.MoveDown()
+	plain = ansi.Strip(v.View())
+	if !strings.Contains(plain, "abcd:1") {
+		t.Fatalf("detail does not show the known outpoint:\n%s", plain)
+	}
+	if strings.Contains(plain, "input 1") {
+		t.Fatalf("detail replaced a known outpoint with the input index:\n%s", plain)
+	}
+}
+
 func TestTxFlow_MarkersAndWordsWithoutColor(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
