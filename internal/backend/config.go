@@ -1,5 +1,10 @@
 package backend
 
+// MaxFeeRateSatPerVB is the highest backend-provided fee estimate hax will
+// use. Anything above it is treated as unavailable, so a malicious server
+// cannot turn a send into a fee drain.
+const MaxFeeRateSatPerVB = 1000.0
+
 // BackendConfig contains configuration for a backend connection
 type BackendConfig struct {
 	Type    BackendType `json:"type"`
@@ -33,6 +38,9 @@ type RPCConfig struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	UseSSL   bool   `json:"use_ssl"`
+	// AllowPlaintext permits sending RPC credentials over cleartext HTTP to
+	// a public host. Local-network hosts already use HTTP by default.
+	AllowPlaintext bool `json:"allow_plaintext,omitempty"`
 }
 
 // SavedServer represents a user's recently-used Electrum server

@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,9 @@ import (
 	"testing"
 
 	"github.com/BTCBap/hax/internal/api"
+
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire"
 )
 
 // mockRPCServer creates a test HTTP server that responds to JSON-RPC requests.
@@ -252,7 +257,7 @@ func TestRPCBackend_GetFeeEstimates_NoEstimate(t *testing.T) {
 }
 
 func TestRPCBackend_BroadcastTransaction(t *testing.T) {
-	expectedTxID := "abc123def456"
+	rawHex, expectedTxID := testRawTx(t)
 	handlers := map[string]interface{}{
 		"sendrawtransaction": expectedTxID,
 	}
@@ -261,13 +266,42 @@ func TestRPCBackend_BroadcastTransaction(t *testing.T) {
 
 	b := newTestRPCBackend(t, server)
 
-	txid, err := b.BroadcastTransaction("0200000001...")
+	txid, err := b.BroadcastTransaction(rawHex)
 	if err != nil {
 		t.Fatalf("BroadcastTransaction failed: %v", err)
 	}
 	if txid != expectedTxID {
 		t.Fatalf("expected txid %s, got %s", expectedTxID, txid)
 	}
+}
+
+func TestRPCBackend_BroadcastTransactionRejectsWrongTxID(t *testing.T) {
+	rawHex, _ := testRawTx(t)
+	handlers := map[string]interface{}{
+		"sendrawtransaction": "0000000000000000000000000000000000000000000000000000000000000000",
+	}
+	server := mockRPCServer(t, handlers)
+	defer server.Close()
+
+	b := newTestRPCBackend(t, server)
+
+	if _, err := b.BroadcastTransaction(rawHex); err == nil {
+		t.Fatal("expected a mismatch error when the server reports a different txid")
+	}
+}
+
+// testRawTx builds a minimal valid transaction and returns its hex and txid.
+func testRawTx(t *testing.T) (string, string) {
+	t.Helper()
+	tx := wire.NewMsgTx(2)
+	var prev chainhash.Hash
+	tx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(&prev, 0), nil, nil))
+	tx.AddTxOut(wire.NewTxOut(1000, []byte{0x51}))
+	var buf bytes.Buffer
+	if err := tx.Serialize(&buf); err != nil {
+		t.Fatalf("serialize tx: %v", err)
+	}
+	return hex.EncodeToString(buf.Bytes()), tx.TxHash().String()
 }
 
 func TestRPCBackend_GetTransaction(t *testing.T) {
@@ -1240,6 +1274,38 @@ func TestRPCBackend_CallRPC_MalformedResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to parse response") {
 		t.Fatalf("expected parse error, got: %v", err)
+	}
+}
+
+func TestCheckRPCTransport(t *testing.T) {
+	tests := []struct {
+		name           string
+		host           string
+		useSSL         bool
+		allowPlaintext bool
+		wantErr        bool
+	}{
+		{"TLS to public host", "node.example.com", true, false, false},
+		{"plain HTTP to loopback", "127.0.0.1", false, false, false},
+		{"plain HTTP to LAN IP", "192.168.1.10", false, false, false},
+		{"plain HTTP to mDNS name", "umbrel.local", false, false, false},
+		{"plain HTTP to single-label name", "umbrel", false, false, false},
+		{"plain HTTP to onion", "abc.onion", false, false, false},
+		{"plain HTTP to public host", "node.example.com", false, false, true},
+		{"plain HTTP to public IP", "8.8.8.8", false, false, true},
+		{"plain HTTP to public host with opt-in", "node.example.com", false, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkRPCTransport(tt.host, tt.useSSL, tt.allowPlaintext)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("checkRPCTransport(%q, %v, %v) = %v, wantErr %v",
+					tt.host, tt.useSSL, tt.allowPlaintext, err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "requires SSL") {
+				t.Fatalf("error should tell the user to enable SSL, got: %v", err)
+			}
+		})
 	}
 }
 

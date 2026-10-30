@@ -14,9 +14,7 @@ func NewBackend(config *BackendConfig) (BitcoinBackend, error) {
 	case BackendTypeRPC:
 		return NewRPCBackend(config)
 	default:
-		// Default to Electrum for any unknown or legacy type (including API)
-		electrumConfig := DefaultElectrumConfig("testnet4")
-		return NewElectrumBackend(electrumConfig)
+		return nil, fmt.Errorf("unsupported backend type %q", config.Type)
 	}
 }
 

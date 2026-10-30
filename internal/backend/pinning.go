@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/BTCBap/hax/internal/fsutil"
 )
 
 // ErrCertPinMismatch is returned when an Electrum server presents a public
@@ -66,18 +68,15 @@ func (s *PinStore) load() (map[string]string, error) {
 }
 
 func (s *PinStore) save(pins map[string]string) error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	dir := filepath.Dir(s.path)
+	if err := fsutil.EnsurePrivateDir(dir, 0o700); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(pins, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	return fsutil.WriteFileAtomic(s.path, b, 0o600)
 }
 
 // Forget removes the pin for server so the next connection re-pins.
