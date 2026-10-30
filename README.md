@@ -19,7 +19,7 @@
 > **hax has not been independently audited.** Try it on testnet4 first.
 
 <p align="center">
-  <img src="docs/images/hax-tour.gif" alt="Animated tour: dashboard, receive, device verification, send review, transaction flow, fees, history, speed-up tray, UTXOs, stealth mode, label import, backup export, and help" width="820">
+  <img src="docs/images/hax-tour.gif" alt="Animated tour: splash, network pick, create or restore, seed backup and quiz, unlock, dashboard, receive, device verification, send steps and review, hardware wallet picker, transaction flow, PSBT signing, fees, history and speed-up, UTXOs, addresses, settings, server picker, multisig, label import, backup export, stealth mode and help" width="820">
 </p>
 
 ## Features
