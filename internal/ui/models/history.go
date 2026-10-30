@@ -46,6 +46,9 @@ type TransactionHistoryModel struct {
 	// Transaction visualizer overlay for the selected row.
 	txFlow *TxFlowView
 
+	// Inline speed-up tray for a pending outgoing transaction.
+	speedUp *speedUpTrayState
+
 	// Copy state
 	showCopied   bool
 	copiedTime   time.Time
@@ -100,6 +103,27 @@ type TransactionsMsg struct {
 	Err          error
 	BlockHeight  int64 // Current chain tip for confirmation calculation
 }
+
+// SpeedUpFeeEstimatesMsg carries fee estimates for the inline speed-up tray.
+type SpeedUpFeeEstimatesMsg struct {
+	Estimates *api.FeeEstimates
+	Err       error
+}
+
+// speedUpTrayState is the inline speed-up panel opened from a pending row.
+type speedUpTrayState struct {
+	tx        api.Transaction
+	tray      Tray
+	rates     [3]float64
+	loading   bool
+	baseLines int
+}
+
+const speedUpCustomIndex = 3
+
+// speedUpRBFSequence is the highest input sequence that still signals
+// BIP125 opt-in replace-by-fee.
+const speedUpRBFSequence uint32 = 0xfffffffd
 
 // TransactionAnalysis contains analyzed transaction data
 type TransactionAnalysis struct {
@@ -275,6 +299,10 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Height = 5
 		}
 		m.updateTableData()
+		if m.speedUp != nil {
+			m.speedUp.tray = m.speedUp.tray.WithWidth(m.trayWidth())
+			m.speedUp.baseLines = m.linesWithoutTray()
+		}
 
 	case TransactionsMsg:
 		m.loading = false
@@ -290,6 +318,12 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateTableData()
 			m.fadeIn = 0.0
 			cmds = append(cmds, m.animateTick())
+		}
+
+	case SpeedUpFeeEstimatesMsg:
+		if m.speedUp != nil && m.speedUp.loading {
+			m.speedUp.loading = false
+			m.rebuildSpeedUpTray(msg.Estimates)
 		}
 
 	case StateChangedMsg:
@@ -359,6 +393,13 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// The speed-up tray owns every key while it is open.
+		if m.speedUp != nil {
+			if handled, cmd := m.handleSpeedUpKey(msg); handled {
+				return m, cmd
+			}
+		}
+
 		// The visualizer owns every key while it is open.
 		if m.txFlow != nil {
 			if handleTxFlowKey(m.txFlow, msg.String()) {
@@ -467,6 +508,9 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.err = fmt.Errorf("already confirmed, nothing to speed up")
 						m.errorTime = time.Now()
 						cmds = append(cmds, m.animateTick())
+					} else if m.canSpeedUpTransaction(tx) {
+						cmd = m.openSpeedUpTray(tx)
+						return m, cmd
 					} else {
 						m.isActive = false
 						return m, NavigateToFeeBump(tx.TxID)
@@ -685,6 +729,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 
 	widths := m.effectiveColumnWidths()
 	txIDHidden := widths[4] == 0
+	actionWidth := m.actionColumnWidth()
 	columns := []table.Column{
 		{Title: "Time" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 0], Width: widths[0]},
 		{Title: "Type" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 1], Width: widths[1]},
@@ -692,6 +737,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		{Title: "Status" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 3], Width: widths[3]},
 		{Title: "TxID" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 4], Width: widths[4]},
 		{Title: "Label" + (map[bool]string{true: sortIndicator, false: ""})[m.sortColumn == 5], Width: widths[5]},
+		{Title: "", Width: actionWidth},
 	}
 	m.table.SetColumns(columns)
 
@@ -849,6 +895,11 @@ func (m *TransactionHistoryModel) updateTableData() {
 			txID = "" // full TxID is in the details pane
 		}
 
+		action := ""
+		if actionWidth > 0 && historyCanSpeedUp(tx, analysis) {
+			action = m.speedUpMarker()
+		}
+
 		rows = append(rows, table.Row{
 			timestamp,
 			analysis.Type,
@@ -856,6 +907,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 			status,
 			txID,
 			label,
+			action,
 		})
 	}
 
@@ -1076,6 +1128,232 @@ func (m *TransactionHistoryModel) selectedTransaction() (api.Transaction, bool) 
 	return m.filteredTransactions[absoluteIndex], true
 }
 
+// actionColumnWidth reserves the right-hand speed-up column. Below 100
+// columns only the arrow fits; on wider terminals the label does.
+func (m TransactionHistoryModel) actionColumnWidth() int {
+	if m.width >= 100 {
+		return lipgloss.Width("⇡ speed up")
+	}
+	if m.width >= 60 {
+		return lipgloss.Width("⇡")
+	}
+	return 0
+}
+
+func (m TransactionHistoryModel) speedUpMarker() string {
+	if m.width >= 100 {
+		return "⇡ speed up"
+	}
+	return "⇡"
+}
+
+// historyCanSpeedUp reports whether a pending outgoing transaction signals
+// opt-in RBF, the same cheap check the bump flow uses before it fetches the
+// transaction.
+func historyCanSpeedUp(tx api.Transaction, analysis TransactionAnalysis) bool {
+	if tx.Status.Confirmed || analysis.Type != "↑ OUT" {
+		return false
+	}
+	for _, vin := range tx.Vin {
+		if vin.Sequence <= speedUpRBFSequence {
+			return true
+		}
+	}
+	return false
+}
+
+// canSpeedUpTransaction applies historyCanSpeedUp using the wallet's
+// address ownership view.
+func (m TransactionHistoryModel) canSpeedUpTransaction(tx api.Transaction) bool {
+	var accounts []wallet.AccountData
+	if m.walletManager != nil {
+		accounts = m.walletManager.GetAccounts()
+	}
+	mine, _ := historyAddressSets(accounts)
+	return historyCanSpeedUp(tx, analyzeTransaction(tx, mine))
+}
+
+// historyTxVSize returns the virtual size used to turn a feerate into sats.
+func historyTxVSize(tx api.Transaction) int {
+	if tx.Weight > 0 {
+		return (tx.Weight + 3) / 4
+	}
+	if tx.Size > 0 {
+		return tx.Size
+	}
+	return 1
+}
+
+func speedUpSummary(tx api.Transaction, rate float64) []TraySummaryRow {
+	vsize := historyTxVSize(tx)
+	current := float64(tx.Fee) / float64(vsize)
+	rows := []TraySummaryRow{{
+		Label: "Current rate",
+		Value: fmt.Sprintf("%s sat/vB", formatFeeRate(roundRate(current))),
+	}}
+	if rate <= 0 {
+		return append(rows,
+			TraySummaryRow{Label: "New rate", Value: "—"},
+			TraySummaryRow{Label: "Extra fee", Value: "—"},
+		)
+	}
+	extra := int64(rate*float64(vsize)+0.999) - int64(tx.Fee)
+	if extra < 0 {
+		extra = 0
+	}
+	return append(rows,
+		TraySummaryRow{
+			Label: "New rate",
+			Value: fmt.Sprintf("%s sat/vB", formatFeeRate(roundRate(rate))),
+		},
+		TraySummaryRow{Label: "Extra fee", Value: fmt.Sprintf("+%d sats", extra)},
+	)
+}
+
+func (m TransactionHistoryModel) trayWidth() int {
+	if m.width <= 0 || m.width > 80 {
+		return 80
+	}
+	return m.width
+}
+
+// openSpeedUpTray opens the inline panel and loads fee estimates when the
+// wallet has no cached ones.
+func (m *TransactionHistoryModel) openSpeedUpTray(tx api.Transaction) tea.Cmd {
+	m.speedUp = &speedUpTrayState{tx: tx, baseLines: m.linesWithoutTray()}
+
+	var estimates *api.FeeEstimates
+	if m.walletManager != nil {
+		if cached, ok := m.walletManager.GetCachedFeeEstimates(); ok && cached != nil {
+			estimates = cached
+		} else {
+			m.speedUp.loading = true
+		}
+	} else {
+		m.speedUp.loading = true
+	}
+
+	m.buildSpeedUpTray(estimates)
+	if m.speedUp.loading {
+		return m.fetchSpeedUpFeeEstimates()
+	}
+	return nil
+}
+
+func (m *TransactionHistoryModel) rebuildSpeedUpTray(estimates *api.FeeEstimates) {
+	m.buildSpeedUpTray(estimates)
+}
+
+func (m *TransactionHistoryModel) buildSpeedUpTray(estimates *api.FeeEstimates) {
+	st := m.speedUp
+	if st == nil {
+		return
+	}
+
+	rates := [3]float64{}
+	if estimates != nil {
+		rates = [3]float64{estimates.FastestFee, estimates.HalfHourFee, estimates.HourFee}
+	}
+	st.rates = rates
+
+	cursor, stage := 0, TrayStageChoose
+	if st.tray.title != "" {
+		cursor, stage = st.tray.cursor, st.tray.stage
+	}
+
+	labels := []string{"Fastest", "30 minutes", "1 hour"}
+	times := []string{"~10 min", "~30 min", "~1 hour"}
+	options := make([]TrayOption, 0, 4)
+	for i := range labels {
+		help := "…"
+		if !st.loading {
+			help = times[i] + " · unavailable"
+			if rates[i] > 0 {
+				help = fmt.Sprintf("%s · %s sat/vB", times[i], formatFeeRate(roundRate(rates[i])))
+			}
+		}
+		options = append(options, TrayOption{Label: labels[i], Help: help})
+	}
+	options = append(options, TrayOption{Label: "Custom…", Help: "enter a rate"})
+
+	summaryRate := 0.0
+	if cursor >= 0 && cursor < len(rates) {
+		summaryRate = rates[cursor]
+	}
+	tray := NewTray("⚡ Speed Up Transaction", options, speedUpSummary(st.tx, summaryRate), m.trayWidth())
+	tray.cursor = cursor
+	tray.stage = stage
+	tray.SummaryFor = func(selected int) []TraySummaryRow {
+		if selected >= 0 && selected < len(rates) {
+			return speedUpSummary(st.tx, rates[selected])
+		}
+		return []TraySummaryRow{{Label: "Fee rate", Value: "set on the next screen"}}
+	}
+	st.tray = tray
+}
+
+func (m TransactionHistoryModel) fetchSpeedUpFeeEstimates() tea.Cmd {
+	walletManager := m.walletManager
+	return func() tea.Msg {
+		if walletManager == nil {
+			return SpeedUpFeeEstimatesMsg{}
+		}
+		estimates, err := walletManager.GetFeeEstimates()
+		return SpeedUpFeeEstimatesMsg{Estimates: estimates, Err: err}
+	}
+}
+
+func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyMsg) (bool, tea.Cmd) {
+	st := m.speedUp
+	if st == nil {
+		return false, nil
+	}
+	key := msg.String()
+
+	// Do not confirm a rate the wallet has not supplied yet.
+	if st.loading && key == "enter" {
+		return true, nil
+	}
+
+	// Custom falls through to the existing fee bump flow.
+	if st.tray.stage == TrayStageChoose && key == "enter" &&
+		st.tray.cursor == speedUpCustomIndex {
+		txid := st.tx.TxID
+		m.speedUp = nil
+		m.isActive = false
+		return true, NavigateToFeeBump(txid)
+	}
+
+	tray, result := st.tray.Update(msg)
+	st.tray = tray
+
+	switch result.Kind {
+	case TrayCancelled:
+		m.speedUp = nil
+	case TrayConfirmed:
+		txid := st.tx.TxID
+		rate := 0.0
+		if result.Selected >= 0 && result.Selected < len(st.rates) {
+			rate = st.rates[result.Selected]
+		}
+		m.speedUp = nil
+		m.isActive = false
+		if rate <= 0 {
+			return true, NavigateToFeeBump(txid)
+		}
+		return true, NavigateToFeeBumpWithRate(txid, rate)
+	}
+	return true, nil
+}
+
+// linesWithoutTray is the normal history height, used to keep the total
+// line count fixed while the tray is open.
+func (m TransactionHistoryModel) linesWithoutTray() int {
+	clone := m
+	clone.speedUp = nil
+	return lipgloss.Height(clone.View())
+}
+
 // openTransactionFlow shows the selected transaction as a flow diagram.
 // Ownership comes from the wallet's address list; no network calls.
 func (m *TransactionHistoryModel) openTransactionFlow(tx api.Transaction) {
@@ -1212,6 +1490,10 @@ func (m TransactionHistoryModel) View() string {
 		return headerBlock + "\n" + flow.View()
 	}
 
+	if m.speedUp != nil {
+		return m.viewWithSpeedUp(headerBlock)
+	}
+
 	var content string
 
 	searchBox := ""
@@ -1306,9 +1588,44 @@ func (m TransactionHistoryModel) renderEmptyState() string {
 }
 
 func (m TransactionHistoryModel) renderTransactionTable() string {
-	tableStyle := styles.TableBorderStyle
+	return m.renderTransactionTableAt(0)
+}
 
-	return tableStyle.Render(m.table.View())
+func (m TransactionHistoryModel) renderTransactionTableAt(tableHeight int) string {
+	tbl := m.table
+	if tableHeight > 0 {
+		tbl.SetHeight(tableHeight)
+	}
+	view := tbl.View()
+	if m.actionColumnWidth() > 0 {
+		view = strings.ReplaceAll(view, m.speedUpMarker(),
+			styles.DimText.Render(m.speedUpMarker()))
+	}
+	return styles.TableBorderStyle.Render(view)
+}
+
+// viewWithSpeedUp keeps the header and table top in place and gives the
+// tray the bottom of the screen. The table loses rows to make room, so the
+// total height stays the same as the normal history view.
+func (m TransactionHistoryModel) viewWithSpeedUp(headerBlock string) string {
+	trayView := m.speedUp.tray.View()
+	trayLines := lipgloss.Height(trayView)
+	target := m.speedUp.baseLines
+	if target <= 0 {
+		target = m.height
+	}
+	if target <= 0 {
+		target = lipgloss.Height(headerBlock) + trayLines + 6
+	}
+
+	tableBlock := target - lipgloss.Height(headerBlock) - trayLines
+	if tableBlock < 5 {
+		tableBlock = 5
+	}
+
+	return headerBlock + "\n" +
+		m.renderTransactionTableAt(tableBlock-2) + "\n" +
+		trayView
 }
 
 func (m TransactionHistoryModel) renderTransactionDetails() string {
@@ -1511,7 +1828,7 @@ func (m TransactionHistoryModel) effectiveColumnWidths() [6]int {
 	}
 	// Border and padding of the box (4) plus one cell of padding each side
 	// of every column (2 per column).
-	budget := m.width - 4 - 2*len(w)
+	budget := m.width - 4 - 2*len(w) - m.actionColumnWidth()
 	sum := func() int {
 		t := 0
 		for _, c := range w {

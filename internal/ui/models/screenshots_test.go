@@ -316,6 +316,13 @@ func renderScreens(w, h int) []renderedScreen {
 	hi.openTransactionFlow(spendTx)
 	screens = append(screens, renderedScreen{"txflow_history", hi.View()})
 
+	// Inline speed-up tray on a pending outgoing transaction.
+	speedMock := NewMockWalletManager()
+	speedChoose := newSpeedUpHistoryLayout(speedMock, false)
+	screens = append(screens, renderedScreen{"history_speedup_tray", sized(speedChoose, w, h).View()})
+	speedConfirm := newSpeedUpHistoryLayout(NewMockWalletManager(), true)
+	screens = append(screens, renderedScreen{"history_speedup_confirm", sized(speedConfirm, w, h).View()})
+
 	// A busy transaction so the diagram shows how many inputs and outputs
 	// are laid out together.
 	screens = append(screens, renderedScreen{"txflow_many", TxFlowView{

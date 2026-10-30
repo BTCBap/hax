@@ -151,6 +151,8 @@ type NavigateMsg struct {
 	Refresh bool // If true, trigger a balance refresh on dashboard
 	// FeeBumpTxID opens the send screen to speed up this transaction.
 	FeeBumpTxID string
+	// FeeBumpRate pre-fills the speed-up fee step when non-zero.
+	FeeBumpRate float64
 }
 
 // Navigate returns a Cmd that navigates to a new screen
@@ -377,7 +379,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateSend:
 			state := m.walletManager.GetState()
 			if msg.FeeBumpTxID != "" {
-				m.sendModel = NewFeeBumpModel(m.walletManager, msg.FeeBumpTxID, state.Balance, state.UTXOs)
+				if msg.FeeBumpRate > 0 {
+					m.sendModel = NewFeeBumpModelWithRate(m.walletManager, msg.FeeBumpTxID, msg.FeeBumpRate, state.Balance, state.UTXOs)
+				} else {
+					m.sendModel = NewFeeBumpModel(m.walletManager, msg.FeeBumpTxID, state.Balance, state.UTXOs)
+				}
 			} else {
 				m.sendModel = NewSendModel(m.walletManager, state.Balance, state.UTXOs)
 			}

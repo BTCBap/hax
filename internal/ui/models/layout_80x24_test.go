@@ -20,6 +20,12 @@ func TestViews_FitIn80Columns(t *testing.T) {
 		"send":      func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
 		"feebump":   func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
 		"history":   func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
+		"history_speedup": func(w *MockWalletManager) tea.Model {
+			return newSpeedUpHistoryLayout(w, false)
+		},
+		"history_speedup_confirm": func(w *MockWalletManager) tea.Model {
+			return newSpeedUpHistoryLayout(w, true)
+		},
 		"addresses": func(w *MockWalletManager) tea.Model { return NewAddressesModel(w, nil) },
 		"receive_hwi": func(w *MockWalletManager) tea.Model {
 			w.IsHardwareWalletFn = func() bool { return true }

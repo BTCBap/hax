@@ -618,6 +618,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FeeBumpInfoMsg:
 		m.handleFeeBumpInfo(msg)
+		if m.bump != nil && m.bump.presetRate > 0 && m.bump.info != nil {
+			if cmd := m.startPresetFeeBump(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 
 	case TxPreviewMsg:
 		if msg.Err != nil {
