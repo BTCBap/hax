@@ -31,12 +31,15 @@ for f in "${readme[@]}"; do
   render_png "$f" docs/images
 done
 
-# Tour GIF: 13 v1.4 screens in a user-journey order, 2 s each, on one 1180x820
+# Tour GIF: 28 v1.4 screens in a user-journey order, 2 s each, on one 1180x820
 # canvas. Frames are stills, so fps=2 (four frames per screen) keeps the GIF
 # small. Tour-only screens are rendered with the same settings into the temp
 # dir and are never committed.
-tour=(dashboard receive verify send txflow fees history history_speedup_tray utxos
-  dashboard_stealth labels_import_preview backup_export_confirm help)
+tour=(splash setup_network setup_choice setup_seed setup_quiz unlock dashboard
+  receive verify send_address send_amount send_fee send_hw_devices send txflow
+  psbt_inspect fees history history_speedup_tray utxos addresses settings
+  settings_server multisig labels_import_preview backup_export_confirm
+  dashboard_stealth help)
 inputs=() ; chain=""
 for i in "${!tour[@]}"; do
   f=${tour[$i]}
