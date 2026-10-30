@@ -34,7 +34,7 @@
 - **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC (full history needs `-blockfilterindex=1`)
 - **BIP21 payment URIs:** paste a `bitcoin:` link to fill the address, amount and label
 - **BIP-329 labels** for transactions and addresses, searchable history, and Koinly CSV export
-- **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory
+- **Encrypted at rest:** AES-256-GCM with an Argon2id-derived key (64 MiB, t=3, p=4). Wallets from older versions (PBKDF2) are migrated on unlock. Files are `0600` in a `0700` directory
 
 | Dashboard | Receive |
 |---|---|
