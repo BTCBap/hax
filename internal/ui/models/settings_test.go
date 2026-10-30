@@ -340,7 +340,9 @@ func TestSettings_View_MnemonicDisplay(t *testing.T) {
 
 func TestSettings_ExportUnsortedMultisigFallsBackToDescriptor(t *testing.T) {
 	home := t.TempDir()
+	// os.UserHomeDir reads HOME on Unix and USERPROFILE on Windows.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	mock := NewMockWalletManager()
 	mock.IsMultisigFn = func() bool { return true }
