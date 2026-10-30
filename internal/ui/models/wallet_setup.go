@@ -569,6 +569,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						// Save as last wallet
 						m.saveLastWalletName(m.walletName)
+						m.wipeSecrets()
 
 						// Navigate to dashboard
 						return m, func() tea.Msg {
@@ -708,7 +709,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Save this wallet as last used (for auto-login)
 					m.saveLastWalletName(m.walletName)
-					m.wipePassphrase()
+					m.wipeSecrets()
 
 					// Navigate to dashboard
 					return m, func() tea.Msg {
@@ -743,6 +744,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Save this wallet as last used (for auto-login)
 				m.saveLastWalletName(m.selectedWallet)
+				m.wipeSecrets()
 
 				// Navigate to dashboard
 				return m, func() tea.Msg {
@@ -1175,6 +1177,21 @@ func (m WalletSetupModel) getPreviousStep() WalletSetupStep {
 	default:
 		return StepChooseAction
 	}
+}
+
+// wipeSecrets clears seed, passphrase, and password material once a wallet
+// has opened. Go strings cannot be zeroed, but dropping the references and
+// clearing the inputs shortens their lifetime.
+func (m *WalletSetupModel) wipeSecrets() {
+	m.generatedMnemonic = ""
+	m.restoreMnemonic = ""
+	m.mnemonicInput.SetValue("")
+	m.password = ""
+	m.passwordInput.SetValue("")
+	m.confirmPasswordInput.SetValue("")
+	m.wipePassphrase()
+	m.backupWords = nil
+	m.backupInput.SetValue("")
 }
 
 // wipePassphrase clears BIP39 passphrase material from the UI model (best-effort).

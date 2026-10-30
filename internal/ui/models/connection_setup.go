@@ -580,15 +580,18 @@ func (m ConnectionSetupModel) buildBackendConfig() *backend.BackendConfig {
 
 	case backend.BackendTypeRPC:
 		port, _ := strconv.Atoi(m.portInput.Value())
+		host := m.hostInput.Value()
 		return &backend.BackendConfig{
 			Type:    backend.BackendTypeRPC,
 			Network: m.network,
 			RPC: &backend.RPCConfig{
-				Host:     m.hostInput.Value(),
+				Host:     host,
 				Port:     port,
 				Username: m.userInput.Value(),
 				Password: m.passInput.Value(),
-				UseSSL:   false,
+				// Local-network nodes use HTTP; public hosts must use
+				// TLS so credentials are not sent in cleartext.
+				UseSSL: !backend.HostIsPrivate(host),
 			},
 		}
 	}

@@ -38,6 +38,11 @@ type UnlockModel struct {
 	preferredWallet string
 	notice          string
 
+	// In-process throttle after consecutive failed passwords. It delays
+	// guesses without locking the user out of their funds.
+	failedAttempts int
+	throttleUntil  time.Time
+
 	// Animation
 	lockSpinAngle    float64
 	lockSpinVelocity float64
@@ -110,6 +115,19 @@ func (m UnlockModel) fetchWalletList() tea.Cmd {
 	}
 }
 
+// unlockBackoff returns how long to wait after failures consecutive failed
+// unlock attempts. It starts after the second failure and grows to 8s.
+func unlockBackoff(failures int) time.Duration {
+	if failures < 2 {
+		return 0
+	}
+	shift := failures - 2
+	if shift > 3 {
+		shift = 3
+	}
+	return time.Second << uint(shift)
+}
+
 func (m UnlockModel) unlockWallet() tea.Cmd {
 	return func() tea.Msg {
 		err := m.walletManager.UnlockWallet(m.walletName, m.passwordInput.Value())
@@ -180,10 +198,17 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case UnlockResultMsg:
 		m.unlocking = false
 		if msg.Success {
+			m.failedAttempts = 0
+			m.throttleUntil = time.Time{}
+			m.passwordInput.SetValue("")
 			m.syncing = true
 			return m, tea.Batch(m.syncAddresses(), m.spinner.Tick)
 		} else {
 			m.err = msg.Err
+			m.failedAttempts++
+			if delay := unlockBackoff(m.failedAttempts); delay > 0 {
+				m.throttleUntil = time.Now().Add(delay)
+			}
 			m.shakeIntensity = 1.0
 			m.passwordInput.SetValue("")
 			cmds = append(cmds, m.animateTick())
@@ -258,6 +283,12 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Attempt unlock
 			if m.passwordInput.Value() == "" {
 				m.err = fmt.Errorf("please enter a password")
+				return m, nil
+			}
+			// A short growing delay after repeated failures slows
+			// guessing without ever locking the user out.
+			if time.Now().Before(m.throttleUntil) {
+				m.err = fmt.Errorf("too many failed attempts, wait a moment")
 				return m, nil
 			}
 

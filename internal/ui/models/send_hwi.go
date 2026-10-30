@@ -30,10 +30,19 @@ func (m SendModel) signWithHWI(device wallet.HardwareDevice) tea.Cmd {
 			return HWISignMsg{Err: err}
 		}
 
-		// Parse the signed PSBT to count signatures
+		// Parse the signed PSBT to count signatures. It must describe the
+		// same unsigned transaction the user reviewed: a compromised HWI
+		// or device could otherwise return signatures over other outputs.
+		original, err := walletMgr.ImportPSBTFromBase64(psbtBase64)
+		if err != nil {
+			return HWISignMsg{Err: fmt.Errorf("failed to read the PSBT that was sent: %w", err)}
+		}
 		result, err := walletMgr.ImportPSBTFromBase64(signedPSBT)
 		if err != nil {
 			return HWISignMsg{Err: fmt.Errorf("failed to parse signed PSBT: %w", err)}
+		}
+		if !wallet.SameUnsignedTransaction(original.Packet, result.Packet) {
+			return HWISignMsg{Err: fmt.Errorf("hardware wallet returned a different transaction; refusing it")}
 		}
 
 		sigsAdded := wallet.CountPSBTSigners(result.Packet)

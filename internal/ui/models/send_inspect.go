@@ -27,7 +27,44 @@ func (m *SendModel) refreshInspection() {
 // setPSBTResult replaces the current PSBT and its inspection.
 func (m *SendModel) setPSBTResult(r *wallet.PSBTResult) {
 	m.psbtResult = r
+	m.signConfirmed = false
+	if r == nil {
+		m.psbtImported = false
+	}
 	m.refreshInspection()
+}
+
+// setImportedPSBTResult replaces the current PSBT with one that came from
+// outside the wallet. Ownership checks are still authoritative, but an
+// external payment in an imported PSBT needs explicit confirmation because
+// the destination wasn't chosen in hax's own send flow.
+func (m *SendModel) setImportedPSBTResult(r *wallet.PSBTResult) {
+	m.setPSBTResult(r)
+	m.psbtImported = r != nil
+}
+
+// signingGate reports whether the inspected PSBT may be signed. A non-empty
+// blocked message refuses signing; dangerous asks for a second keypress so
+// the warnings are acknowledged. Locally built PSBTs carry the destination
+// the user already confirmed, so only genuine risks need the extra press.
+func (m *SendModel) signingGate() (blocked string, dangerous bool) {
+	if m.inspection == nil {
+		return "", false
+	}
+	if m.inspection.SignBlocked {
+		msg := "this PSBT can't be signed safely"
+		if len(m.inspection.Warnings) > 0 {
+			msg += ": " + m.inspection.Warnings[0]
+		}
+		return msg, false
+	}
+	if m.inspection.SignDangerous {
+		return "", true
+	}
+	if m.psbtImported && m.inspection.ExternalOutput {
+		return "", true
+	}
+	return "", false
 }
 
 // inspectionWarnings are the inspector's warnings plus the ones raised

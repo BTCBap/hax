@@ -825,6 +825,10 @@ func (m *MockWalletManager) CreateMultisigWalletOnNetwork(name, password string,
 	return m.CreateMultisigWallet(name, password, requiredSigs, cosigners, scriptType)
 }
 
+func (m *MockWalletManager) CreateMultisigWalletWithOrderOnNetwork(name, password string, requiredSigs int, cosigners []wallet.MultisigCosignerConfig, scriptType wallet.MultisigScriptType, network string, unsorted bool) error {
+	return m.CreateMultisigWalletOnNetwork(name, password, requiredSigs, cosigners, scriptType, network)
+}
+
 func (m *MockWalletManager) GetAddressLabel(address string) string {
 	if m.GetAddressLabelFn != nil {
 		return m.GetAddressLabelFn(address)

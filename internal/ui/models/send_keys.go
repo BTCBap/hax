@@ -533,9 +533,25 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 		}
 
-		if m.feeLevel != FeeLevelCustom && m.getFeeRateForLevel(m.feeLevel) <= 0 {
+		rate := m.getFeeRateForLevel(m.feeLevel)
+		if rate <= 0 {
 			m.err = fmt.Errorf("fee estimates unavailable — enter a custom fee rate (c) or retry")
 			return m, nil
+		}
+		// A backend estimate above the soft cap needs the same typed
+		// confirmation as a custom rate; above the hard cap it is never used.
+		if rate > feeHardCap {
+			m.err = fmt.Errorf("fee estimate too high (maximum %.0f sat/vB); enter a custom fee rate (c)", feeHardCap)
+			return m, nil
+		}
+		if rate > feeSoftCap {
+			m.highFeePending = rate
+			m.highFeeInput = textinput.New()
+			m.highFeeInput.Placeholder = highFeeConfirmWord
+			m.highFeeInput.CharLimit = 20
+			m.highFeeInput.Width = 20
+			m.err = nil
+			return m, m.highFeeInput.Focus()
 		}
 
 		if m.bump != nil {
@@ -733,7 +749,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.psbtBase64 = b64
-			m.setPSBTResult(result)
+			m.setImportedPSBTResult(result)
 			m.psbtSigsAdded = wallet.CountPSBTSigners(result.Packet)
 			m.estimatedFee = result.Fee
 			m.showURInput = false
@@ -787,7 +803,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "c":
 			// Copy PSBT to clipboard
 			if m.psbtBase64 != "" {
-				err := clipboard.WriteAll(m.psbtBase64)
+				err := copyToClipboard(m.psbtBase64)
 				if err == nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
@@ -801,6 +817,15 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "s", "S":
 			// Sign with local keys
 			if m.psbtResult == nil {
+				return m, nil
+			}
+
+			if blocked, danger := m.signingGate(); blocked != "" {
+				m.psbtExportErr = fmt.Errorf("%s", blocked)
+				return m, nil
+			} else if danger && !m.signConfirmed {
+				m.signConfirmed = true
+				m.psbtExportErr = fmt.Errorf("review the warnings above, then press s again to sign")
 				return m, nil
 			}
 
@@ -860,6 +885,14 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "b", "B":
 			// Broadcast (only if fully signed)
 			if m.psbtSigsAdded >= m.psbtSigsTotal && m.psbtResult != nil {
+				if blocked, danger := m.signingGate(); blocked != "" {
+					m.psbtExportErr = fmt.Errorf("can't broadcast: %s", blocked)
+					return m, nil
+				} else if danger && !m.signConfirmed {
+					m.signConfirmed = true
+					m.psbtExportErr = fmt.Errorf("review the warnings above, then press b again to broadcast")
+					return m, nil
+				}
 				txID, err := m.walletManager.BroadcastPSBT(m.psbtResult)
 				if err != nil {
 					m.psbtExportErr = fmt.Errorf("broadcast failed: %v", err)
@@ -920,7 +953,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "c":
 			// Copy raw hex to clipboard
 			if m.rawHex != "" {
-				err := clipboard.WriteAll(m.rawHex)
+				err := copyToClipboard(m.rawHex)
 				if err == nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
@@ -968,7 +1001,7 @@ func (m *SendModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		// Copy transaction ID to clipboard
 		if m.txID != "" {
-			err := clipboard.WriteAll(m.txID)
+			err := copyToClipboard(m.txID)
 			if err == nil {
 				m.showCopied = true
 				m.copiedTime = time.Now()

@@ -686,13 +686,14 @@ func (m WalletSetupModel) handleMultisigReview(msg tea.KeyMsg) (tea.Model, tea.C
 	case "enter":
 		// Create the multisig wallet
 		m.scrollOffset = 0
-		err := m.walletManager.CreateMultisigWalletOnNetwork(
+		err := m.walletManager.CreateMultisigWalletWithOrderOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
 			m.network,
+			m.parsedDescriptor != nil && m.parsedDescriptor.Unsorted,
 		)
 		if err != nil {
 			m.err = err
@@ -896,13 +897,14 @@ func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model,
 func (m *WalletSetupModel) createWalletFromDescriptor() error {
 	if m.descriptorIsMultisig {
 		// Create multisig wallet on the network chosen during onboarding
-		return m.walletManager.CreateMultisigWalletOnNetwork(
+		return m.walletManager.CreateMultisigWalletWithOrderOnNetwork(
 			m.walletName,
 			m.password,
 			m.multisigM,
 			m.multisigCosigners,
 			m.multisigScriptType,
 			m.network,
+			m.parsedDescriptor != nil && m.parsedDescriptor.Unsorted,
 		)
 	}
 

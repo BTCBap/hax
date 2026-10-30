@@ -9,6 +9,7 @@ import (
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/logsafe"
 	"github.com/BTCBap/hax/internal/ui/alert"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -22,7 +23,8 @@ var debugEnabled = len(os.Getenv("DEBUG")) > 0
 
 func debugLog(format string, args ...interface{}) {
 	if debugEnabled {
-		log.Printf(format, args...)
+		// Redact addresses, txids, and derivation paths from the log.
+		log.Print(logsafe.Redact(fmt.Sprintf(format, args...)))
 	}
 }
 
@@ -89,7 +91,6 @@ type RootModel struct {
 	walletManager WalletService
 	configManager *config.ConfigManager
 	walletLoaded  bool
-	testnet       bool
 	err           error
 
 	contentViewport viewport.Model
@@ -206,7 +207,6 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 
 	return RootModel{
 		state:           StateSplash,
-		testnet:         true, // Always testnet for safety
 		walletLoaded:    false,
 		walletManager:   walletManager,
 		configManager:   configManager,
@@ -256,6 +256,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, scheduleWheelSuppressRelease(m.suppressWheelToken, wheelSuppressAfterKey))
 
 		if msg.String() == "ctrl+c" {
+			clearClipboard()
 			return m, tea.Quit
 		}
 		if msg.String() == "ctrl+t" {
@@ -283,6 +284,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(restart, Navigate(msg.Then))
 	case NavigateMsg:
 		prevState := m.state
+
+		// Screens that hold passwords, seeds, or RPC credentials are
+		// dropped when we leave them so they do not stay resident.
+		if msg.Target != StateUnlock {
+			m.unlockModel = nil
+		}
+		if msg.Target != StateWalletSetup {
+			m.walletSetupModel = nil
+		}
+		if msg.Target != StateConnectionSetup {
+			m.connectionSetupModel = nil
+		}
 
 		m.state = msg.Target
 		m.contentViewport.GotoTop()

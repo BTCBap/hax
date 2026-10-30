@@ -7,7 +7,6 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
@@ -304,7 +303,7 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		case "c":
 			if m.selectedAddress != "" {
-				err := clipboard.WriteAll(m.selectedAddress)
+				err := copyToClipboard(m.selectedAddress)
 				if err == nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()

@@ -13,8 +13,8 @@ import (
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/fsutil"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -411,7 +411,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
 				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
 					tx := m.filteredTransactions[absoluteIndex]
-					err := clipboard.WriteAll(tx.TxID)
+					err := copyToClipboard(tx.TxID)
 					if err == nil {
 						m.showCopied = true
 						m.copiedTime = time.Now()
@@ -1225,7 +1225,7 @@ func (m TransactionHistoryModel) renderTransactionDetails() string {
 
 	details := []string{
 		styles.BoldText.Render("Transaction Details:"),
-		renderDetailRow("TxID:", tx.TxID),
+		renderDetailRow("TxID:", sanitizeLine(tx.TxID)),
 		renderDetailRow("Size:", fmt.Sprintf("%d bytes", tx.Size)),
 		renderDetailRow("Weight:", fmt.Sprintf("%d WU", tx.Weight)),
 		renderDetailRow("Fee:", fmt.Sprintf("%d sats", tx.Fee)),
@@ -1397,11 +1397,7 @@ func openTransactionInBrowser(network, txID string) error {
 // writePrivateFile writes data readable only by the current user (0600).
 // Exports contain transaction history and labels, which are privacy-sensitive.
 func writePrivateFile(path string, data []byte) error {
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return err
-	}
-	// WriteFile does not change the mode of an existing file; enforce it.
-	return os.Chmod(path, 0600)
+	return fsutil.WriteFileAtomic(path, data, 0o600)
 }
 
 // effectiveColumnWidths fits the user's column widths into the terminal.

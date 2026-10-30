@@ -22,6 +22,38 @@ func updateSend(t *testing.T, m SendModel, msg tea.Msg) SendModel {
 	return asSendModel(t, model)
 }
 
+func TestSigningGate(t *testing.T) {
+	m := NewSendModel(NewMockWalletManager(), 0, nil)
+	m.inspection = &wallet.PSBTInspection{
+		SignBlocked: true,
+		Warnings:    []string{"Input 1 has no amount, so the fee can't be checked."},
+	}
+	if blocked, danger := m.signingGate(); blocked == "" || danger {
+		t.Fatalf("blocked gate = (%q, %v)", blocked, danger)
+	}
+
+	m.inspection = &wallet.PSBTInspection{SignDangerous: true}
+	if blocked, danger := m.signingGate(); blocked != "" || !danger {
+		t.Fatalf("dangerous gate = (%q, %v)", blocked, danger)
+	}
+
+	// An external payment is normal in hax's own send flow, but an
+	// imported PSBT needs it acknowledged.
+	m.inspection = &wallet.PSBTInspection{ExternalOutput: true}
+	if _, danger := m.signingGate(); danger {
+		t.Fatal("hax-built payment should not need extra confirmation")
+	}
+	m.psbtImported = true
+	if _, danger := m.signingGate(); !danger {
+		t.Fatal("imported external payment should need confirmation")
+	}
+
+	m.setPSBTResult(&wallet.PSBTResult{Packet: &psbt.Packet{UnsignedTx: wire.NewMsgTx(2)}})
+	if m.signConfirmed {
+		t.Fatal("a new PSBT must reset the acknowledgement")
+	}
+}
+
 // TestSignScreen_ShowsInspection: the sign screen shows what the PSBT
 // does, for a hax-built PSBT and for an imported one, with full
 // addresses and the inspector's warnings, inside 80 columns.

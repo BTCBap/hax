@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -219,7 +218,7 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			idx := m.table.Cursor()
 			if idx >= 0 && idx < len(addrs) {
 				addr := addrs[idx].Address
-				if err := clipboard.WriteAll(addr); err == nil {
+				if err := copyToClipboard(addr); err == nil {
 					m.showCopied = true
 					m.copyMsg = "ADDRESS COPIED!"
 					m.copiedTime = time.Now()
