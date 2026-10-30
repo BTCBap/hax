@@ -66,24 +66,33 @@ func TestChunkAddress(t *testing.T) {
 	}
 }
 
-func TestWrapAddressChunks(t *testing.T) {
+func TestChunkAddressRows(t *testing.T) {
 	tests := []struct {
 		name    string
 		address string
-		width   int
+		perRow  int
 		want    []string
 	}{
-		{name: "empty", address: "", width: 20},
-		{name: "single row", address: "abcdefghijkl", width: 20, want: []string{"abcd efgh ijkl"}},
-		{name: "wraps whole groups", address: "abcdefghijkl", width: 12, want: []string{"abcd efgh", "ijkl"}},
-		{name: "narrow groups", address: "abcdefghijkl", width: 5, want: []string{"abcd", "efgh", "ijkl"}},
+		{name: "empty", address: "", perRow: 8},
+		{name: "single row", address: "abcdefghijkl", perRow: 8, want: []string{"abcd efgh ijkl"}},
+		{name: "fixed group count", address: "abcdefghijklmnop", perRow: 4, want: []string{"abcd efgh ijkl mnop"}},
+		{name: "wraps whole groups", address: "abcdefghijklmnop", perRow: 3, want: []string{"abcd efgh ijkl", "mnop"}},
+		{
+			name:    "longest address uses two rows",
+			address: verifyTestAddress,
+			perRow:  8,
+			want: []string{
+				"tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
+				"s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k7",
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := wrapAddressChunks(tc.address, tc.width)
+			got := chunkAddressRows(tc.address, tc.perRow)
 			if len(got) != len(tc.want) {
-				t.Fatalf("wrapAddressChunks(%q, %d) = %v, want %v", tc.address, tc.width, got, tc.want)
+				t.Fatalf("chunkAddressRows(%q, %d) = %v, want %v", tc.address, tc.perRow, got, tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
@@ -94,6 +103,16 @@ func TestWrapAddressChunks(t *testing.T) {
 	}
 }
 
+func TestAddressVerifyViewIdleRendersNothing(t *testing.T) {
+	v := newVerifyView(AddressVerifyIdle, 80)
+	if got := v.View(); got != "" {
+		t.Fatalf("idle panel rendered %q", got)
+	}
+	if got := v.Height(); got != 0 {
+		t.Fatalf("idle panel height = %d, want 0", got)
+	}
+}
+
 func TestAddressVerifyViewStates(t *testing.T) {
 	tests := []struct {
 		state AddressVerifyState
@@ -101,27 +120,23 @@ func TestAddressVerifyViewStates(t *testing.T) {
 		avoid []string
 	}{
 		{
-			state: AddressVerifyIdle,
-			want:  []string{"Verify on device", verifyTestPath, "v confirm on device", "tb1q rp33"},
-		},
-		{
 			state: AddressVerifyWaiting,
-			want:  []string{"Verify on device", "Confirm on your device…", "s"},
+			want:  []string{"Verify on device", verifyTestPath, "Wallet", "Device", "Confirm on your device…", "v retry • esc back"},
 			avoid: []string{"Matches device", "different address"},
 		},
 		{
 			state: AddressVerifyMatch,
-			want:  []string{"Verify on device", "✓ Matches device"},
+			want:  []string{"Verify on device", "Wallet", "Device", "✓ Matches device", "v retry • esc back"},
 			avoid: []string{"Confirm on your device", "different address"},
 		},
 		{
 			state: AddressVerifyMismatch,
-			want:  []string{"Verify on device", "✗ Device shows a different address", "tb1q rp33", "0sl5", "k8"},
+			want:  []string{"Verify on device", "Wallet", "Device", "✗ Device shows a different address", "0sl5 k8", "v retry • esc back"},
 			avoid: []string{"Matches device"},
 		},
 		{
 			state: AddressVerifyError,
-			want:  []string{"Verify on device", "device is in mainnet mode"},
+			want:  []string{"Verify on device", "Wallet", "Device", "device is in mainnet mode", "v retry • esc back"},
 			avoid: []string{"Matches device", "different address"},
 		},
 	}
@@ -147,9 +162,47 @@ func TestAddressVerifyViewStates(t *testing.T) {
 	}
 }
 
+func TestAddressVerifyViewGroupLayout(t *testing.T) {
+	plain := stripANSI(newVerifyView(AddressVerifyMismatch, 80).View())
+	for _, want := range []string{
+		"Wallet  tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
+		"        s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k7",
+		"Device  tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
+		"        s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k8",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("view does not contain %q:\n%s", want, plain)
+		}
+	}
+
+	match := stripANSI(newVerifyView(AddressVerifyMatch, 80).View())
+	if got := strings.Count(match, "rp33"); got != 1 {
+		t.Fatalf("match should show the wallet address once, got %d copies:\n%s", got, match)
+	}
+	if !strings.Contains(match, "Device") {
+		t.Fatalf("match should still label the empty device rows:\n%s", match)
+	}
+}
+
+func TestAddressVerifyViewReservedRows(t *testing.T) {
+	short := AddressVerifyView{
+		Address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+		Path:    verifyTestPath,
+		State:   AddressVerifyWaiting,
+		Width:   80,
+	}
+	long := newVerifyView(AddressVerifyWaiting, 80)
+
+	if short.Height() != long.Height() {
+		t.Fatalf("short address height = %d, long address height = %d", short.Height(), long.Height())
+	}
+	if got, want := requireLineCount(t, short.View()), requireLineCount(t, long.View()); got != want {
+		t.Fatalf("short address rendered %d lines, long address %d", got, want)
+	}
+}
+
 func TestAddressVerifyViewLayoutStable(t *testing.T) {
 	states := []AddressVerifyState{
-		AddressVerifyIdle,
 		AddressVerifyWaiting,
 		AddressVerifyMatch,
 		AddressVerifyMismatch,
@@ -159,8 +212,8 @@ func TestAddressVerifyViewLayoutStable(t *testing.T) {
 	for _, width := range []int{80, 120} {
 		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
 			var wantLines int
-			var wantTitle viewPosition
-			var wantStatusLine int
+			wantTitle := viewPosition{line: -1}
+			wantStatusLine := -1
 
 			for i, state := range states {
 				v := newVerifyView(state, width)
@@ -168,8 +221,6 @@ func TestAddressVerifyViewLayoutStable(t *testing.T) {
 				title := requireTextPosition(t, view, "Verify on device")
 				var status viewPosition
 				switch state {
-				case AddressVerifyIdle:
-					status = requireTextPosition(t, view, "v confirm on device")
 				case AddressVerifyWaiting:
 					status = requireTextPosition(t, view, "Confirm on your device")
 				case AddressVerifyMatch:
@@ -195,7 +246,7 @@ func TestAddressVerifyViewLayoutStable(t *testing.T) {
 					t.Fatalf("state %d title moved from %+v to %+v", state, wantTitle, title)
 				}
 				if status.line != wantStatusLine {
-					t.Fatalf("state %d status moved from line %d to %d", state, wantStatusLine, status.line)
+					t.Fatalf("state %d status moved from line %d to %d", state, status.line, wantStatusLine)
 				}
 			}
 		})
@@ -236,18 +287,17 @@ func TestAddressVerifyViewMismatchHighlightsDifferentGroups(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(previous)
 
-	v := newVerifyView(AddressVerifyMismatch, 80)
-	rendered := v.deviceLine("xf3q 0sl5 k8", 13)
+	rendered := newVerifyView(AddressVerifyMismatch, 80).View()
 	plain := stripANSI(rendered)
-	if plain != "xf3q 0sl5 k8" {
-		t.Fatalf("device line = %q", plain)
+	if strings.Count(plain, "Device  tb1q") != 1 {
+		t.Fatalf("device address was not rendered:\n%s", plain)
 	}
-	for _, same := range []string{"xf3q", "0sl5"} {
+	for _, same := range []string{"tb1q", "rp33", "s4nc", "0sl5", "k7"} {
 		if strings.Contains(rendered, styles.ErrorText.Render(same)) {
-			t.Fatalf("matching group %q was highlighted: %q", same, rendered)
+			t.Fatalf("matching group %q was highlighted", same)
 		}
 	}
 	if !strings.Contains(rendered, styles.ErrorText.Render("k8")) {
-		t.Fatalf("different group was not highlighted: %q", rendered)
+		t.Fatalf("different group was not highlighted")
 	}
 }

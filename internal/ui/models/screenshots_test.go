@@ -280,13 +280,18 @@ func renderScreens(w, h int) []renderedScreen {
 		hm.derivationPath = verifyTestPath
 		hm.revealProgress = 1.0
 		hm.verify.Reset(verifyTestAddress, verifyTestPath)
-		hm.verify.State = verify.state
-		hm.verify.Frame = 3
-		if verify.state == AddressVerifyWaiting {
+		hm.verify.Begin()
+		switch verify.state {
+		case AddressVerifyWaiting:
+			hm.verify.Frame = 3
 			hm.verify.StartedAt = time.Now().Add(-2 * time.Second)
-		}
-		if verify.state == AddressVerifyMismatch {
-			hm.verify.DeviceAddress = verifyTestDevice
+		case AddressVerifyMatch:
+			hm.verify.Complete(nil)
+		case AddressVerifyMismatch:
+			hm.verify.Complete(&wallet.AddressMismatchError{
+				Displayed: verifyTestDevice,
+				Expected:  verifyTestAddress,
+			})
 		}
 		screens = append(screens, renderedScreen{verify.name, hm.View()})
 	}

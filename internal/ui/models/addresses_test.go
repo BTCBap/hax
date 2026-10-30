@@ -1,8 +1,10 @@
 package models
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -84,6 +86,109 @@ func TestAddresses_VerifyOnDeviceMismatch(t *testing.T) {
 	}
 	if !strings.Contains(stripANSI(updated.View()), "✗ Device shows a different address") {
 		t.Fatalf("view does not show mismatch:\n%s", stripANSI(updated.View()))
+	}
+}
+
+func newHardwareAddresses(t *testing.T, width, height int) (AddressesModel, *MockWalletManager) {
+	t.Helper()
+	mock := NewMockWalletManager()
+	mock.IsHardwareWalletFn = func() bool { return true }
+	mock.IsMultisigFn = func() bool { return false }
+
+	m := NewAddressesModel(mock, nil)
+	m.receiveAddresses = []AddrDisplayInfo{{
+		Address: verifyTestAddress,
+		Path:    verifyTestPath,
+		Index:   0,
+	}}
+	m.updateTable()
+	model, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return model.(AddressesModel), mock
+}
+
+func TestAddresses_VerifyModeReplacesDetailAndRestores(t *testing.T) {
+	m, _ := newHardwareAddresses(t, 80, 24)
+	before := m.View()
+	if strings.Contains(stripANSI(before), "Verify on device") {
+		t.Fatalf("idle addresses view already shows the panel:\n%s", stripANSI(before))
+	}
+	if !strings.Contains(stripANSI(before), "UNUSED") {
+		t.Fatalf("idle addresses view is missing the list:\n%s", stripANSI(before))
+	}
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = model.(AddressesModel)
+	if !m.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "Verify on device") {
+		t.Fatalf("verify mode did not replace the list detail area:\n%s", plain)
+	}
+	if strings.Contains(plain, "UNUSED") {
+		t.Fatalf("verify mode still shows the address list:\n%s", plain)
+	}
+	if strings.Contains(plain, "No label") {
+		t.Fatalf("verify mode still shows the selected address label line:\n%s", plain)
+	}
+	assertWithinTerminal(t, m.View(), 80, 24)
+
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	restored := model.(AddressesModel)
+	if restored.verify.Active() {
+		t.Fatal("esc should leave verify mode")
+	}
+	if got := restored.View(); got != before {
+		t.Fatalf("esc did not restore the addresses view exactly:\nbefore:\n%q\nafter:\n%q", before, got)
+	}
+}
+
+func TestAddresses_VerifyModeLineCountStable(t *testing.T) {
+	for _, size := range []struct {
+		name string
+		w, h int
+	}{{"80x24", 80, 24}, {"120x40", 120, 40}} {
+		t.Run(size.name, func(t *testing.T) {
+			m, _ := newHardwareAddresses(t, size.w, size.h)
+
+			states := []AddressVerifyState{
+				AddressVerifyWaiting,
+				AddressVerifyMatch,
+				AddressVerifyMismatch,
+				AddressVerifyError,
+			}
+			var wantLines int
+			for i, state := range states {
+				m.verify.Reset(verifyTestAddress, verifyTestPath)
+				m.verify.Begin()
+				switch state {
+				case AddressVerifyWaiting:
+					m.verify.StartedAt = time.Now().Add(-2 * time.Second)
+				case AddressVerifyMatch:
+					m.verify.Complete(nil)
+				case AddressVerifyMismatch:
+					m.verify.Complete(&wallet.AddressMismatchError{
+						Displayed: verifyTestDevice,
+						Expected:  verifyTestAddress,
+					})
+				case AddressVerifyError:
+					m.verify.Complete(errors.New("device is in mainnet mode"))
+				}
+				if m.verify.State != state {
+					t.Fatalf("state = %d, want %d", m.verify.State, state)
+				}
+
+				view := m.View()
+				lines := requireLineCount(t, view)
+				if i == 0 {
+					wantLines = lines
+				}
+				if lines != wantLines {
+					t.Fatalf("state %d rendered %d lines, want %d", state, lines, wantLines)
+				}
+				assertWithinTerminal(t, view, size.w, size.h)
+			}
+		})
 	}
 }
 

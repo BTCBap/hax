@@ -27,6 +27,11 @@ const (
 const (
 	addressVerifyTickInterval = 120 * time.Millisecond
 	addressVerifyMaxWidth     = 80
+	addressVerifyMinWidth     = 24
+	addressVerifyLabelWidth   = 8
+	addressVerifyMaxGroups    = 8
+	addressVerifyLongestAddr  = 62
+	addressVerifyGroupSize    = 4
 )
 
 var addressVerifySpinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -42,8 +47,8 @@ func AddressVerifyTickCmd() tea.Cmd {
 }
 
 // AddressVerifyView renders the on-device address verification panel. It keeps
-// the same number of rows in every state so the surrounding screen does not
-// shift while the device is checked.
+// the same number of rows in every active state so the surrounding screen does
+// not shift while the device is checked. Idle renders nothing.
 type AddressVerifyView struct {
 	Address       string
 	Path          string
@@ -53,6 +58,8 @@ type AddressVerifyView struct {
 	Width         int
 	Frame         int
 	StartedAt     time.Time
+
+	attempt uint64
 }
 
 // Reset clears the result and points the panel at a new address.
@@ -64,6 +71,7 @@ func (v *AddressVerifyView) Reset(address, path string) {
 	v.State = AddressVerifyIdle
 	v.Frame = 0
 	v.StartedAt = time.Time{}
+	v.attempt++
 }
 
 // Begin starts a device confirmation.
@@ -73,6 +81,17 @@ func (v *AddressVerifyView) Begin() {
 	v.State = AddressVerifyWaiting
 	v.Frame = 0
 	v.StartedAt = time.Now()
+	v.attempt++
+}
+
+// Cancel leaves verification mode and discards the current result.
+func (v *AddressVerifyView) Cancel() {
+	v.DeviceAddress = ""
+	v.ErrMessage = ""
+	v.State = AddressVerifyIdle
+	v.Frame = 0
+	v.StartedAt = time.Time{}
+	v.attempt++
 }
 
 // Complete records the device result.
@@ -100,17 +119,31 @@ func (v *AddressVerifyView) Advance() {
 	v.Frame++
 }
 
+// Active reports whether the panel is visible.
+func (v AddressVerifyView) Active() bool {
+	return v.State != AddressVerifyIdle
+}
+
 // IsWaiting reports whether a device confirmation is in progress.
 func (v AddressVerifyView) IsWaiting() bool {
 	return v.State == AddressVerifyWaiting
 }
 
-// Height is the number of terminal rows the panel occupies.
-func (v AddressVerifyView) Height() int {
-	return 2 + 2*v.reservedRows() + 2 // border rows, address blocks, title and status
+// Attempt identifies the current confirmation so stale device results can be
+// discarded after a retry or after leaving verification mode.
+func (v AddressVerifyView) Attempt() uint64 {
+	return v.attempt
 }
 
-func (v AddressVerifyView) innerWidth() int {
+// Height is the number of terminal rows the panel occupies. Idle occupies none.
+func (v AddressVerifyView) Height() int {
+	if !v.Active() {
+		return 0
+	}
+	return 2*v.reservedRows() + 8 // border, title, wallet/device blocks, status, hint
+}
+
+func (v AddressVerifyView) panelWidth() int {
 	panelWidth := v.Width
 	if panelWidth <= 0 {
 		panelWidth = addressVerifyMaxWidth
@@ -118,53 +151,63 @@ func (v AddressVerifyView) innerWidth() int {
 	if panelWidth > addressVerifyMaxWidth {
 		panelWidth = addressVerifyMaxWidth
 	}
-	if panelWidth < 24 {
-		panelWidth = 24
+	if panelWidth < addressVerifyMinWidth {
+		panelWidth = addressVerifyMinWidth
 	}
-	innerWidth := panelWidth - 4 // rounded border and one column of padding each side
-	if innerWidth < 8 {
-		innerWidth = 8
-	}
-	return innerWidth
+	return panelWidth
 }
 
+func (v AddressVerifyView) innerWidth() int {
+	return v.panelWidth() - 4 // rounded border and one column of padding each side
+}
+
+// groupsPerRow keeps the historical eight groups per row when there is room
+// and drops to fewer groups on narrow panels.
+func (v AddressVerifyView) groupsPerRow() int {
+	available := v.innerWidth() - addressVerifyLabelWidth
+	if available < addressVerifyGroupSize {
+		available = addressVerifyGroupSize
+	}
+	perRow := (available + 1) / (addressVerifyGroupSize + 1)
+	if perRow > addressVerifyMaxGroups {
+		perRow = addressVerifyMaxGroups
+	}
+	if perRow < 1 {
+		perRow = 1
+	}
+	return perRow
+}
+
+// reservedRows is based on the longest supported address so P2WPKH and P2WSH
+// addresses render at the same height.
 func (v AddressVerifyView) reservedRows() int {
-	reserved := len(wrapAddressChunks(v.Address, v.innerWidth()))
-	if deviceRows := len(wrapAddressChunks(v.DeviceAddress, v.innerWidth())); deviceRows > reserved {
-		reserved = deviceRows
+	groups := (addressVerifyLongestAddr + addressVerifyGroupSize - 1) / addressVerifyGroupSize
+	perRow := v.groupsPerRow()
+	rows := (groups + perRow - 1) / perRow
+	if rows < 1 {
+		rows = 1
 	}
-	if reserved == 0 {
-		reserved = 1
-	}
-	return reserved
+	return rows
 }
 
-// View renders the fixed-height panel.
+// View renders the fixed-height panel. Idle state renders nothing.
 func (v AddressVerifyView) View() string {
-	innerWidth := v.innerWidth()
-	expectedLines := wrapAddressChunks(v.Address, innerWidth)
-	deviceLines := wrapAddressChunks(v.DeviceAddress, innerWidth)
-	reserved := v.reservedRows()
+	if !v.Active() {
+		return ""
+	}
 
-	lines := make([]string, 0, 2+2*reserved)
+	innerWidth := v.innerWidth()
+	rows := v.reservedRows()
+
+	lines := make([]string, 0, 2*rows+6)
 	lines = append(lines, v.titleLine(innerWidth))
-	for i := 0; i < reserved; i++ {
-		if i < len(expectedLines) {
-			lines = append(lines, styles.NormalText.Render(expectedLines[i]))
-		} else {
-			lines = append(lines, "")
-		}
-	}
-	deviceGroup := 0
-	for i := 0; i < reserved; i++ {
-		if v.State == AddressVerifyMismatch && i < len(deviceLines) {
-			lines = append(lines, v.deviceLine(deviceLines[i], deviceGroup))
-			deviceGroup += len(strings.Split(deviceLines[i], " "))
-		} else {
-			lines = append(lines, "")
-		}
-	}
-	lines = append(lines, v.statusLine(innerWidth))
+	lines = append(lines, padLine("", innerWidth))
+	lines = append(lines, v.addressRows(v.Address, "Wallet", false)...)
+	lines = append(lines, v.addressRows(v.DeviceAddress, "Device", v.State == AddressVerifyMismatch)...)
+	lines = append(lines, padLine("", innerWidth))
+	lines = append(lines, padLine(v.statusLine(innerWidth), innerWidth))
+	lines = append(lines, padLine("", innerWidth))
+	lines = append(lines, padLine(styles.DimText.Render("v retry • esc back"), innerWidth))
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -187,7 +230,7 @@ func (v AddressVerifyView) titleLine(width int) string {
 
 	line := styles.HighlightText.Render(title)
 	if path == "" {
-		return line + strings.Repeat(" ", width-titleWidth)
+		return padLine(line, width)
 	}
 	gap := width - titleWidth - lipgloss.Width(path)
 	if gap < 1 {
@@ -196,19 +239,40 @@ func (v AddressVerifyView) titleLine(width int) string {
 	return line + strings.Repeat(" ", gap) + styles.DimText.Render(path)
 }
 
-func (v AddressVerifyView) deviceLine(line string, offset int) string {
+// addressRows renders an address in fixed-size groups, using only the reserved
+// number of rows. Device rows stay blank until a mismatch is available.
+func (v AddressVerifyView) addressRows(address, label string, highlight bool) []string {
+	rows := v.reservedRows()
+	perRow := v.groupsPerRow()
+	groups := chunkAddress(address)
 	expected := chunkAddress(v.Address)
-	parts := strings.Split(line, " ")
-	rendered := make([]string, len(parts))
-	for i, group := range parts {
-		groupIndex := offset + i
-		if groupIndex >= len(expected) || group != expected[groupIndex] {
-			rendered[i] = styles.ErrorText.Render(group)
-		} else {
-			rendered[i] = styles.NormalText.Render(group)
+
+	lines := make([]string, 0, rows)
+	for row := 0; row < rows; row++ {
+		prefix := strings.Repeat(" ", addressVerifyLabelWidth)
+		if row == 0 {
+			prefix = label + strings.Repeat(" ", max(0, addressVerifyLabelWidth-lipgloss.Width(label)))
 		}
+
+		var line strings.Builder
+		line.WriteString(prefix)
+
+		start := row * perRow
+		end := min(start+perRow, len(groups))
+		for i := start; i < end; i++ {
+			if i > start {
+				line.WriteString(" ")
+			}
+			group := groups[i]
+			if highlight && (i >= len(expected) || group != expected[i]) {
+				line.WriteString(styles.ErrorText.Render(group))
+			} else {
+				line.WriteString(styles.NormalText.Render(group))
+			}
+		}
+		lines = append(lines, padLine(line.String(), v.innerWidth()))
 	}
-	return strings.Join(rendered, " ")
+	return lines
 }
 
 func (v AddressVerifyView) statusLine(width int) string {
@@ -235,8 +299,6 @@ func (v AddressVerifyView) statusLine(width int) string {
 	case AddressVerifyError:
 		text = v.ErrMessage
 		style = styles.ErrorText
-	default:
-		text = "v confirm on device"
 	}
 	if lipgloss.Width(text) > width {
 		text = truncateRunes(text, width, "…")
@@ -260,9 +322,9 @@ func (v AddressVerifyView) borderColor() lipgloss.Color {
 // chunkAddress splits an address into groups of four characters.
 func chunkAddress(address string) []string {
 	runes := []rune(address)
-	groups := make([]string, 0, (len(runes)+3)/4)
+	groups := make([]string, 0, (len(runes)+addressVerifyGroupSize-1)/addressVerifyGroupSize)
 	for len(runes) > 0 {
-		n := 4
+		n := addressVerifyGroupSize
 		if len(runes) < n {
 			n = len(runes)
 		}
@@ -272,35 +334,24 @@ func chunkAddress(address string) []string {
 	return groups
 }
 
-// wrapAddressChunks groups the address by four and wraps the groups to width.
-func wrapAddressChunks(address string, width int) []string {
-	if width < 1 {
-		width = 1
+// chunkAddressRows groups an address by four and wraps after perRow groups.
+func chunkAddressRows(address string, perRow int) []string {
+	if perRow < 1 {
+		perRow = 1
 	}
 
-	var lines []string
-	var current strings.Builder
-	currentWidth := 0
-	for _, group := range chunkAddress(address) {
-		groupWidth := lipgloss.Width(group)
-		if currentWidth == 0 {
-			current.WriteString(group)
-			currentWidth = groupWidth
-			continue
-		}
-		if currentWidth+1+groupWidth > width {
-			lines = append(lines, current.String())
-			current.Reset()
-			current.WriteString(group)
-			currentWidth = groupWidth
-			continue
-		}
-		current.WriteString(" ")
-		current.WriteString(group)
-		currentWidth += 1 + groupWidth
-	}
-	if current.Len() > 0 {
-		lines = append(lines, current.String())
+	groups := chunkAddress(address)
+	lines := make([]string, 0, (len(groups)+perRow-1)/perRow)
+	for start := 0; start < len(groups); start += perRow {
+		end := min(start+perRow, len(groups))
+		lines = append(lines, strings.Join(groups[start:end], " "))
 	}
 	return lines
+}
+
+func padLine(line string, width int) string {
+	if w := lipgloss.Width(line); w < width {
+		return line + strings.Repeat(" ", width-w)
+	}
+	return line
 }
