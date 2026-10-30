@@ -364,7 +364,7 @@ func TestSettings_ExportUnsortedMultisigFallsBackToDescriptor(t *testing.T) {
 	updated := model.(SettingsModel)
 
 	path := filepath.Join(home, ".hax", "test-wallet_descriptor.txt")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- test reads a file it just wrote under t.TempDir()
 	if err != nil {
 		t.Fatalf("reading exported descriptor: %v", err)
 	}
