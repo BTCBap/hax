@@ -549,10 +549,12 @@ func TestTxFlow_80(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden (run UPDATE_GOLDEN=1 go test -run TestTxFlow_80): %v", err)
 	}
-	if string(want) == got {
+	// Git may check the golden out with CRLF on Windows; compare against LF.
+	wantText := strings.ReplaceAll(string(want), "\r\n", "\n")
+	if wantText == got {
 		return
 	}
-	wantLines := strings.Split(string(want), "\n")
+	wantLines := strings.Split(wantText, "\n")
 	gotLines := strings.Split(got, "\n")
 	for i := 0; i < len(wantLines) || i < len(gotLines); i++ {
 		var wantLine, gotLine string
