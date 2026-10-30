@@ -4,6 +4,25 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-30
+
+### Added
+- Transaction flow view (`v` from send Review, the PSBT inspector and History) showing inputs, the fee and outputs with change and your own addresses marked.
+- On-device address verification panel for hardware wallets in Receive and Addresses (`v`), highlighting any differing characters.
+- Speed-up tray on pending outgoing History rows (`b`), with preset targets and a custom rate; signing still goes through review.
+- Stealth mode (`z`) that hides amounts on overview screens; review and signing screens always show real values.
+- Passphrase badge on the Dashboard.
+- BIP329 label import and a unified backup export (descriptors, xpubs and labels, no private keys) in Settings.
+- Fees screen (`F` from the Dashboard) with estimates from the selected server only.
+
+### Changed
+- UTXO screen: summary line with mempool and frozen totals, age, confirmations, address columns and sorting.
+- Confirmation steps use two-stage trays; the send hint changes from "continue" to "confirm & sign" on the final step.
+- Helper text now sits to the right of the selected item in all menus; hardware device rows always show PIN, passphrase and error status.
+
+### Fixed
+- Setup progress percentages follow completed steps, never show 100% early and never go backwards.
+
 ## [1.3.0] - 2026-10-30
 
 ### Security
