@@ -25,6 +25,7 @@ type WalletService interface {
 	IsMultisig() bool
 	GetMultisigConfig() *wallet.MultisigWalletConfig
 	GetScriptType() (wallet.ScriptType, int, int)
+	HasPassphrase() bool
 
 	// Backend
 	SetBackend(b backend.BitcoinBackend) error

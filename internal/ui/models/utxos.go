@@ -49,6 +49,9 @@ type UTXOsModel struct {
 
 	// Screen visibility
 	isActive bool
+
+	// stealth hides coin values.
+	stealth bool
 }
 
 // UTXOsInitMsg triggers initial load
@@ -95,6 +98,11 @@ func (m UTXOsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		m.sortAndUpdateTable()
+		return m, nil
+
 	case UTXOsInitMsg:
 		// Load UTXOs from cached state only - no network calls
 		state := m.walletManager.GetState()
@@ -278,6 +286,11 @@ func (m *UTXOsModel) getAbsoluteIndex() int {
 	return m.currentPage*m.itemsPerPage + m.selectedIdx
 }
 
+// CapturesTextInput reports whether the label editor owns the keyboard.
+func (m UTXOsModel) CapturesTextInput() bool {
+	return m.editMode
+}
+
 func (m *UTXOsModel) sortAndUpdateTable() {
 	displayUnit := m.getDisplayUnit()
 
@@ -338,7 +351,7 @@ func (m *UTXOsModel) sortAndUpdateTable() {
 		}
 
 		// Value
-		valueStr := wallet.FormatAmountCompact(utxo.Value, displayUnit)
+		valueStr := maskAmount(wallet.FormatAmountCompact(utxo.Value, displayUnit), m.stealth)
 
 		rows = append(rows, table.Row{
 			dateStr,
@@ -368,7 +381,7 @@ func (m UTXOsModel) getDisplayUnit() wallet.DisplayUnit {
 }
 
 func (m UTXOsModel) View() string {
-	header := styles.ScreenHeaderStyle.Render("Unspent Transaction Outputs")
+	header := styles.ScreenHeaderStyle.Render("Unspent Transaction Outputs") + stealthBadge(m.stealth)
 
 	// Copy status badge
 	copyStatus := ""
@@ -410,8 +423,8 @@ func (m UTXOsModel) View() string {
 		}
 	}
 
-	balanceStr := wallet.FormatAmountCompact(confirmedBalance, displayUnit)
-	mempoolStr := wallet.FormatAmountCompact(pendingBalance, displayUnit)
+	balanceStr := maskAmount(wallet.FormatAmountCompact(confirmedBalance, displayUnit), m.stealth)
+	mempoolStr := maskAmount(wallet.FormatAmountCompact(pendingBalance, displayUnit), m.stealth)
 
 	statsContent := fmt.Sprintf("%s %s\n%s %s\n%s %d",
 		styles.DimText.Render("Balance:"),
@@ -424,7 +437,7 @@ func (m UTXOsModel) View() string {
 	if frozenCount > 0 {
 		statsContent += fmt.Sprintf("\n%s %s (%d)",
 			styles.DimText.Render("Frozen:"),
-			styles.WarningText.Render(wallet.FormatAmountCompact(frozenBalance, displayUnit)),
+			styles.WarningText.Render(maskAmount(wallet.FormatAmountCompact(frozenBalance, displayUnit), m.stealth)),
 			frozenCount)
 	}
 

@@ -73,6 +73,15 @@ func (m SettingsModel) View() string {
 
 	// Wallet Information Section
 	walletName := m.walletManager.GetWalletName()
+	if m.walletManager.HasPassphrase() {
+		maxValueWidth := 40
+		if m.width > 0 {
+			if w := styles.ClampWidth(70, m.width) - 6 - 17; w > 0 {
+				maxValueWidth = w
+			}
+		}
+		walletName = walletNameWithBadge(walletName, true, maxValueWidth)
+	}
 	network := m.walletManager.GetNetwork()
 	createdAt := m.walletManager.GetCreatedAt()
 	createdDate := time.Unix(createdAt, 0).Format("2006-01-02 15:04:05")

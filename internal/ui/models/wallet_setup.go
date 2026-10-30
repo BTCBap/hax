@@ -305,6 +305,16 @@ func (m WalletSetupModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+// CapturesTextInput reports whether a setup form field owns the keyboard.
+func (m WalletSetupModel) CapturesTextInput() bool {
+	return m.backupInput.Focused() ||
+		m.nameInput.Focused() || m.passwordInput.Focused() ||
+		m.confirmPasswordInput.Focused() || m.passphraseInput.Focused() ||
+		m.confirmPassphraseInput.Focused() || m.mnemonicInput.Focused() ||
+		m.customPathInput.Focused() || m.descriptorInput.Focused() ||
+		m.multisigCurrentXpub.Focused() || m.multisigCosignerSeed.Focused()
+}
+
 func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd

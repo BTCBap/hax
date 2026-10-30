@@ -89,6 +89,9 @@ type TransactionHistoryModel struct {
 
 	// Chain state for confirmation calculation
 	blockHeight int64
+
+	// stealth hides transaction amounts.
+	stealth bool
 }
 
 // TransactionsMsg carries fetched transactions
@@ -220,6 +223,11 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		m.updateTableData()
+		return m, nil
+
 	case ScreenActiveMsg:
 		m.isActive = true
 		if m.loading {
@@ -817,6 +825,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		amountStr := fmt.Sprintf("%s%.8f BTC",
 			getAmountPrefix(analysis.NetAmount),
 			absAmount.ToBTC())
+		amountStr = maskAmount(amountStr, m.stealth)
 
 		// Format status with confirmation progress
 		status := formatConfirmations(tx.Status.BlockHeight, m.blockHeight, tx.Status.Confirmed)
@@ -1120,9 +1129,14 @@ func analyzeTransaction(tx api.Transaction, ourAddresses map[string]bool) Transa
 	}
 }
 
+// CapturesTextInput reports whether search or label editing owns the keyboard.
+func (m TransactionHistoryModel) CapturesTextInput() bool {
+	return m.txFlow != nil || m.searchMode || m.editMode
+}
+
 // historyHeaderBlock is the title, page, filter and copy-status frame.
 func (m TransactionHistoryModel) historyHeaderBlock() string {
-	header := styles.ScreenHeaderStyle.Render("📜 Transaction History")
+	header := styles.ScreenHeaderStyle.Render("📜 Transaction History") + stealthBadge(m.stealth)
 
 	copyStatus := ""
 	if m.showCopied && time.Since(m.copiedTime) <= 2*time.Second {

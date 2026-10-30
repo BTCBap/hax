@@ -53,6 +53,9 @@ type MainDashboardModel struct {
 	// Re-trust flow for an Electrum server whose TLS key changed.
 	retrustPrompt *backend.PinMismatchError
 	retrustErr    error
+
+	// stealth hides balances and amounts.
+	stealth bool
 }
 
 // BalanceMsg is sent when balance is fetched
@@ -145,6 +148,9 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+
 	case ScreenActiveMsg:
 		m.isActive = true
 		state := m.walletManager.GetState()
@@ -330,6 +336,11 @@ func (m MainDashboardModel) View() string {
 	return grid
 }
 
+// CapturesTextInput keeps root-level shortcuts out of the re-trust prompt.
+func (m MainDashboardModel) CapturesTextInput() bool {
+	return m.retrustPrompt != nil
+}
+
 func (m MainDashboardModel) viewGrid() string {
 	// Get unified state for status display
 	state := m.walletManager.GetState()
@@ -357,7 +368,11 @@ func (m MainDashboardModel) viewGrid() string {
 	}
 
 	// --- Wallet Info Box ---
-	walletName := m.walletManager.GetWalletName()
+	contentWidth := colWidth - 6 // borders and horizontal padding
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+	walletName := walletNameWithBadge(m.walletManager.GetWalletName(), m.walletManager.HasPassphrase(), contentWidth)
 	walletTitle := styles.HighlightText.Render(walletName)
 
 	// Add multisig indicator if applicable
@@ -416,7 +431,8 @@ func (m MainDashboardModel) viewGrid() string {
 		balanceDisplay = styles.ErrorText.Render(fmt.Sprintf("Error: %v", m.err))
 	} else {
 		balanceFormatted := wallet.FormatAmount(displayBalance, displayUnit)
-		balanceDisplay = styles.DimText.Render("Balance: ") + styles.BalanceValueStyle.Render(balanceFormatted)
+		balanceDisplay = styles.DimText.Render("Balance: ") +
+			styles.BalanceValueStyle.Render(maskAmount(balanceFormatted, m.stealth))
 	}
 
 	// Script type, followed by the TESTNET4 tag on test-network wallets.
@@ -429,8 +445,9 @@ func (m MainDashboardModel) viewGrid() string {
 	isLoading := state.Status == wallet.SyncStatusConnecting || state.Status == wallet.SyncStatusSyncing
 
 	// Build wallet info box content
+	stealthLine := stealthBadge(m.stealth)
 	walletInfoContent := walletTitle + "\n" +
-		statusIndicator + "\n\n" +
+		statusIndicator + "\n" + stealthLine + "\n" +
 		balanceDisplay + "\n\n" +
 		walletMeta
 
@@ -586,7 +603,7 @@ func (m MainDashboardModel) renderRecentTransactions(txs []api.Transaction, unit
 		if absAmount < 0 {
 			absAmount = -absAmount
 		}
-		amountStr := wallet.FormatAmountCompact(absAmount, unit)
+		amountStr := maskAmount(wallet.FormatAmountCompact(absAmount, unit), m.stealth)
 
 		// Direction indicator
 		direction := styles.TxDirectionInStyle.Render("↓")

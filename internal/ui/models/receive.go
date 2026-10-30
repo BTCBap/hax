@@ -42,6 +42,9 @@ type ReceiveModel struct {
 
 	// Screen visibility - controls whether tickers run
 	isActive bool
+
+	// stealth hides the address balance.
+	stealth bool
 }
 
 // AddressGeneratedMsg is sent when a new address is generated
@@ -166,6 +169,10 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		return m, nil
+
 	case ScreenActiveMsg:
 		m.isActive = true
 		if m.revealProgress < 0.99 {
@@ -349,7 +356,7 @@ func (m ReceiveModel) View() string {
 	}
 
 	// Compact header
-	header := styles.ScreenHeaderStyle.Render("Receive Bitcoin")
+	header := styles.ScreenHeaderStyle.Render("Receive Bitcoin") + stealthBadge(m.stealth)
 
 	// Copy status - inline with header (pastel green, matching theme)
 	copyStatus := ""
@@ -430,9 +437,9 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 	if m.addressBalance > 0 {
 		btcBalance := m.addressBalance.ToBTC()
 		balanceLine = styles.SuccessText.
-			Render(fmt.Sprintf("Balance: %.8f BTC", btcBalance))
+			Render("Balance: " + maskAmount(fmt.Sprintf("%.8f BTC", btcBalance), m.stealth))
 	} else {
-		balanceLine = styles.DimText.Render("Balance: 0 BTC")
+		balanceLine = styles.DimText.Render("Balance: " + maskAmount("0 BTC", m.stealth))
 	}
 
 	// Combine all content vertically

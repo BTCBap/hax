@@ -48,7 +48,35 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			a.verify.DeviceAddress = verifyTestDevice
 			return a
 		},
-		"utxos":      func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },
+		"utxos": func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },
+		"utxos_stealth": func(*MockWalletManager) tea.Model {
+			m := stealthUTXOs()
+			m.stealth = true
+			m.sortAndUpdateTable()
+			return m
+		},
+		"addresses_stealth": func(*MockWalletManager) tea.Model {
+			m := stealthAddresses()
+			m.stealth = true
+			m.updateTable()
+			return m
+		},
+		"receive_stealth": func(*MockWalletManager) tea.Model {
+			m := stealthReceive()
+			m.stealth = true
+			return m
+		},
+		"history_stealth": func(*MockWalletManager) tea.Model {
+			m := stealthHistory()
+			m.stealth = true
+			m.updateTableData()
+			return m
+		},
+		"dashboard_stealth": func(*MockWalletManager) tea.Model {
+			m := stealthDashboard()
+			m.stealth = true
+			return m
+		},
 		"settings":   func(w *MockWalletManager) tea.Model { return NewSettingsModel(w, nil) },
 		"help":       func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
 		"setup":      func(w *MockWalletManager) tea.Model { return NewWalletSetupModel(w, nil) },

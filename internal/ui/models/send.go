@@ -536,6 +536,15 @@ func (m *SendModel) applyMaxSpendPreviewFinalization(result *wallet.PSBTResult) 
 	return nil
 }
 
+// CapturesTextInput reports whether the current send step owns the keyboard.
+// The address input stays focused after its step, so the step matters.
+func (m SendModel) CapturesTextInput() bool {
+	if m.step == SendStepAddress || m.step == SendStepAmount {
+		return true
+	}
+	return m.txFlow != nil || m.editingCustom || m.showFileInput || m.showURInput
+}
+
 func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd

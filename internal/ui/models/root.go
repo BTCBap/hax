@@ -67,6 +67,17 @@ type StateChangedMsg struct {
 	State wallet.WalletStateSnapshot
 }
 
+// StealthToggledMsg tells screen models whether balances and amounts are hidden.
+type StealthToggledMsg struct {
+	On bool
+}
+
+// textInputCapturer reports whether a screen is reading raw text input. Root
+// global single-letter shortcuts must not intercept keys on those screens.
+type textInputCapturer interface {
+	CapturesTextInput() bool
+}
+
 // RootModel is the top-level model that manages all screens
 type RootModel struct {
 	state  AppState
@@ -92,6 +103,9 @@ type RootModel struct {
 	configManager *config.ConfigManager
 	walletLoaded  bool
 	err           error
+
+	// stealth hides balances and amounts on balance screens.
+	stealth bool
 
 	contentViewport viewport.Model
 
@@ -179,6 +193,13 @@ func scheduleWheelSuppressRelease(token int, after time.Duration) tea.Cmd {
 func NewRootModel(walletManager WalletService, configManager *config.ConfigManager) RootModel {
 	alertModel := alert.NewAlertModel(80, 3)
 
+	stealth := false
+	if configManager != nil {
+		if cfg, err := configManager.Load(); err == nil && cfg != nil {
+			stealth = cfg.StealthMode
+		}
+	}
+
 	alertModel.RegisterNewAlertType(alert.AlertDefinition{
 		Key:       AlertTypeNewTx,
 		ForeColor: "#B5EAD7",
@@ -214,6 +235,7 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 		alertModel:      *alertModel,
 		contentViewport: vp,
 		listenStop:      make(chan struct{}),
+		stealth:         stealth,
 	}
 }
 
@@ -261,6 +283,14 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.String() == "ctrl+t" {
 			cmds = append(cmds, m.alertModel.NewAlertCmd(AlertTypeNewTx, "Test alert - notifications working!"))
+		}
+		if msg.String() == "z" && !modelCapturesTextInput(m.getActiveModel()) {
+			m.stealth = !m.stealth
+			cmds = append(cmds, m.broadcastStealth())
+			if cmd := persistStealth(m.configManager, m.stealth); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
 		}
 
 	case tea.WindowSizeMsg:
@@ -394,6 +424,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				m.setActiveModel(msg.Target, sized)
 			}
+			m.setActiveModel(msg.Target, applyStealth(m.getActiveModel(), m.stealth))
 			if initializer, ok := m.getActiveModel().(interface{ Init() tea.Cmd }); ok {
 				return updateAlertAndReturn(initializer.Init())
 			}
@@ -638,6 +669,64 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// modelCapturesTextInput reports whether the given screen is currently
+// reading text input.
+func modelCapturesTextInput(model tea.Model) bool {
+	if c, ok := model.(textInputCapturer); ok {
+		return c.CapturesTextInput()
+	}
+	return false
+}
+
+// applyStealth forwards the current stealth state to a newly created screen.
+func applyStealth(model tea.Model, on bool) tea.Model {
+	if model == nil {
+		return nil
+	}
+	updated, _ := model.Update(StealthToggledMsg{On: on})
+	return updated
+}
+
+// broadcastStealth forwards a stealth change to every screen that may still
+// be alive in the background.
+func (m *RootModel) broadcastStealth() tea.Cmd {
+	msg := StealthToggledMsg{On: m.stealth}
+	var cmds []tea.Cmd
+	update := func(model *tea.Model) {
+		if *model == nil {
+			return
+		}
+		updated, cmd := (*model).Update(msg)
+		*model = updated
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	update(&m.mainDashboardModel)
+	update(&m.receiveModel)
+	update(&m.sendModel)
+	update(&m.transactionHistoryModel)
+	update(&m.addressesModel)
+	update(&m.utxosModel)
+	return tea.Batch(cmds...)
+}
+
+// persistStealth writes the preference to the config file when one exists.
+func persistStealth(configManager *config.ConfigManager, on bool) tea.Cmd {
+	if configManager == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		cfg, err := configManager.Load()
+		if err != nil || cfg == nil {
+			return nil
+		}
+		cfg.StealthMode = on
+		_ = configManager.Save(cfg)
+		return nil
+	}
 }
 
 // getActiveModel returns the currently active model

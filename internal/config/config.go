@@ -36,6 +36,8 @@ type AppConfig struct {
 	// AutoLockMinutes locks an unlocked wallet after this many idle minutes.
 	// 0 uses DefaultAutoLockMinutes; a negative value disables auto-lock.
 	AutoLockMinutes int `json:"auto_lock_minutes,omitempty"`
+	// StealthMode hides balances and amounts on balance screens.
+	StealthMode bool `json:"stealth_mode,omitempty"`
 }
 
 // DefaultAutoLockMinutes is the idle timeout used when none is configured.

@@ -132,6 +132,15 @@ func (m SettingsModel) Init() tea.Cmd {
 	return nil
 }
 
+// CapturesTextInput reports whether a seed, password, or cosigner edit form is
+// open, so root-level shortcuts stay out of it.
+func (m SettingsModel) CapturesTextInput() bool {
+	return m.showCosignerSeedInput || m.showSingleSigSeedInput ||
+		m.showCosignerScanPassword || m.showCosignerEdit ||
+		m.cosignerSeedInput.Focused() || m.cosignerScanPassword.Focused() ||
+		m.cosignerNameInput.Focused() || m.cosignerFingerprintInput.Focused()
+}
+
 // checkHWIStatus probes HWI availability and version (called once on screen activation)
 func (m SettingsModel) checkHWIStatus() string {
 	hwi := m.walletManager.GetHWIClient()

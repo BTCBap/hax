@@ -26,6 +26,7 @@ Help  0%
 │      a           Addresses                                                                       │
 │      u           UTXOs                                                                           │
 │      t           Settings                                                                        │
+│      z           hide amounts (stealth mode)                                                     │
 │      T           Re-trust a changed server key (when shown)                                      │
 │                                                                                                  │
 │    Receive                                                                                       │
@@ -33,7 +34,6 @@ Help  0%
 │      n           Generate new address                                                            │
 │      c           Copy address to clipboard                                                       │
 │      ←/→         Navigate addresses                                                              │
-│                                                                                                  │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ↑/↓ scroll • esc back

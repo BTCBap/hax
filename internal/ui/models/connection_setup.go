@@ -179,6 +179,13 @@ func (m ConnectionSetupModel) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
+// CapturesTextInput reports whether a connection field owns the keyboard.
+func (m ConnectionSetupModel) CapturesTextInput() bool {
+	return m.hostInput.Focused() || m.portInput.Focused() ||
+		m.userInput.Focused() || m.passInput.Focused() ||
+		m.torPortInput.Focused()
+}
+
 func (m ConnectionSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd

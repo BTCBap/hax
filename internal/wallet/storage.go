@@ -48,7 +48,10 @@ type WalletData struct {
 	Name     string `json:"name"`
 	Mnemonic string `json:"mnemonic"` // Encrypted (empty for watch-only multisig)
 	// Optional BIP39 passphrase ("25th word"). Stored only inside the encrypted file.
-	Passphrase        string            `json:"passphrase,omitempty"`
+	Passphrase string `json:"passphrase,omitempty"`
+	// HasPassphrase records that a non-empty BIP39 passphrase was used. It is
+	// stored inside the encrypted file and never exposes the passphrase.
+	HasPassphrase     bool              `json:"has_passphrase,omitempty"`
 	CreatedAt         int64             `json:"created_at"`
 	Network           string            `json:"network"` // "mainnet" or "testnet"
 	Accounts          []AccountData     `json:"accounts"`

@@ -87,6 +87,9 @@ type AddressesModel struct {
 
 	// Hardware wallet address verification
 	verify AddressVerifyView
+
+	// stealth hides address balances.
+	stealth bool
 }
 
 // AddressesInitMsg triggers initial load
@@ -139,6 +142,11 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		m.updateTable()
+		return m, nil
+
 	case AddressesInitMsg:
 		m.loadAddresses()
 		m.loading = false
@@ -521,7 +529,7 @@ func (m *AddressesModel) updateTable() {
 		}
 
 		// Balance
-		balanceStr := wallet.FormatAmountCompact(addr.Balance, displayUnit)
+		balanceStr := maskAmount(wallet.FormatAmountCompact(addr.Balance, displayUnit), m.stealth)
 
 		row := table.Row{
 			indexStr,
@@ -589,7 +597,7 @@ func (m AddressesModel) View() string {
 		modeLabel = "Change Addresses"
 	}
 
-	header := styles.ScreenHeaderStyle.Render(modeLabel)
+	header := styles.ScreenHeaderStyle.Render(modeLabel) + stealthBadge(m.stealth)
 
 	// Copy status badge
 	copyStatus := ""
@@ -615,7 +623,7 @@ func (m AddressesModel) View() string {
 	}
 
 	displayUnit := m.getDisplayUnit()
-	balanceStr := wallet.FormatAmountCompact(totalBalance, displayUnit)
+	balanceStr := maskAmount(wallet.FormatAmountCompact(totalBalance, displayUnit), m.stealth)
 
 	statsLine := styles.DimText.Render(fmt.Sprintf(
 		"%d used • %s total", usedCount, balanceStr))
@@ -692,6 +700,11 @@ func (m AddressesModel) View() string {
 	output := strings.Join(append(parts, help), "\n")
 
 	return output
+}
+
+// CapturesTextInput reports whether the label editor owns the keyboard.
+func (m AddressesModel) CapturesTextInput() bool {
+	return m.editing
 }
 
 // selected returns the address under the cursor.

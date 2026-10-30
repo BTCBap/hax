@@ -30,6 +30,7 @@ type MockWalletManager struct {
 	IsMultisigFn           func() bool
 	GetMultisigConfigFn    func() *wallet.MultisigWalletConfig
 	GetScriptTypeFn        func() (wallet.ScriptType, int, int)
+	HasPassphraseFn        func() bool
 
 	// Backend
 	SetBackendFn func(backend.BitcoinBackend) error
@@ -234,6 +235,13 @@ func (m *MockWalletManager) GetScriptType() (wallet.ScriptType, int, int) {
 		return m.GetScriptTypeFn()
 	}
 	return 0, 0, 0
+}
+
+func (m *MockWalletManager) HasPassphrase() bool {
+	if m.HasPassphraseFn != nil {
+		return m.HasPassphraseFn()
+	}
+	return false
 }
 
 // --- Backend ---

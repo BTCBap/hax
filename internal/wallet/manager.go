@@ -272,13 +272,14 @@ func (m *WalletManager) CreateWalletOnNetwork(name, password string, wordCount i
 
 	// Create wallet data
 	walletData := &WalletData{
-		Version:    1,
-		Name:       name,
-		Mnemonic:   mnemonic,
-		Passphrase: passphrase,
-		CreatedAt:  time.Now().Unix(),
-		Network:    network,
-		Accounts:   make([]AccountData, 0),
+		Version:       1,
+		Name:          name,
+		Mnemonic:      mnemonic,
+		Passphrase:    passphrase,
+		HasPassphrase: passphrase != "",
+		CreatedAt:     time.Now().Unix(),
+		Network:       network,
+		Accounts:      make([]AccountData, 0),
 	}
 
 	// Save to disk
@@ -323,13 +324,14 @@ func (m *WalletManager) RestoreWalletOnNetwork(name, password, mnemonic, passphr
 
 	// Create wallet data
 	walletData := &WalletData{
-		Version:    1,
-		Name:       name,
-		Mnemonic:   mnemonic,
-		Passphrase: passphrase,
-		CreatedAt:  time.Now().Unix(),
-		Network:    network,
-		Accounts:   make([]AccountData, 0),
+		Version:       1,
+		Name:          name,
+		Mnemonic:      mnemonic,
+		Passphrase:    passphrase,
+		HasPassphrase: passphrase != "",
+		CreatedAt:     time.Now().Unix(),
+		Network:       network,
+		Accounts:      make([]AccountData, 0),
 	}
 
 	// Save to disk
@@ -736,6 +738,15 @@ func (m *WalletManager) GetWalletName() string {
 		return ""
 	}
 	return m.data.Name
+}
+
+// HasPassphrase reports whether the loaded wallet was created or restored with
+// a non-empty BIP39 passphrase.
+func (m *WalletManager) HasPassphrase() bool {
+	if m.data == nil {
+		return false
+	}
+	return m.data.HasPassphrase
 }
 
 // CreateAccount creates a new account. Pass "" for the standard derivation path.

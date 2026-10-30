@@ -213,6 +213,15 @@ func renderScreens(w, h int) []renderedScreen {
 	d.balance, d.balanceLoaded, d.loading = balance, true, false
 	screens = append(screens, renderedScreen{"dashboard", d.View()})
 
+	dStealth := d
+	dStealth.stealth = true
+	screens = append(screens, renderedScreen{"dashboard_stealth", dStealth.View()})
+
+	mock.HasPassphraseFn = func() bool { return true }
+	dPassphrase := d
+	screens = append(screens, renderedScreen{"dashboard_passphrase", dPassphrase.View()})
+	mock.HasPassphraseFn = nil
+
 	// Send review: one recipient, 1 sat/vB (the medium tier), P2WPKH 1-in/2-out.
 	sm := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
 	sm.feeEstimates = fees
