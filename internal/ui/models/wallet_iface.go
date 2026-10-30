@@ -25,6 +25,7 @@ type WalletService interface {
 	IsMultisig() bool
 	GetMultisigConfig() *wallet.MultisigWalletConfig
 	GetScriptType() (wallet.ScriptType, int, int)
+	HasPassphrase() bool
 
 	// Backend
 	SetBackend(b backend.BitcoinBackend) error
@@ -132,6 +133,7 @@ type WalletService interface {
 	ExportDescriptorUR() (string, error)
 	ExportMultisigConfig() ([]byte, error)
 	ExportColdcardMultisig() (string, error)
+	ExportUnifiedBackup() ([]byte, error)
 }
 
 // Compile-time check: *wallet.WalletManager satisfies WalletService

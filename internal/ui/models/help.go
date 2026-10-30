@@ -243,7 +243,9 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("h", "Transaction history"))
 	lines = append(lines, m.shortcut("a", "Addresses"))
 	lines = append(lines, m.shortcut("u", "UTXOs"))
+	lines = append(lines, m.shortcut("F", "Fee estimates from the current server"))
 	lines = append(lines, m.shortcut("t", "Settings"))
+	lines = append(lines, m.shortcut("z", "hide amounts (stealth mode)"))
 	lines = append(lines, m.shortcut("T", "Re-trust a changed server key (when shown)"))
 
 	// Receive
@@ -262,6 +264,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, styles.SectionSubheaderStyle.Render("  History"))
 	lines = append(lines, m.shortcut("esc/q", "Back"))
 	lines = append(lines, m.shortcut("enter", "Open selected transaction in browser"))
+	lines = append(lines, m.shortcut("v", "View transaction flow (history, review, PSBT)"))
 	lines = append(lines, m.shortcut("f/x", "Cycle type/status filters"))
 	lines = append(lines, m.shortcut("/", "Search transactions"))
 	lines = append(lines, m.shortcut("e", "Edit transaction label"))
@@ -282,6 +285,9 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("tab", "Toggle receive / change"))
 	lines = append(lines, m.shortcut("c", "Copy address"))
 	lines = append(lines, m.shortcut("e", "Edit address label"))
+	if m.walletMode() == helpWalletHardware {
+		lines = append(lines, m.shortcut("v", "Verify address on hardware device"))
+	}
 	lines = append(lines, m.shortcut("r", "Refresh"))
 
 	// UTXOs
@@ -291,6 +297,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("\u2191/\u2193", "Navigate rows"))
 	lines = append(lines, m.shortcut("PgUp/PgDn", "Scroll faster"))
 	lines = append(lines, m.shortcut("\u2190/\u2192", "Page navigation"))
+	lines = append(lines, m.shortcut("1/2", "Sort by value / age"))
 	lines = append(lines, m.shortcut("c", "Copy outpoint (txid:vout)"))
 	lines = append(lines, m.shortcut("e", "Edit UTXO label"))
 	lines = append(lines, m.shortcut("f", "Freeze/unfreeze (never spent)"))
@@ -305,6 +312,8 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 		lines = append(lines, m.shortcut("c", "Copy xpub"))
 	}
 	lines = append(lines, m.shortcut("d", "Open descriptor screen"))
+	lines = append(lines, m.shortcut("l", "Import labels (BIP329 JSON Lines)"))
+	lines = append(lines, m.shortcut("B", "Export unified backup (descriptors + labels, no keys)"))
 	lines = append(lines, m.shortcut("u", "Toggle display unit"))
 	lines = append(lines, m.shortcut("g", "Cycle address gap limit"))
 	switch m.walletMode() {

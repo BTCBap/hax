@@ -461,29 +461,24 @@ func (m *SendModel) renderQRFrame() string {
 	return qrStr
 }
 
-func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
+// psbtExportHeader is the Sign & Broadcast title and status frame.
+func (m SendModel) psbtExportHeader() (header, statusText string, statusStyle lipgloss.Style) {
 	// Guard against nil wallet manager in tests or incomplete state.
 	if m.walletManager == nil {
-		header := styles.TitleStyle.Render("🔐 Sign & Broadcast")
+		title := styles.TitleStyle.Render("🔐 Sign & Broadcast")
 		subtitle := m.stepHeader(7, "Sign to complete transaction")
-		help := styles.RenderHelp(styles.HK("esc", "back"))
-		return header + "\n" + subtitle, styles.DimText.Render("Loading..."), help
+		return title + "\n" + subtitle, "", styles.DimText
 	}
 
 	// Determine header based on signing status
-	var headerText string
+	headerText := "🔐 Sign & Broadcast"
 	if m.psbtSigsAdded >= m.psbtSigsTotal {
 		headerText = "✓ Sign & Broadcast"
-	} else {
-		headerText = "🔐 Sign & Broadcast"
 	}
-	header := styles.TitleStyle.Render(headerText)
+	title := styles.TitleStyle.Render(headerText)
 
 	// Determine status based on signatures
 	var subtitleText string
-	var statusText string
-	var statusStyle lipgloss.Style
-
 	if m.psbtSigsAdded >= m.psbtSigsTotal {
 		subtitleText = "Ready to broadcast"
 		statusText = fmt.Sprintf("✓ %d of %d signatures", m.psbtSigsAdded, m.psbtSigsTotal)
@@ -498,6 +493,17 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 		statusStyle = styles.DimText
 	}
 	subtitle := m.stepHeader(7, subtitleText)
+	return title + "\n" + subtitle, statusText, statusStyle
+}
+
+func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
+	// Guard against nil wallet manager in tests or incomplete state.
+	if m.walletManager == nil {
+		header, _, _ := m.psbtExportHeader()
+		help := styles.RenderHelp(styles.HK("esc", "back"))
+		return header, styles.DimText.Render("Loading..."), help
+	}
+	header, statusText, statusStyle := m.psbtExportHeader()
 
 	// Responsive box width for PSBT display
 	psbtBoxWidth := m.width - 4
@@ -669,11 +675,12 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 
 	items = append(items,
 		styles.HK("c", "copy"),
-		styles.HK("h", "HW sign"),
-		styles.HK("q", "QR code"),
-		styles.HK("f", "save file"),
+		styles.HK("h", "HWI"),
+		styles.HK("q", "QR"),
+		styles.HK("f", "save"),
 		styles.HK("i", "import"),
-		styles.HK("u", "paste UR"),
+		styles.HK("u", "UR"),
+		styles.HK("v", "flow"),
 	)
 	if m.psbtSigsAdded >= m.psbtSigsTotal {
 		items = append(items, styles.HK("b", "broadcast"))
@@ -684,7 +691,7 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 	help := styles.RenderHelp(items...)
 
 	// Split into fixed header and scrollable content
-	fixedHeader := header + "\n" + subtitle
+	fixedHeader := header
 
 	var contentSections []string
 	if inspection := m.renderInspection(psbtBoxWidth); inspection != "" {
@@ -700,6 +707,10 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 }
 
 func (m SendModel) viewPSBTExport() string {
+	if m.txFlow != nil {
+		header, _, _ := m.psbtExportHeader()
+		return m.renderTxFlowUnder(header)
+	}
 	// Handle file input overlay
 	if m.showFileInput {
 		return m.viewFileInput()
@@ -872,6 +883,7 @@ func (m SendModel) viewFileBrowser() string {
 			maxShow = len(m.psbtFiles)
 		}
 
+		options := make([]choiceOption, 0, maxShow)
 		for i := 0; i < maxShow; i++ {
 			file := m.psbtFiles[i]
 			// Get just the filename for display
@@ -879,14 +891,9 @@ func (m SendModel) viewFileBrowser() string {
 			// Get parent directory name
 			parentDir := filepath.Base(filepath.Dir(file))
 
-			var line string
-			if i == m.fileBrowserCursor {
-				line = styles.SelectedItemStyle.Render(fmt.Sprintf("▶ %s (%s)", filename, parentDir))
-			} else {
-				line = styles.UnselectedItemStyle.Render(fmt.Sprintf("  %s (%s)", filename, parentDir))
-			}
-			content.WriteString(line + "\n")
+			options = append(options, choiceOption{name: filename, desc: parentDir})
 		}
+		content.WriteString(renderChoiceMenu(options, m.fileBrowserCursor))
 
 		if len(m.psbtFiles) > maxShow {
 			content.WriteString(styles.DimText.Render(fmt.Sprintf("\n  ... and %d more files", len(m.psbtFiles)-maxShow)))

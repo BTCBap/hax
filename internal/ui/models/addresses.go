@@ -19,6 +19,7 @@ import (
 // AddrDisplayInfo holds info about an address for display
 type AddrDisplayInfo struct {
 	Address string
+	Path    string
 	Index   uint32
 	Used    bool
 	Balance api.Satoshi
@@ -83,6 +84,12 @@ type AddressesModel struct {
 	editing    bool
 	editAddr   string
 	labelInput textinput.Model
+
+	// Hardware wallet address verification
+	verify AddressVerifyView
+
+	// stealth hides address balances.
+	stealth bool
 }
 
 // AddressesInitMsg triggers initial load
@@ -135,12 +142,18 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		m.updateTable()
+		return m, nil
+
 	case AddressesInitMsg:
 		m.loadAddresses()
 		m.loading = false
 		m.updateTable()
 		m.table.Focus()
 		m.table.GotoTop()
+		m.syncVerifyAddress()
 		return m, nil
 
 	case ScreenActiveMsg:
@@ -149,11 +162,26 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateTable()
 		m.table.Focus()
 		m.table.GotoTop()
+		m.syncVerifyAddress()
 		return m, nil
 
 	case StateChangedMsg:
 		m.loadAddresses()
 		m.updateTable()
+		m.syncVerifyAddress()
+		return m, nil
+
+	case AddressVerifyTickMsg:
+		if m.verify.IsWaiting() {
+			m.verify.Advance()
+			cmds = append(cmds, AddressVerifyTickCmd())
+		}
+		return m, tea.Batch(cmds...)
+
+	case HWIVerifyMsg:
+		if m.verify.IsWaiting() && (msg.Attempt == 0 || msg.Attempt == m.verify.Attempt()) {
+			m.verify.Complete(msg.Err)
+		}
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -196,6 +224,19 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.editing {
 			return m.handleLabelKey(msg)
 		}
+		if m.verify.Active() {
+			switch msg.String() {
+			case "esc":
+				m.verify.Cancel()
+				return m, nil
+			case "v":
+				if a, ok := m.selected(); ok {
+					m.beginVerify(a)
+					cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice(a))
+				}
+			}
+			return m, tea.Batch(cmds...)
+		}
 		switch msg.String() {
 		case "esc", "q":
 			m.isActive = false
@@ -206,6 +247,7 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewMode = (m.viewMode + 1) % 2
 			m.updateTable()
 			m.table.GotoTop()
+			m.syncVerifyAddress()
 
 		case "c":
 			// Copy selected address
@@ -238,6 +280,15 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.labelInput.Focus()
 			}
 
+		case "v":
+			if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+				if a, ok := m.selected(); ok && a.Address != "" && a.Path != "" {
+					m.beginVerify(a)
+					cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice(a))
+					return m, tea.Batch(cmds...)
+				}
+			}
+
 		case "r":
 			// Refresh
 			m.loadAddresses()
@@ -248,12 +299,51 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var tableCmd tea.Cmd
 		m.table, tableCmd = m.table.Update(msg)
 		m.clampCursor()
+		m.syncVerifyAddress()
 		if tableCmd != nil {
 			cmds = append(cmds, tableCmd)
 		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// syncVerifyAddress resets the verification result when the selected address
+// changes. Results stay visible while the same address is selected.
+func (m *AddressesModel) syncVerifyAddress() {
+	a, ok := m.selected()
+	if !ok || !m.walletManager.IsHardwareWallet() || m.walletManager.IsMultisig() {
+		if m.verify.Address != "" || m.verify.State != AddressVerifyIdle {
+			m.verify.Reset("", "")
+		}
+		return
+	}
+	if m.verify.Address != a.Address || m.verify.Path != a.Path {
+		m.verify.Reset(a.Address, a.Path)
+	}
+}
+
+// beginVerify points the panel at a and starts a new device confirmation.
+func (m *AddressesModel) beginVerify(a AddrDisplayInfo) {
+	if m.verify.Address != a.Address || m.verify.Path != a.Path {
+		m.verify.Reset(a.Address, a.Path)
+	}
+	m.verify.Begin()
+}
+
+// verifyAddressOnDevice asks the hardware wallet to display the selected
+// address so the user can compare it.
+func (m AddressesModel) verifyAddressOnDevice(a AddrDisplayInfo) tea.Cmd {
+	walletMgr := m.walletManager
+	address := a.Address
+	path := a.Path
+	attempt := m.verify.Attempt()
+	return func() tea.Msg {
+		return HWIVerifyMsg{
+			Err:     walletMgr.DisplayAddressOnDevice(address, path),
+			Attempt: attempt,
+		}
+	}
 }
 
 func (m *AddressesModel) resizeColumnsForWidth() {
@@ -380,6 +470,7 @@ func (m *AddressesModel) loadAddresses() {
 
 			info := AddrDisplayInfo{
 				Address: addr.Address,
+				Path:    addr.Path,
 				Index:   addr.Index,
 				Used:    addr.Used,
 				Balance: balance,
@@ -438,7 +529,7 @@ func (m *AddressesModel) updateTable() {
 		}
 
 		// Balance
-		balanceStr := wallet.FormatAmountCompact(addr.Balance, displayUnit)
+		balanceStr := maskAmountRight(wallet.FormatAmountCompact(addr.Balance, displayUnit), m.stealth)
 
 		row := table.Row{
 			indexStr,
@@ -506,7 +597,7 @@ func (m AddressesModel) View() string {
 		modeLabel = "Change Addresses"
 	}
 
-	header := styles.ScreenHeaderStyle.Render(modeLabel)
+	header := styles.ScreenHeaderStyle.Render(modeLabel) + stealthBadge(m.stealth)
 
 	// Copy status badge
 	copyStatus := ""
@@ -532,7 +623,7 @@ func (m AddressesModel) View() string {
 	}
 
 	displayUnit := m.getDisplayUnit()
-	balanceStr := wallet.FormatAmountCompact(totalBalance, displayUnit)
+	balanceStr := maskAmount(wallet.FormatAmountCompact(totalBalance, displayUnit), m.stealth)
 
 	statsLine := styles.DimText.Render(fmt.Sprintf(
 		"%d used • %s total", usedCount, balanceStr))
@@ -547,9 +638,15 @@ func (m AddressesModel) View() string {
 	}
 	tabs := receiveTab + "  " + changeTab
 
-	// Table content — wrap in border for visual consistency with history screen
+	// Table content — wrap in border for visual consistency with history screen.
+	// In verification mode the panel replaces the list detail area.
+	verifyActive := m.verify.Active()
 	var content string
-	if m.loading {
+	if verifyActive {
+		verify := m.verify
+		verify.Width = m.width
+		content = verify.View()
+	} else if m.loading {
 		content = styles.DimText.Render("Loading addresses...")
 	} else if m.err != nil {
 		content = styles.ErrorText.Render(fmt.Sprintf("Error: %v", m.err))
@@ -574,14 +671,26 @@ func (m AddressesModel) View() string {
 	}
 
 	// Help footer
-	help := styles.RenderHelpWrapped(m.width,
+	helpItems := []styles.HelpItem{
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("PgUp/PgDn", "scroll"),
 		styles.HK("tab", "recv/change"),
 		styles.HK("c", "copy"),
 		styles.HK("e", "label"),
-		styles.HK("esc", "back"),
-	)
+	}
+	if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+		helpItems = append(helpItems, styles.HK("v", "verify on device"))
+	}
+	helpItems = append(helpItems, styles.HK("esc", "back"))
+	help := styles.RenderHelpWrapped(m.width, helpItems...)
+	if verifyActive {
+		// The verification panel owns the screen while it is open; its keys
+		// replace the list hints on the same footer row.
+		help = styles.RenderHelp(
+			styles.HK("v", "retry"),
+			styles.HK("esc", "back"),
+		)
+	}
 	if m.editing {
 		help = styles.RenderHelp(
 			styles.HK("enter", "save"),
@@ -591,12 +700,19 @@ func (m AddressesModel) View() string {
 
 	// Build layout
 	parts := []string{header + copyStatus, tabs, statsLine, "", content}
-	if l := m.labelLine(); l != "" {
-		parts = append(parts, l)
+	if !verifyActive {
+		if l := m.labelLine(); l != "" {
+			parts = append(parts, l)
+		}
 	}
 	output := strings.Join(append(parts, help), "\n")
 
 	return output
+}
+
+// CapturesTextInput reports whether the label editor owns the keyboard.
+func (m AddressesModel) CapturesTextInput() bool {
+	return m.editing
 }
 
 // selected returns the address under the cursor.

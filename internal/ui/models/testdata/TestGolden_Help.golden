@@ -25,15 +25,15 @@ Help  0%
 │      h           Transaction history                                                             │
 │      a           Addresses                                                                       │
 │      u           UTXOs                                                                           │
+│      F           Fee estimates from the current server                                           │
 │      t           Settings                                                                        │
+│      z           hide amounts (stealth mode)                                                     │
 │      T           Re-trust a changed server key (when shown)                                      │
 │                                                                                                  │
 │    Receive                                                                                       │
 │      esc/q       Back                                                                            │
 │      n           Generate new address                                                            │
 │      c           Copy address to clipboard                                                       │
-│      ←/→         Navigate addresses                                                              │
-│                                                                                                  │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ↑/↓ scroll • esc back

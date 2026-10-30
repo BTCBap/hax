@@ -42,6 +42,7 @@ const (
 	StateTransactionHistory
 	StateAddresses
 	StateUTXOs
+	StateFees
 	StateSettings
 	StateHelp
 )
@@ -67,6 +68,17 @@ type StateChangedMsg struct {
 	State wallet.WalletStateSnapshot
 }
 
+// StealthToggledMsg tells screen models whether balances and amounts are hidden.
+type StealthToggledMsg struct {
+	On bool
+}
+
+// textInputCapturer reports whether a screen is reading raw text input. Root
+// global single-letter shortcuts must not intercept keys on those screens.
+type textInputCapturer interface {
+	CapturesTextInput() bool
+}
+
 // RootModel is the top-level model that manages all screens
 type RootModel struct {
 	state  AppState
@@ -83,6 +95,7 @@ type RootModel struct {
 	transactionHistoryModel tea.Model
 	addressesModel          tea.Model
 	utxosModel              tea.Model
+	feesModel               tea.Model
 	settingsModel           tea.Model
 	helpModel               tea.Model
 
@@ -92,6 +105,9 @@ type RootModel struct {
 	configManager *config.ConfigManager
 	walletLoaded  bool
 	err           error
+
+	// stealth hides balances and amounts on balance screens.
+	stealth bool
 
 	contentViewport viewport.Model
 
@@ -124,7 +140,7 @@ const (
 // usesRootViewport reports whether the active screen should use root-level overflow scrolling.
 func (m RootModel) usesRootViewport() bool {
 	switch m.state {
-	case StateAddresses, StateSend, StateSettings, StateWalletSetup, StateHelp, StateUTXOs, StateTransactionHistory:
+	case StateAddresses, StateSend, StateSettings, StateWalletSetup, StateHelp, StateUTXOs, StateFees, StateTransactionHistory:
 		return false
 	default:
 		return true
@@ -137,6 +153,8 @@ type NavigateMsg struct {
 	Refresh bool // If true, trigger a balance refresh on dashboard
 	// FeeBumpTxID opens the send screen to speed up this transaction.
 	FeeBumpTxID string
+	// FeeBumpRate pre-fills the speed-up fee step when non-zero.
+	FeeBumpRate float64
 }
 
 // Navigate returns a Cmd that navigates to a new screen
@@ -179,6 +197,13 @@ func scheduleWheelSuppressRelease(token int, after time.Duration) tea.Cmd {
 func NewRootModel(walletManager WalletService, configManager *config.ConfigManager) RootModel {
 	alertModel := alert.NewAlertModel(80, 3)
 
+	stealth := false
+	if configManager != nil {
+		if cfg, err := configManager.Load(); err == nil && cfg != nil {
+			stealth = cfg.StealthMode
+		}
+	}
+
 	alertModel.RegisterNewAlertType(alert.AlertDefinition{
 		Key:       AlertTypeNewTx,
 		ForeColor: "#B5EAD7",
@@ -214,6 +239,7 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 		alertModel:      *alertModel,
 		contentViewport: vp,
 		listenStop:      make(chan struct{}),
+		stealth:         stealth,
 	}
 }
 
@@ -261,6 +287,14 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.String() == "ctrl+t" {
 			cmds = append(cmds, m.alertModel.NewAlertCmd(AlertTypeNewTx, "Test alert - notifications working!"))
+		}
+		if msg.String() == "z" && !modelCapturesTextInput(m.getActiveModel()) {
+			m.stealth = !m.stealth
+			cmds = append(cmds, m.broadcastStealth())
+			if cmd := persistStealth(m.configManager, m.stealth); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
 		}
 
 	case tea.WindowSizeMsg:
@@ -347,7 +381,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateSend:
 			state := m.walletManager.GetState()
 			if msg.FeeBumpTxID != "" {
-				m.sendModel = NewFeeBumpModel(m.walletManager, msg.FeeBumpTxID, state.Balance, state.UTXOs)
+				if msg.FeeBumpRate > 0 {
+					m.sendModel = NewFeeBumpModelWithRate(m.walletManager, msg.FeeBumpTxID, msg.FeeBumpRate, state.Balance, state.UTXOs)
+				} else {
+					m.sendModel = NewFeeBumpModel(m.walletManager, msg.FeeBumpTxID, state.Balance, state.UTXOs)
+				}
 			} else {
 				m.sendModel = NewSendModel(m.walletManager, state.Balance, state.UTXOs)
 			}
@@ -362,6 +400,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			isNewModel = true
 		case StateUTXOs:
 			m.utxosModel = NewUTXOsModel(m.walletManager, m.configManager)
+			isNewModel = true
+		case StateFees:
+			m.feesModel = NewFeesModel(m.walletManager, m.configManager)
 			isNewModel = true
 		case StateSettings:
 			if m.settingsModel == nil {
@@ -394,6 +435,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				m.setActiveModel(msg.Target, sized)
 			}
+			m.setActiveModel(msg.Target, applyStealth(m.getActiveModel(), m.stealth))
 			if initializer, ok := m.getActiveModel().(interface{ Init() tea.Cmd }); ok {
 				return updateAlertAndReturn(initializer.Init())
 			}
@@ -640,6 +682,64 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// modelCapturesTextInput reports whether the given screen is currently
+// reading text input.
+func modelCapturesTextInput(model tea.Model) bool {
+	if c, ok := model.(textInputCapturer); ok {
+		return c.CapturesTextInput()
+	}
+	return false
+}
+
+// applyStealth forwards the current stealth state to a newly created screen.
+func applyStealth(model tea.Model, on bool) tea.Model {
+	if model == nil {
+		return nil
+	}
+	updated, _ := model.Update(StealthToggledMsg{On: on})
+	return updated
+}
+
+// broadcastStealth forwards a stealth change to every screen that may still
+// be alive in the background.
+func (m *RootModel) broadcastStealth() tea.Cmd {
+	msg := StealthToggledMsg{On: m.stealth}
+	var cmds []tea.Cmd
+	update := func(model *tea.Model) {
+		if *model == nil {
+			return
+		}
+		updated, cmd := (*model).Update(msg)
+		*model = updated
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	update(&m.mainDashboardModel)
+	update(&m.receiveModel)
+	update(&m.sendModel)
+	update(&m.transactionHistoryModel)
+	update(&m.addressesModel)
+	update(&m.utxosModel)
+	return tea.Batch(cmds...)
+}
+
+// persistStealth writes the preference to the config file when one exists.
+func persistStealth(configManager *config.ConfigManager, on bool) tea.Cmd {
+	if configManager == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		cfg, err := configManager.Load()
+		if err != nil || cfg == nil {
+			return nil
+		}
+		cfg.StealthMode = on
+		_ = configManager.Save(cfg)
+		return nil
+	}
+}
+
 // getActiveModel returns the currently active model
 func (m RootModel) getActiveModel() tea.Model {
 	switch m.state {
@@ -663,6 +763,8 @@ func (m RootModel) getActiveModel() tea.Model {
 		return m.addressesModel
 	case StateUTXOs:
 		return m.utxosModel
+	case StateFees:
+		return m.feesModel
 	case StateSettings:
 		return m.settingsModel
 	case StateHelp:
@@ -697,6 +799,8 @@ func (m *RootModel) setActiveModel(state AppState, model tea.Model) {
 		m.addressesModel = model
 	case StateUTXOs:
 		m.utxosModel = model
+	case StateFees:
+		m.feesModel = model
 	case StateSettings:
 		m.settingsModel = model
 	case StateHelp:
@@ -717,6 +821,7 @@ func (m RootModel) View() string {
 		StateTransactionHistory: "History",
 		StateAddresses:          "Addresses",
 		StateUTXOs:              "UTXOs",
+		StateFees:               "Fees",
 		StateSettings:           "Settings",
 		StateHelp:               "Help",
 	}

@@ -102,6 +102,60 @@ func TestFeeBump_RBFFlow(t *testing.T) {
 	assertFits(t, m.View(), 80)
 }
 
+func TestFeeBumpWithRate_PrefillsAndAdvances(t *testing.T) {
+	mock := NewMockWalletManager()
+	var builtRate float64
+	mock.AnalyzeFeeBumpFn = func(string) (*wallet.FeeBumpInfo, error) { return bumpInfo(), nil }
+	mock.BuildRBFFn = func(_ string, rate float64) (*wallet.PSBTResult, error) {
+		builtRate = rate
+		return &wallet.PSBTResult{Fee: 1410, VSize: 141}, nil
+	}
+
+	m := NewFeeBumpModelWithRate(mock, bumpTestTxID, 10, 0, nil)
+	if m.step != SendStepFee || m.feeLevel != FeeLevelCustom || m.customFeeRate != 10 {
+		t.Fatalf("preset fee step = %v / %v / %v", m.step, m.feeLevel, m.customFeeRate)
+	}
+
+	m, cmd := update(t, m, FeeBumpInfoMsg{Info: bumpInfo()})
+	if m.step != SendStepPreviewLoading || cmd == nil {
+		t.Fatalf("preset did not start the preview: step=%v cmd=%v", m.step, cmd)
+	}
+	for _, msg := range collectMsgs(cmd) {
+		m, _ = update(t, m, msg)
+	}
+	if m.step != SendStepReview || builtRate != 10 {
+		t.Fatalf("step=%v builtRate=%v", m.step, builtRate)
+	}
+}
+
+func TestFeeBumpWithRate_KeepsFeeStepOnError(t *testing.T) {
+	mock := NewMockWalletManager()
+	mock.AnalyzeFeeBumpFn = func(string) (*wallet.FeeBumpInfo, error) { return bumpInfo(), nil }
+	mock.BuildRBFFn = func(string, float64) (*wallet.PSBTResult, error) {
+		return nil, errTest
+	}
+
+	// Below the replacement minimum.
+	m := NewFeeBumpModelWithRate(mock, bumpTestTxID, 1, 0, nil)
+	m, _ = update(t, m, FeeBumpInfoMsg{Info: bumpInfo()})
+	if m.step != SendStepFee || m.err == nil || m.customFeeRate != 1 {
+		t.Fatalf("minimum error left step=%v err=%v rate=%v", m.step, m.err, m.customFeeRate)
+	}
+
+	// A valid rate whose build fails stays on the fee step.
+	m = NewFeeBumpModelWithRate(mock, bumpTestTxID, 10, 0, nil)
+	m, cmd := update(t, m, FeeBumpInfoMsg{Info: bumpInfo()})
+	if m.step != SendStepPreviewLoading || cmd == nil {
+		t.Fatalf("preview not started: step=%v", m.step)
+	}
+	for _, msg := range collectMsgs(cmd) {
+		m, _ = update(t, m, msg)
+	}
+	if m.step != SendStepFee || m.err == nil || m.customFeeRate != 10 {
+		t.Fatalf("build error left step=%v err=%v rate=%v", m.step, m.err, m.customFeeRate)
+	}
+}
+
 func TestFeeBump_MethodToggleAndCPFP(t *testing.T) {
 	m, _, built := newBumpTest(t, bumpInfo())
 	m, _ = update(t, m, m.analyzeFeeBump()())

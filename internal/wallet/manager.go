@@ -738,6 +738,12 @@ func (m *WalletManager) GetWalletName() string {
 	return m.data.Name
 }
 
+// HasPassphrase reports whether the loaded wallet was created or restored with
+// a non-empty BIP39 passphrase.
+func (m *WalletManager) HasPassphrase() bool {
+	return m.data != nil && m.data.Passphrase != ""
+}
+
 // CreateAccount creates a new account. Pass "" for the standard derivation path.
 func (m *WalletManager) CreateAccount(name string, addrType AddressType, customDerivationPath string) (uint32, error) {
 	if !m.unlocked {
@@ -862,6 +868,12 @@ func formatWithCommas(n api.Satoshi) string {
 		}
 	}
 	return result.String()
+}
+
+// FormatSats formats a satoshi amount with thousands separators, for places
+// that show a plain "sats" value.
+func FormatSats(satoshis api.Satoshi) string {
+	return formatWithCommas(satoshis)
 }
 
 // FormatAmount formats a satoshi amount according to the specified display unit (BIP-177)

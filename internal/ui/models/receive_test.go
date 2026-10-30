@@ -1,12 +1,14 @@
 package models
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func newTestReceive(t *testing.T) (ReceiveModel, *MockWalletManager) {
@@ -166,6 +168,170 @@ func TestReceive_N_GeneratesNewAddress(t *testing.T) {
 	}
 }
 
+func newHardwareReceive(t *testing.T) (ReceiveModel, *MockWalletManager) {
+	t.Helper()
+	m, mock := newTestReceive(t)
+	mock.IsHardwareWalletFn = func() bool { return true }
+	mock.IsMultisigFn = func() bool { return false }
+	m.selectedAddress = verifyTestAddress
+	m.derivationPath = verifyTestPath
+	m.revealProgress = 1.0
+	m.verify.Reset(verifyTestAddress, verifyTestPath)
+	return m, mock
+}
+
+func pressReceiveKey(t *testing.T, m ReceiveModel, key tea.KeyMsg) ReceiveModel {
+	t.Helper()
+	model, _ := m.Update(key)
+	return model.(ReceiveModel)
+}
+
+func TestReceive_VerifyModeReplacesQRCard(t *testing.T) {
+	m, _ := newHardwareReceive(t)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = model.(ReceiveModel)
+	before := m.View()
+	if strings.Contains(stripANSI(before), "Verify on device") {
+		t.Fatalf("idle receive view already shows the panel:\n%s", stripANSI(before))
+	}
+	if !strings.Contains(stripANSI(before), "v verify on device") {
+		t.Fatalf("idle receive view is missing the verify hint:\n%s", stripANSI(before))
+	}
+
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	view := m.View()
+	plain := stripANSI(view)
+	if !strings.Contains(plain, "Verify on device") {
+		t.Fatalf("verify mode did not replace the QR card:\n%s", plain)
+	}
+	if strings.Contains(plain, "Address #0") {
+		t.Fatalf("verify mode still shows the QR card:\n%s", plain)
+	}
+	assertWithinTerminal(t, view, 80, 24)
+
+	restored := pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if got := restored.View(); got != before {
+		t.Fatalf("esc did not restore the receive view exactly:\nbefore:\n%q\nafter:\n%q", before, got)
+	}
+}
+
+func TestReceive_VerifyModeLineCountStable(t *testing.T) {
+	for _, size := range []struct {
+		name string
+		w, h int
+	}{{"80x24", 80, 24}, {"120x40", 120, 40}} {
+		t.Run(size.name, func(t *testing.T) {
+			m, _ := newHardwareReceive(t)
+			model, _ := m.Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			m = model.(ReceiveModel)
+
+			states := []struct {
+				state AddressVerifyState
+				err   error
+			}{
+				{AddressVerifyWaiting, nil},
+				{AddressVerifyMatch, nil},
+				{AddressVerifyMismatch, &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: verifyTestAddress}},
+				{AddressVerifyError, errors.New("device is in mainnet mode")},
+			}
+			var wantLines int
+			for i, tc := range states {
+				m.verify.Reset(verifyTestAddress, verifyTestPath)
+				m.verify.Begin()
+				if tc.state != AddressVerifyWaiting {
+					m.verify.Complete(tc.err)
+				}
+				if m.verify.State != tc.state {
+					t.Fatalf("state = %d, want %d", m.verify.State, tc.state)
+				}
+				view := m.View()
+				lines := requireLineCount(t, view)
+				if i == 0 {
+					wantLines = lines
+				}
+				if lines != wantLines {
+					t.Fatalf("state %d rendered %d lines, want %d", tc.state, lines, wantLines)
+				}
+				assertWithinTerminal(t, view, size.w, size.h)
+				if size.w == 80 && size.h == 24 && lines > 24 {
+					t.Fatalf("receive view grew to %d lines at 80x24", lines)
+				}
+			}
+		})
+	}
+}
+
+func TestReceive_VerifyEscWhileWaitingDiscardsResult(t *testing.T) {
+	m, _ := newHardwareReceive(t)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = model.(ReceiveModel)
+	before := m.View()
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = model.(ReceiveModel)
+	if !m.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+	attempt := m.verify.Attempt()
+
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.verify.Active() {
+		t.Fatal("esc while waiting should leave verify mode")
+	}
+	if got := m.View(); got != before {
+		t.Fatal("esc while waiting should restore the normal view")
+	}
+
+	// A result from the abandoned attempt must not reopen the panel.
+	model, _ = m.Update(HWIVerifyMsg{Err: nil, Attempt: attempt})
+	m = model.(ReceiveModel)
+	if m.verify.Active() {
+		t.Fatal("stale device result reopened the panel")
+	}
+	_ = cmd
+}
+
+func TestReceive_VerifyRetryStartsNewAttempt(t *testing.T) {
+	m, _ := newHardwareReceive(t)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = model.(ReceiveModel)
+
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	first := m.verify.Attempt()
+	if !m.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	second := m.verify.Attempt()
+	if second == first {
+		t.Fatal("v in verify mode should start a new attempt")
+	}
+	if !m.verify.IsWaiting() {
+		t.Fatal("retry should stay in the waiting state")
+	}
+
+	// The first attempt's result is stale and must be ignored.
+	model, _ = m.Update(HWIVerifyMsg{Err: nil, Attempt: first})
+	m = model.(ReceiveModel)
+	if m.verify.State != AddressVerifyWaiting {
+		t.Fatalf("stale result changed state to %d", m.verify.State)
+	}
+}
+
+func assertWithinTerminal(t *testing.T, view string, width, height int) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	if len(lines) > height {
+		t.Fatalf("view has %d lines, max %d", len(lines), height)
+	}
+	for i, line := range lines {
+		if got := len([]rune(stripANSI(line))); got > width {
+			t.Fatalf("line %d is %d cells wide, max %d: %q", i, got, width, stripANSI(line))
+		}
+	}
+}
+
 func TestReceive_View_ShowsDerivationPath(t *testing.T) {
 	m, _ := newTestReceive(t)
 	m.selectedAddress = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
@@ -205,7 +371,7 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 	mock.IsHardwareWalletFn = func() bool { return false }
 	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	updated := model.(ReceiveModel)
-	if updated.hwiVerifying {
+	if updated.verify.IsWaiting() {
 		t.Error("v should not trigger verify for software wallet")
 	}
 
@@ -214,7 +380,90 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 	mock.IsMultisigFn = func() bool { return false }
 	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	updated = model.(ReceiveModel)
-	if !updated.hwiVerifying {
+	if !updated.verify.IsWaiting() {
 		t.Error("v should trigger verify for hardware wallet")
+	}
+}
+
+func TestReceive_VerifyOnDevice_Mismatch(t *testing.T) {
+	m, mock := newTestReceive(t)
+	m.selectedAddress = verifyTestAddress
+	m.derivationPath = verifyTestPath
+	m.revealProgress = 1.0
+	mock.IsHardwareWalletFn = func() bool { return true }
+	mock.IsMultisigFn = func() bool { return false }
+	mock.DisplayAddrOnDeviceFn = func(addr, path string) error {
+		if addr != verifyTestAddress || path != verifyTestPath {
+			t.Fatalf("device called with %q %q", addr, path)
+		}
+		return &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: addr}
+	}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	waiting := model.(ReceiveModel)
+	if !waiting.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+
+	result, ok := findMsgOfType[HWIVerifyMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("verification command did not produce HWIVerifyMsg")
+	}
+	model, _ = waiting.Update(result)
+	updated := model.(ReceiveModel)
+	if updated.verify.State != AddressVerifyMismatch {
+		t.Fatalf("state = %d, want mismatch", updated.verify.State)
+	}
+	if updated.verify.DeviceAddress != verifyTestDevice {
+		t.Fatalf("device address = %q", updated.verify.DeviceAddress)
+	}
+
+	view := stripANSI(updated.View())
+	if !strings.Contains(view, "✗ Device shows a different address") {
+		t.Fatalf("view does not show mismatch:\n%s", view)
+	}
+}
+
+// The verification panel no longer draws its own hint line; the screen footer
+// carries the retry/back keys on the same row in every panel state.
+func TestReceive_VerifyModeOuterHintRow(t *testing.T) {
+	m, _ := newHardwareReceive(t)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = model.(ReceiveModel)
+	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+
+	states := []struct {
+		state AddressVerifyState
+		err   error
+	}{
+		{AddressVerifyWaiting, nil},
+		{AddressVerifyMatch, nil},
+		{AddressVerifyMismatch, &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: verifyTestAddress}},
+		{AddressVerifyError, errors.New("device is in mainnet mode")},
+	}
+
+	var wantLine int
+	for i, tc := range states {
+		m.verify.Reset(verifyTestAddress, verifyTestPath)
+		m.verify.Begin()
+		if tc.state != AddressVerifyWaiting {
+			m.verify.Complete(tc.err)
+		}
+
+		view := m.View()
+		plain := stripANSI(view)
+		if got := strings.Count(plain, "v retry • esc back"); got != 1 {
+			t.Fatalf("state %d: hint appears %d times, want once:\n%s", tc.state, got, plain)
+		}
+		if strings.Contains(plain, "←/→ navigate") || strings.Contains(plain, "v verify on device") {
+			t.Fatalf("state %d: list hints still shown in verify mode:\n%s", tc.state, plain)
+		}
+
+		pos := requireTextPosition(t, view, "v retry • esc back")
+		if i == 0 {
+			wantLine = pos.line
+		} else if pos.line != wantLine {
+			t.Fatalf("state %d: outer hint moved from line %d to %d", tc.state, wantLine, pos.line)
+		}
 	}
 }

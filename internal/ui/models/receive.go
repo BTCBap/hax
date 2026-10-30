@@ -28,10 +28,7 @@ type ReceiveModel struct {
 	err             error
 
 	// Hardware wallet address verification
-	hwiVerifying  bool   // Currently verifying on device
-	hwiVerifyOK   bool   // true = success, false = error
-	hwiVerifyMsg  string // Status message from verification
-	hwiVerifyTime time.Time
+	verify AddressVerifyView
 
 	// Animation state
 	viewport       viewport.Model
@@ -45,6 +42,9 @@ type ReceiveModel struct {
 
 	// Screen visibility - controls whether tickers run
 	isActive bool
+
+	// stealth hides the address balance.
+	stealth bool
 }
 
 // AddressGeneratedMsg is sent when a new address is generated
@@ -56,9 +56,10 @@ type AddressGeneratedMsg struct {
 	Err     error
 }
 
-// HWIVerifyMsg carries the result of hardware wallet address verification
+// HWIVerifyMsg carries the result of hardware wallet address verification.
 type HWIVerifyMsg struct {
-	Err error
+	Err     error
+	Attempt uint64
 }
 
 // CopiedTimerMsg is sent on each timer tick
@@ -148,11 +149,19 @@ func (m ReceiveModel) verifyAddressOnDevice() tea.Cmd {
 	walletMgr := m.walletManager
 	addr := m.selectedAddress
 	path := m.derivationPath
+	attempt := m.verify.Attempt()
 
 	return func() tea.Msg {
 		err := walletMgr.DisplayAddressOnDevice(addr, path)
-		return HWIVerifyMsg{Err: err}
+		return HWIVerifyMsg{Err: err, Attempt: attempt}
 	}
+}
+
+// canVerifyOnDevice reports whether the selected address can be shown on a
+// hardware wallet.
+func (m ReceiveModel) canVerifyOnDevice() bool {
+	return m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() &&
+		m.selectedAddress != "" && m.derivationPath != ""
 }
 
 func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -160,6 +169,10 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case StealthToggledMsg:
+		m.stealth = msg.On
+		return m, nil
+
 	case ScreenActiveMsg:
 		m.isActive = true
 		if m.revealProgress < 0.99 {
@@ -178,6 +191,9 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.err = msg.Err
 		} else {
+			if msg.Address != m.selectedAddress || msg.Path != m.derivationPath {
+				m.verify.Reset(msg.Address, msg.Path)
+			}
 			m.selectedAddress = msg.Address
 			m.derivationPath = msg.Path
 			m.currentIndex = msg.Index
@@ -222,32 +238,22 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Check if HWI verify message should be hidden (after 4 seconds)
-		if m.hwiVerifyMsg != "" {
-			if time.Since(m.hwiVerifyTime) > 4*time.Second {
-				m.hwiVerifyMsg = ""
-			} else {
-				needsAnimation = true
-			}
-		}
-
 		// Only continue animation if something is actively animating
 		// Don't run animations indefinitely just because an address exists
 		if needsAnimation {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case HWIVerifyMsg:
-		m.hwiVerifying = false
-		if msg.Err != nil {
-			m.hwiVerifyOK = false
-			m.hwiVerifyMsg = msg.Err.Error()
-		} else {
-			m.hwiVerifyOK = true
-			m.hwiVerifyMsg = "Address verified on device!"
+	case AddressVerifyTickMsg:
+		if m.verify.IsWaiting() {
+			m.verify.Advance()
+			cmds = append(cmds, AddressVerifyTickCmd())
 		}
-		m.hwiVerifyTime = time.Now()
-		cmds = append(cmds, m.animateTick())
+
+	case HWIVerifyMsg:
+		if m.verify.IsWaiting() && (msg.Attempt == 0 || msg.Attempt == m.verify.Attempt()) {
+			m.verify.Complete(msg.Err)
+		}
 
 	case StateChangedMsg:
 		// Update from unified state - refresh address balance if needed
@@ -267,6 +273,20 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		if m.verify.Active() {
+			switch msg.String() {
+			case "esc":
+				m.verify.Cancel()
+				return m, nil
+			case "v":
+				if m.canVerifyOnDevice() {
+					m.verify.Begin()
+					cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice())
+				}
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.String() {
 		case "esc", "q":
 			m.isActive = false
@@ -313,11 +333,12 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "v":
-			if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() &&
-				m.selectedAddress != "" && m.derivationPath != "" && !m.hwiVerifying {
-				m.hwiVerifying = true
-				m.hwiVerifyMsg = ""
-				cmds = append(cmds, m.verifyAddressOnDevice())
+			if m.canVerifyOnDevice() {
+				if m.verify.Address != m.selectedAddress || m.verify.Path != m.derivationPath {
+					m.verify.Reset(m.selectedAddress, m.derivationPath)
+				}
+				m.verify.Begin()
+				cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice())
 			}
 		}
 	}
@@ -335,7 +356,7 @@ func (m ReceiveModel) View() string {
 	}
 
 	// Compact header
-	header := styles.ScreenHeaderStyle.Render("Receive Bitcoin")
+	header := styles.ScreenHeaderStyle.Render("Receive Bitcoin") + stealthBadge(m.stealth)
 
 	// Copy status - inline with header (pastel green, matching theme)
 	copyStatus := ""
@@ -352,19 +373,14 @@ func (m ReceiveModel) View() string {
 			truncateRunes(m.err.Error(), max(10, width-7), "…"))
 	}
 
-	// Single box with QR code and address together
-	combinedBox := m.renderCombinedQRAndAddress()
+	// Single box with QR code and address together.
+	content := m.renderCombinedQRAndAddress()
 
-	// HWI verification status
-	hwiStatus := ""
-	if m.hwiVerifying {
-		hwiStatus = "\n" + styles.DimText.Render("  Verifying on device... check your hardware wallet screen")
-	} else if m.hwiVerifyMsg != "" {
-		if m.hwiVerifyOK {
-			hwiStatus = "\n" + styles.SuccessBoxStyle.Render("✓ "+m.hwiVerifyMsg)
-		} else {
-			hwiStatus = "\n" + styles.RenderErrorBox("⚠ "+m.hwiVerifyMsg, width)
-		}
+	// In verification mode the panel replaces the QR card.
+	if m.verify.Active() {
+		verify := m.verify
+		verify.Width = width
+		content = verify.View()
 	}
 
 	// Help
@@ -372,8 +388,8 @@ func (m ReceiveModel) View() string {
 
 	// Final layout - ultra compact for small terminals
 	return header + copyStatus + "\n" +
-		combinedBox + "\n" +
-		help + hwiStatus + "\n" +
+		content + "\n" +
+		help + "\n" +
 		errorLine
 }
 
@@ -421,9 +437,9 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 	if m.addressBalance > 0 {
 		btcBalance := m.addressBalance.ToBTC()
 		balanceLine = styles.SuccessText.
-			Render(fmt.Sprintf("Balance: %.8f BTC", btcBalance))
+			Render("Balance: " + maskAmount(fmt.Sprintf("%.8f BTC", btcBalance), m.stealth))
 	} else {
-		balanceLine = styles.DimText.Render("Balance: 0 BTC")
+		balanceLine = styles.DimText.Render("Balance: " + maskAmount("0 BTC", m.stealth))
 	}
 
 	// Combine all content vertically
@@ -444,6 +460,13 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 }
 
 func (m ReceiveModel) renderAnimatedHelp() string {
+	if m.verify.Active() {
+		return styles.RenderHelp(
+			styles.HK("v", "retry"),
+			styles.HK("esc", "back"),
+		)
+	}
+
 	items := []styles.HelpItem{
 		styles.HK("←/→", "navigate"),
 		styles.HK("n", "new"),

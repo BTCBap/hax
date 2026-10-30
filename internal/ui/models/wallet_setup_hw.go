@@ -142,7 +142,7 @@ func (m WalletSetupModel) verifyHWIInstallCmd() tea.Cmd {
 }
 
 func (m WalletSetupModel) viewHardwareWalletConnect() string {
-	title := styles.TitleStyle.Render("Connect Hardware Wallet [4/5]")
+	title := styles.TitleStyle.Render("Connect Hardware Wallet" + m.stepCounterSuffix())
 
 	var content strings.Builder
 
@@ -156,48 +156,7 @@ func (m WalletSetupModel) viewHardwareWalletConnect() string {
 		content.WriteString(m.renderDeviceTroubleshooting())
 	} else {
 		content.WriteString(styles.SuccessText.Render(fmt.Sprintf("Found %d device(s):", len(m.hwiDevices))) + "\n\n")
-
-		for i, device := range m.hwiDevices {
-			deviceName := string(device.Type)
-			if device.Model != "" {
-				deviceName = device.Model
-			}
-
-			fp := device.Fingerprint
-			if fp == "" || fp == "00000000" {
-				fp = "unknown"
-			} else if len(fp) > 8 {
-				fp = fp[:8]
-			}
-
-			line := fmt.Sprintf("%s [%s]", deviceName, fp)
-
-			if i == m.selectedHWDevice {
-				line = "▶ " + line
-				content.WriteString(styles.SelectedItemStyle.Render(line) + "\n")
-			} else {
-				line = "  " + line
-				content.WriteString(styles.UnselectedItemStyle.Render(line) + "\n")
-			}
-
-			if device.NeedsPin {
-				content.WriteString("    " + styles.WarningText.Render("⚠ needs PIN — unlock device first") + "\n")
-			}
-			if device.NeedsPass {
-				content.WriteString(styles.DimText.Render("    (needs passphrase)") + "\n")
-			}
-			if device.Error != "" {
-				content.WriteString("    " + styles.ErrorText.Render(device.Error) + "\n")
-			}
-		}
-
-		// PIN warning for selected device
-		if m.selectedHWDevice >= 0 && m.selectedHWDevice < len(m.hwiDevices) {
-			if m.hwiDevices[m.selectedHWDevice].NeedsPin {
-				content.WriteString("\n" + styles.WarningText.Render(
-					"⚠ Enter PIN on your device first, then press Enter.") + "\n")
-			}
-		}
+		content.WriteString(renderDeviceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
 	}
 
 	help := styles.RenderHelp(
@@ -256,7 +215,7 @@ func (m WalletSetupModel) handleHardwareWalletConnect(msg tea.KeyMsg) (tea.Model
 }
 
 func (m WalletSetupModel) viewHardwareWalletReview() string {
-	title := styles.TitleStyle.Render("Review Hardware Wallet [5/5]")
+	title := styles.TitleStyle.Render("Review Hardware Wallet" + m.stepCounterSuffix())
 
 	// Determine address type name and purpose
 	var addrTypeName string
@@ -360,6 +319,7 @@ func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyMsg) (tea.Model,
 
 		// Save as last wallet
 		m.saveLastWalletName(m.walletName)
+		m.flowComplete = true
 
 		// Navigate to dashboard
 		return m, func() tea.Msg {

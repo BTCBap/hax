@@ -30,6 +30,7 @@ type MockWalletManager struct {
 	IsMultisigFn           func() bool
 	GetMultisigConfigFn    func() *wallet.MultisigWalletConfig
 	GetScriptTypeFn        func() (wallet.ScriptType, int, int)
+	HasPassphraseFn        func() bool
 
 	// Backend
 	SetBackendFn func(backend.BitcoinBackend) error
@@ -131,6 +132,7 @@ type MockWalletManager struct {
 	ExportDescriptorURFn   func() (string, error)
 	ExportMultisigConfigFn func() ([]byte, error)
 	ExportColdcardFn       func() (string, error)
+	ExportUnifiedBackupFn  func() ([]byte, error)
 
 	// Internal state for tests
 	state *wallet.WalletState
@@ -234,6 +236,13 @@ func (m *MockWalletManager) GetScriptType() (wallet.ScriptType, int, int) {
 		return m.GetScriptTypeFn()
 	}
 	return 0, 0, 0
+}
+
+func (m *MockWalletManager) HasPassphrase() bool {
+	if m.HasPassphraseFn != nil {
+		return m.HasPassphraseFn()
+	}
+	return false
 }
 
 // --- Backend ---
@@ -787,6 +796,13 @@ func (m *MockWalletManager) ExportColdcardMultisig() (string, error) {
 		return m.ExportColdcardFn()
 	}
 	return "", nil
+}
+
+func (m *MockWalletManager) ExportUnifiedBackup() ([]byte, error) {
+	if m.ExportUnifiedBackupFn != nil {
+		return m.ExportUnifiedBackupFn()
+	}
+	return nil, nil
 }
 
 // Compile-time interface check

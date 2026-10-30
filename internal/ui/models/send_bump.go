@@ -23,6 +23,9 @@ type feeBumpState struct {
 	txID   string
 	info   *wallet.FeeBumpInfo
 	method bumpMethod
+	// presetRate is set when the tray chose a rate. The fee step is
+	// pre-filled with it and the review is built automatically.
+	presetRate float64
 }
 
 // FeeBumpInfoMsg carries the analysis of the transaction to speed up.
@@ -38,14 +41,37 @@ func NavigateToFeeBump(txid string) tea.Cmd {
 	}
 }
 
+// NavigateToFeeBumpWithRate opens the send screen with a fee rate already
+// chosen by the inline speed-up tray.
+func NavigateToFeeBumpWithRate(txid string, rate float64) tea.Cmd {
+	return func() tea.Msg {
+		return NavigateMsg{Target: StateSend, FeeBumpTxID: txid, FeeBumpRate: rate}
+	}
+}
+
 // NewFeeBumpModel is the send flow for speeding up txid: choose a fee,
 // review, sign and broadcast, reusing the normal send steps.
 func NewFeeBumpModel(walletManager WalletService, txid string, cachedBalance api.Satoshi, cachedUTXOs []api.UTXO) SendModel {
+	return newFeeBumpModel(walletManager, txid, 0, cachedBalance, cachedUTXOs)
+}
+
+// NewFeeBumpModelWithRate is NewFeeBumpModel with the fee step pre-filled
+// and advanced to review once the transaction analysis allows building it.
+func NewFeeBumpModelWithRate(walletManager WalletService, txid string, rate float64, cachedBalance api.Satoshi, cachedUTXOs []api.UTXO) SendModel {
+	return newFeeBumpModel(walletManager, txid, rate, cachedBalance, cachedUTXOs)
+}
+
+func newFeeBumpModel(walletManager WalletService, txid string, rate float64, cachedBalance api.Satoshi, cachedUTXOs []api.UTXO) SendModel {
 	m := NewSendModel(walletManager, cachedBalance, cachedUTXOs)
-	m.bump = &feeBumpState{txID: txid}
+	m.bump = &feeBumpState{txID: txid, presetRate: rate}
 	m.addressInput.Blur()
 	m.step = SendStepFee
 	m.cursor = cursorFromFeeLevel(FeeLevelMedium)
+	if rate > 0 {
+		m.feeLevel = FeeLevelCustom
+		m.customFeeRate = rate
+		m.cursor = cursorFromFeeLevel(FeeLevelCustom)
+	}
 	return m
 }
 
@@ -129,6 +155,30 @@ func (m SendModel) checkBumpRate(rate float64) error {
 
 func roundUpRate(r float64) float64 {
 	return float64(int64(r*10+0.999)) / 10
+}
+
+// startPresetFeeBump builds the review for the tray's chosen rate. Any
+// error leaves the fee step open with the rate still filled in.
+func (m *SendModel) startPresetFeeBump() tea.Cmd {
+	if m.bump == nil || m.bump.presetRate <= 0 || !m.bumpReady() {
+		return nil
+	}
+	rate := m.bump.presetRate
+	if err := m.checkBumpRate(rate); err != nil {
+		m.err = err
+		return nil
+	}
+	if rate > feeHardCap {
+		m.err = fmt.Errorf("fee rate too high (maximum %.0f sat/vB)", feeHardCap)
+		return nil
+	}
+	if rate > feeSoftCap {
+		m.err = fmt.Errorf("fee rate is above the safety limit; lower it on the fee step")
+		return nil
+	}
+	m.err = nil
+	m.step = SendStepPreviewLoading
+	return tea.Batch(m.previewFeeBump(rate), m.spinner.Tick)
 }
 
 // previewFeeBump builds the replacement or child at feeRate.

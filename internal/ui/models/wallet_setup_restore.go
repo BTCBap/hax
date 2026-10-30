@@ -33,7 +33,7 @@ func (m WalletSetupModel) viewRestoreChooseMethod() string {
 }
 
 func (m WalletSetupModel) viewRestoreEnterName() string {
-	title := styles.TitleStyle.Render("Restore from Seed [1/6]")
+	title := styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	instruction := styles.NormalText.Render("Wallet name:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
 
@@ -45,7 +45,7 @@ func (m WalletSetupModel) viewRestoreEnterName() string {
 }
 
 func (m WalletSetupModel) viewRestoreEnterMnemonic() string {
-	title := styles.TitleStyle.Render("Restore from Seed [2/6]")
+	title := styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	info := styles.DimText.Render("12 or 24 words, space separated")
 	instruction := styles.NormalText.Render("Seed phrase:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
@@ -59,7 +59,7 @@ func (m WalletSetupModel) viewRestoreEnterMnemonic() string {
 }
 
 func (m WalletSetupModel) viewRestoreChooseScriptType() string {
-	title := styles.TitleStyle.Render("Restore from Seed [4/6]")
+	title := styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	info := styles.DimText.Render("Select the address format used by your original wallet")
 	warning := styles.WarningText.Render("⚠ Must match your original wallet's format")
 
@@ -110,7 +110,7 @@ func (m WalletSetupModel) viewRestoreChooseScriptType() string {
 }
 
 func (m WalletSetupModel) viewRestoreEnterPassword() string {
-	title := styles.TitleStyle.Render("Restore from Seed [5/6]")
+	title := styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	warning := styles.WarningText.Render("⚠ Password encrypts your wallet")
 	instruction := styles.NormalText.Render("Password:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
@@ -125,7 +125,7 @@ func (m WalletSetupModel) viewRestoreEnterPassword() string {
 }
 
 func (m WalletSetupModel) viewRestoreConfirmPassword() string {
-	title := styles.TitleStyle.Render("Restore from Seed [6/6]")
+	title := styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	instruction := styles.NormalText.Render("Confirm password:")
 	help := styles.RenderHelp(styles.HK("enter", "restore"), styles.HK("esc", "back"))
 

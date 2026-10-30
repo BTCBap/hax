@@ -16,6 +16,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// handleTxFlowKey drives the transaction visualizer; esc/q returns to the
+// screen that opened it without touching that screen's state.
+func (m *SendModel) handleTxFlowKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if handleTxFlowKey(m.txFlow, msg.String()) {
+		m.txFlow = nil
+	}
+	return m, nil
+}
+
 // handleAddressInputSpecial handles special keys for address input
 // Returns (true, cmd) if key was handled, (false, nil) if input should handle it
 func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
@@ -927,6 +936,10 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.urInput.Focus()
 			m.psbtExportErr = nil
 			return m, textinput.Blink
+		case "v":
+			// Show the current PSBT as a transaction flow diagram.
+			m.openInspectionFlow()
+			return m, nil
 		case "esc":
 			// Close PSBT export view
 			m.showPSBTExport = false
@@ -974,6 +987,10 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Normal review screen
 	switch msg.String() {
+	case "v":
+		// Inspect inputs and outputs as a flow diagram before signing.
+		m.openInspectionFlow()
+		return m, nil
 	case "enter":
 		// UNIFIED FLOW: All wallet types go to Sign & Broadcast view (PSBT)
 		// This provides consistent UX for software, hardware, and multisig wallets

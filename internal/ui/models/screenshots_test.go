@@ -6,19 +6,37 @@ package models
 // wallet data (no network, no real keys). Consumed by docs/images/render-screens.sh.
 //
 //   HAX_SCREENSHOT_DIR=/tmp/hax-screens go test ./internal/ui/models -tags screenshots -run TestScreenshots
+//
+// Set HAX_SCREENSHOT_SIZES to render every screen at one or more terminal
+// sizes, for example "80x24,120x40". Each screen is then written as
+// <name>_<W>x<H>.ansi (true color) and <name>_<W>x<H>.txt (ANSI stripped).
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
 )
+
+type screenshotSize struct {
+	w, h int
+}
+
+type renderedScreen struct {
+	name string
+	view string
+}
 
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("HAX_SCREENSHOT_DIR")
@@ -30,16 +48,77 @@ func TestScreenshots(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write := func(name, s string) {
-		if err := os.WriteFile(filepath.Join(dir, name+".ansi"), []byte(s), 0o600); err != nil {
-			t.Fatal(err)
+
+	sizes, multi := screenshotSizes(t)
+	for _, size := range sizes {
+		suffix := ""
+		if multi {
+			suffix = fmt.Sprintf("_%dx%d", size.w, size.h)
+		}
+		for _, screen := range renderScreens(size.w, size.h) {
+			writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".ansi"), screen.view)
+			if multi {
+				writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".txt"), ansi.Strip(screen.view))
+			}
 		}
 	}
-	const w, h = 110, 34
+}
 
-	sp := NewSplashModel()
-	sp.width, sp.height, sp.progress = w, h, 1.0
-	write("splash", sp.View())
+// screenshotSizes returns the terminal sizes to render and whether the
+// multi-size file naming applies. Without HAX_SCREENSHOT_SIZES it keeps the
+// original 110x34 render and plain file names used by the docs images.
+func screenshotSizes(t *testing.T) ([]screenshotSize, bool) {
+	t.Helper()
+	raw := os.Getenv("HAX_SCREENSHOT_SIZES")
+	if raw == "" {
+		return []screenshotSize{{110, 34}}, false
+	}
+
+	var sizes []screenshotSize
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		widthStr, heightStr, ok := strings.Cut(strings.ToLower(part), "x")
+		if !ok {
+			t.Fatalf("HAX_SCREENSHOT_SIZES: %q is not WxH", part)
+		}
+		w, err := strconv.Atoi(strings.TrimSpace(widthStr))
+		if err != nil || w <= 0 {
+			t.Fatalf("HAX_SCREENSHOT_SIZES: invalid width in %q", part)
+		}
+		h, err := strconv.Atoi(strings.TrimSpace(heightStr))
+		if err != nil || h <= 0 {
+			t.Fatalf("HAX_SCREENSHOT_SIZES: invalid height in %q", part)
+		}
+		sizes = append(sizes, screenshotSize{w: w, h: h})
+	}
+	if len(sizes) == 0 {
+		t.Fatal("HAX_SCREENSHOT_SIZES has no sizes")
+	}
+	return sizes, true
+}
+
+func writeScreenshot(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sized delivers a WindowSizeMsg so each model takes its width and height the
+// same way it does in the running app.
+func sized[M tea.Model](m M, w, h int) M {
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	return updated.(M)
+}
+
+// renderScreens builds the mock wallet and renders every screen at w×h.
+func renderScreens(w, h int) []renderedScreen {
+	sp := sized(NewSplashModel(), w, h)
+	sp.progress = 1.0
+	screens := []renderedScreen{{"splash", sp.View()}}
 
 	// Demo data: plausible testnet4 txids/addresses (BIP173 test vectors and
 	// fixed hex), fees as Electrum/Core report on a quiet testnet (2/1/1 sat/vB).
@@ -79,6 +158,14 @@ func TestScreenshots(t *testing.T) {
 			},
 			Status: api.Status{Confirmed: true, BlockHeight: 98_410, BlockTime: 1760090000},
 		},
+	}
+	// Keep the spend transaction by identity: the history table sorts its
+	// slice in place, so its index changes.
+	var spendTx api.Transaction
+	for _, tx := range demoTxs {
+		if tx.TxID == txSpend {
+			spendTx = tx
+		}
 	}
 	demoUTXOs := []api.UTXO{
 		{TxID: txFaucet2, Vout: 0, Value: 700_000, Status: api.Status{Confirmed: true, BlockHeight: 98_300}},
@@ -122,14 +209,29 @@ func TestScreenshots(t *testing.T) {
 	mock.GetTransactionLabelFn = labels
 	mock.GetUTXOsFn = func(uint32) ([]api.UTXO, error) { return demoUTXOs, nil }
 	mock.GetStateFn = func() wallet.WalletStateSnapshot { return state }
-	d := NewMainDashboardModel(mock, nil)
-	d.width, d.height = w, h
+	d := sized(NewMainDashboardModel(mock, nil), w, h)
 	d.balance, d.balanceLoaded, d.loading = balance, true, false
-	write("dashboard", d.View())
+	screens = append(screens, renderedScreen{"dashboard", d.View()})
+
+	dStealth := d
+	dStealth.stealth = true
+	screens = append(screens, renderedScreen{"dashboard_stealth", dStealth.View()})
+
+	fm := sized(NewFeesModel(mock, nil), w, h)
+	fm.serverName = "electrum.example.com"
+	fm.estimates = fees
+	fm.refreshing = false
+	fm.err = nil
+	fm.updatedAt = time.Now().Add(-12 * time.Second)
+	screens = append(screens, renderedScreen{"fees", fm.View()})
+
+	mock.HasPassphraseFn = func() bool { return true }
+	dPassphrase := d
+	screens = append(screens, renderedScreen{"dashboard_passphrase", dPassphrase.View()})
+	mock.HasPassphraseFn = nil
 
 	// Send review: one recipient, 1 sat/vB (the medium tier), P2WPKH 1-in/2-out.
-	sm := NewSendModel(mock, balance, demoUTXOs)
-	sm.width, sm.height = w, h
+	sm := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
 	sm.feeEstimates = fees
 	sm.recipients = []Recipient{{Address: payee, Amount: 100_000}}
 	sm.feeLevel = FeeLevelMedium
@@ -141,15 +243,64 @@ func TestScreenshots(t *testing.T) {
 		ChangeAddress: ourChange, VSize: 141,
 		SelectedUTXOs: []wallet.UTXOWithPath{{UTXO: demoUTXOs[0], Address: ourRecv2, Path: "m/84'/1'/0'/0/1"}},
 	}
-	write("send", sm.View())
+	screens = append(screens, renderedScreen{"send", sm.View()})
+	screens = append(screens, renderedScreen{"send_review", sm.View()})
+
+	// Fee priority step: helpers line up in the column to the right of each
+	// target, like the inline speed-up tray.
+	fee := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	fee.feeEstimates = fees
+	fee.step = SendStepFee
+	fee.cursor = cursorFromFeeLevel(FeeLevelMedium)
+	fee.estimatedSize = 141
+	fee.estimatedFee = 141
+	screens = append(screens, renderedScreen{"send_fee", fee.View()})
+
+	// Hardware wallet picker: an unlocked Coldcard, a selected Trezor that
+	// needs a PIN, and a Ledger whose multi-line error is truncated to the
+	// status column.
+	hw := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	hw.showPSBTExport = true
+	hw.showHWIDevices = true
+	hw.loading = false
+	hw.hwiDevices = []wallet.HardwareDevice{
+		{Type: wallet.HWTypeColdcard, Model: "Coldcard Mk4", Fingerprint: "cafebabe", Path: "usb:1-1"},
+		{Type: wallet.HWTypeTrezor, Model: "Trezor One", Fingerprint: "abcd1234", Path: "udp:127.0.0.1:21324", NeedsPin: true},
+		{
+			Type:        wallet.HWTypeLedger,
+			Model:       "Ledger Nano X",
+			Fingerprint: "deadbeef",
+			Path:        "usb:1-2",
+			Error: "Could not connect to device:\n" +
+				"the user did not confirm the request on the device screen\n" +
+				"before the transport closed unexpectedly",
+		},
+	}
+	hw.selectedHWDevice = 1
+	screens = append(screens, renderedScreen{"send_hw_devices", hw.View()})
+
+	// The same review PSBT, shown as a flow diagram.
+	sm.inspection = &wallet.PSBTInspection{
+		Inputs: []wallet.InspectedInput{{
+			OutPoint: txSpend + ":0", Address: ourRecv2,
+			Value: 700_000, ValueKnown: true, Mine: true,
+		}},
+		Outputs: []wallet.InspectedOutput{
+			{Address: payee, Value: 100_000, Owner: wallet.OutputExternal},
+			{Address: ourChange, Value: 599_859, Owner: wallet.OutputChange},
+		},
+		Fee: 141, FeeKnown: true, FeeRate: 1, VSize: 141,
+	}
+	sm.openInspectionFlow()
+	screens = append(screens, renderedScreen{"txflow_send", sm.View()})
 
 	// One frozen coin, so the UTXO screen shows the marker.
 	_ = mock.SetUTXOFrozen(txFaucet2, 0, true)
-	um := NewUTXOsModel(mock, nil)
-	um.width, um.height, um.isActive, um.loading = w, h, true, false
+	um := sized(NewUTXOsModel(mock, nil), w, h)
+	um.isActive, um.loading = true, false
 	um.utxos = demoUTXOs
 	um.sortAndUpdateTable()
-	write("utxos", um.View())
+	screens = append(screens, renderedScreen{"utxos", um.View()})
 
 	rm := NewMockWalletManager()
 	rm.GetCurrentReceiveAddrFn = func(uint32) (string, string, uint32, error) {
@@ -157,23 +308,85 @@ func TestScreenshots(t *testing.T) {
 	}
 	rm.GetCachedAddrBalanceFn = func(string) (api.Satoshi, bool) { return 0, true }
 	rm.IsHardwareWalletFn = func() bool { return false }
-	r := NewReceiveModel(rm)
-	r.width, r.height = w, 44
+	r := sized(NewReceiveModel(rm), w, h)
 	r.selectedAddress = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
 	r.derivationPath = "m/84'/1'/0'/0/0"
 	r.revealProgress = 1.0
-	write("receive", r.View())
+	screens = append(screens, renderedScreen{"receive", r.View()})
 
-	hi := NewTransactionHistoryModel(mock)
-	hi.width, hi.height = w, h
+	// Receive screen with the on-device verification panel in each result state.
+	hwm := NewMockWalletManager()
+	hwm.IsHardwareWalletFn = func() bool { return true }
+	hwm.IsMultisigFn = func() bool { return false }
+	for _, verify := range []struct {
+		name  string
+		state AddressVerifyState
+	}{
+		{name: "verify_waiting", state: AddressVerifyWaiting},
+		{name: "verify_match", state: AddressVerifyMatch},
+		{name: "verify_mismatch", state: AddressVerifyMismatch},
+	} {
+		hm := sized(NewReceiveModel(hwm), w, h)
+		hm.selectedAddress = verifyTestAddress
+		hm.derivationPath = verifyTestPath
+		hm.revealProgress = 1.0
+		hm.verify.Reset(verifyTestAddress, verifyTestPath)
+		hm.verify.Begin()
+		switch verify.state {
+		case AddressVerifyWaiting:
+			hm.verify.Frame = 3
+			hm.verify.StartedAt = time.Now().Add(-2 * time.Second)
+		case AddressVerifyMatch:
+			hm.verify.Complete(nil)
+		case AddressVerifyMismatch:
+			hm.verify.Complete(&wallet.AddressMismatchError{
+				Displayed: verifyTestDevice,
+				Expected:  verifyTestAddress,
+			})
+		}
+		screens = append(screens, renderedScreen{verify.name, hm.View()})
+	}
+
+	hi := sized(NewTransactionHistoryModel(mock), w, h)
 	hi.loading, hi.fadeIn, hi.isActive, hi.blockHeight = false, 1.0, true, 98_412
 	hi.transactions = demoTxs
 	hi.updateTableData()
-	write("history", hi.View())
+	screens = append(screens, renderedScreen{"history", hi.View()})
 
-	hp := NewHelpModel(nil)
-	hp.width, hp.height, hp.fadeIn = w, h, 1.0
-	hp.viewport.Width, hp.viewport.Height = w-4, h-8
-	hp.viewport.SetContent(hp.renderHelpContent())
-	write("help", hp.View())
+	// The demo spend transaction opened as a flow diagram: a payee output and
+	// a change output back to the wallet.
+	hi.openTransactionFlow(spendTx)
+	screens = append(screens, renderedScreen{"txflow_history", hi.View()})
+
+	// Inline speed-up tray on a pending outgoing transaction.
+	speedMock := NewMockWalletManager()
+	speedChoose := newSpeedUpHistoryLayout(speedMock, false)
+	screens = append(screens, renderedScreen{"history_speedup_tray", sized(speedChoose, w, h).View()})
+	speedConfirm := newSpeedUpHistoryLayout(NewMockWalletManager(), true)
+	screens = append(screens, renderedScreen{"history_speedup_confirm", sized(speedConfirm, w, h).View()})
+
+	// A busy transaction so the diagram shows how many inputs and outputs
+	// are laid out together.
+	screens = append(screens, renderedScreen{"txflow_many", TxFlowView{
+		Flow: txFlowFixture(9, 4), Width: w, Height: h,
+	}.View()})
+
+	hp := sized(NewHelpModel(nil), w, h)
+	hp.fadeIn = 1.0
+	screens = append(screens, renderedScreen{"help", hp.View()})
+
+	labelScreen := sized(NewSettingsModel(mock, nil), w, h)
+	labelScreen.showLabelImport = true
+	labelScreen.labelImportStage = labelImportStagePreview
+	labelScreen.labelImportPreview = bip329Preview{Tx: 3, Addr: 2, Output: 1, Frozen: 1}
+	labelScreen.labelImportPath.SetValue("~/.hax/demo-testnet4_labels_bip329.jsonl")
+	screens = append(screens, renderedScreen{"labels_import_preview", labelScreen.View()})
+
+	backupScreen := sized(NewSettingsModel(mock, nil), w, h)
+	backupScreen.openBackupExport()
+	backupScreen.backupTray, _ = backupScreen.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	backupScreen.backupExportStage = backupExportStageConfirm
+	screens = append(screens, renderedScreen{"backup_export_confirm", backupScreen.View()})
+
+	return screens
 }

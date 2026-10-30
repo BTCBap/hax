@@ -702,6 +702,17 @@ func hwiAddrType(addressType string) string {
 	return ""
 }
 
+// AddressMismatchError reports that the device displayed a different address
+// than the one derived by the wallet.
+type AddressMismatchError struct {
+	Displayed string
+	Expected  string
+}
+
+func (e AddressMismatchError) Error() string {
+	return fmt.Sprintf("address mismatch: device showed %s but expected %s", e.Displayed, e.Expected)
+}
+
 // verifyAddressOnDevice has the device derive and show the address at
 // derivPath, then checks it against addr.
 func (m *WalletManager) verifyAddressOnDevice(hwi *HWIClient, device HardwareDevice, addr, derivPath string) error {
@@ -728,7 +739,7 @@ func (m *WalletManager) verifyAddressOnDevice(hwi *HWIClient, device HardwareDev
 			return fmt.Errorf("device is in mainnet mode but wallet uses testnet; " +
 				"the address was shown on the device, so verify the derivation path matches")
 		}
-		return fmt.Errorf("address mismatch: device showed %s but expected %s", displayed, addr)
+		return &AddressMismatchError{Displayed: displayed, Expected: addr}
 	}
 
 	return nil

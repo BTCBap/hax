@@ -12,7 +12,6 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -148,6 +147,9 @@ type SendModel struct {
 	psbtImported   bool                   // PSBT arrived from outside hax's send flow
 	bump           *feeBumpState          // Set when speeding up a pending transaction
 
+	// Transaction visualizer overlay for the review and PSBT signing steps.
+	txFlow *TxFlowView
+
 	// Hardware wallet / file-based PSBT support
 	psbtFilePath  string          // Path where PSBT was saved/loaded
 	psbtFileInput textinput.Model // Input for file path
@@ -183,10 +185,9 @@ type SendModel struct {
 	urInput     textinput.Model // Text input for pasting UR string
 
 	// UI state
-	loading  bool
-	spinner  spinner.Model
-	progress progress.Model
-	err      error
+	loading bool
+	spinner spinner.Model
+	err     error
 }
 
 // FeeEstimatesMsg carries fee estimates
@@ -285,12 +286,6 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 
 	s := styles.NewStandardSpinner()
 
-	// Create progress bar
-	prog := progress.New(
-		progress.WithDefaultGradient(),
-		progress.WithWidth(40),
-	)
-
 	// Viewport for smooth scrolling in Step 6/7 (matches Help screen behavior)
 	vp := viewport.New(0, 0)
 	vp.MouseWheelEnabled = true
@@ -318,7 +313,6 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 		customFeeInput: customFeeInput,
 		psbtFileInput:  fileInput,
 		spinner:        s,
-		progress:       prog,
 		scrollViewport: vp,
 		usesBTC:        true,
 		feeLevel:       FeeLevelMedium,
@@ -533,6 +527,15 @@ func (m *SendModel) applyMaxSpendPreviewFinalization(result *wallet.PSBTResult) 
 	return nil
 }
 
+// CapturesTextInput reports whether the current send step owns the keyboard.
+// The address input stays focused after its step, so the step matters.
+func (m SendModel) CapturesTextInput() bool {
+	if m.step == SendStepAddress || m.step == SendStepAmount {
+		return true
+	}
+	return m.txFlow != nil || m.editingCustom || m.showFileInput || m.showURInput
+}
+
 func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
@@ -606,6 +609,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FeeBumpInfoMsg:
 		m.handleFeeBumpInfo(msg)
+		if m.bump != nil && m.bump.presetRate > 0 && m.bump.info != nil {
+			if cmd := m.startPresetFeeBump(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 
 	case TxPreviewMsg:
 		if msg.Err != nil {
@@ -807,6 +815,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// The visualizer owns every key while it is open.
+		if m.txFlow != nil {
+			return m.handleTxFlowKey(msg)
+		}
+
 		// Handle file browser if open
 		if m.showFileBrowser {
 			return m.handleFileBrowser(msg)

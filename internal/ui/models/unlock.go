@@ -154,6 +154,11 @@ func (m UnlockModel) animateTick() tea.Cmd {
 	})
 }
 
+// CapturesTextInput reports whether the password field owns the keyboard.
+func (m UnlockModel) CapturesTextInput() bool {
+	return m.passwordInput.Focused()
+}
+
 func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd

@@ -81,8 +81,13 @@ type WalletSetupModel struct {
 	configManager *config.ConfigManager
 
 	// UI components
-	progressBar            progress.Model
-	nameInput              textinput.Model
+	progressBar progress.Model
+	nameInput   textinput.Model
+	// Progress high-water mark for the current flow (see wallet_setup_progress.go)
+	progressFlow           walletSetupFlow
+	progressHigh           float64
+	progressFlowKnown      bool
+	flowComplete           bool
 	passwordInput          textinput.Model
 	confirmPasswordInput   textinput.Model
 	passphraseInput        textinput.Model
@@ -170,10 +175,12 @@ type HWIInstallCheckMsg struct {
 
 func NewWalletSetupModel(walletManager WalletService, configManager *config.ConfigManager) WalletSetupModel {
 
-	// Create progress bar with neon orange gradient
+	// Create progress bar with neon orange gradient. The built-in percentage
+	// is variable width, so the view renders its own fixed-width field.
 	prog := progress.New(
 		progress.WithScaledGradient(string(styles.NeonOrange), string(styles.BitcoinGold)),
-		progress.WithWidth(50),
+		progress.WithWidth(walletSetupProgressBarWidth),
+		progress.WithoutPercentage(),
 	)
 
 	// Create input fields
@@ -305,7 +312,29 @@ func (m WalletSetupModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+// CapturesTextInput reports whether a setup form field owns the keyboard.
+func (m WalletSetupModel) CapturesTextInput() bool {
+	return m.backupInput.Focused() ||
+		m.nameInput.Focused() || m.passwordInput.Focused() ||
+		m.confirmPasswordInput.Focused() || m.passphraseInput.Focused() ||
+		m.confirmPassphraseInput.Focused() || m.mnemonicInput.Focused() ||
+		m.customPathInput.Focused() || m.descriptorInput.Focused() ||
+		m.multisigCurrentXpub.Focused() || m.multisigCosignerSeed.Focused()
+}
+
 func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	previousFlow := m.currentFlow()
+	previousStep, _, _ := m.flowStepNumber()
+
+	updated, cmd := m.update(msg)
+	if model, ok := updated.(WalletSetupModel); ok {
+		model.trackProgress(previousFlow, previousStep)
+		return model, cmd
+	}
+	return updated, cmd
+}
+
+func (m WalletSetupModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -569,6 +598,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						// Save as last wallet
 						m.saveLastWalletName(m.walletName)
+						m.flowComplete = true
 						m.wipeSecrets()
 
 						// Navigate to dashboard
@@ -709,6 +739,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Save this wallet as last used (for auto-login)
 					m.saveLastWalletName(m.walletName)
+					m.flowComplete = true
 					m.wipeSecrets()
 
 					// Navigate to dashboard
@@ -744,6 +775,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Save this wallet as last used (for auto-login)
 				m.saveLastWalletName(m.selectedWallet)
+				m.flowComplete = true
 				m.wipeSecrets()
 
 				// Navigate to dashboard

@@ -8,161 +8,38 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// getStepProgress returns the progress percentage for the current step
-func (m WalletSetupModel) getStepProgress() float64 {
-	switch m.step {
-	// New wallet flow (5 steps)
-	case StepChooseAction:
-		return 0.0
-	case StepEnterName:
-		return 0.20
-	case StepEnterPassword, StepConfirmPassword:
-		return 0.40
-	case StepChooseScriptType:
-		return 0.60
-	case StepChooseKeySource:
-		return 0.60
-	case StepChooseNetwork:
-		return 0.75
-	case StepEnterPassphrase, StepConfirmPassphrase:
-		return 0.78
-	case StepChooseWordCount:
-		return 0.80
-	case StepShowMnemonic, StepConfirmMnemonic:
-		return 1.0
-
-	// Single-sig hardware wallet flow
-	case StepHWISetup, StepHardwareWalletConnect:
-		return 0.70
-	case StepHardwareWalletReview:
-		return 1.0
-
-	// Restore wallet flow from seed
-	case StepRestoreChooseMethod:
-		return 0.0
-	case StepRestoreEnterName:
-		return 0.20
-	case StepRestoreEnterMnemonic:
-		return 0.35
-	case StepRestoreEnterPassphrase, StepRestoreConfirmPassphrase:
-		return 0.45
-	case StepRestoreChooseScriptType:
-		return 0.60
-	case StepRestoreEnterPassword, StepRestoreConfirmPassword:
-		return 0.80
-
-	// Multisig flow (5 steps: name, password, config, confirm, cosigners)
-	case StepMultisigChooseType:
-		return 0.50
-	case StepMultisigConfirm:
-		return 0.65
-	case StepMultisigEnterCosigners:
-		return 0.80
-	case StepMultisigReview:
-		return 1.0
-
-	// Restore wallet flow (from file)
-	case StepRestoreChooseFile:
-		return 0.50
-	case StepRestoreFilePassword:
-		return 1.0
-
-	default:
-		return 0.0
-	}
-}
-
-// renderProgressBar renders a beautiful progress indicator
+// renderProgressBar renders the step indicator and the progress bar from the
+// same ordered step list. The percent field is fixed width so digits never
+// move the bar or the text around it.
 func (m WalletSetupModel) renderProgressBar() string {
-	// No progress bar on menu/selection screens
-	switch m.step {
-	case StepChooseNetwork, StepChooseAction, StepRestoreChooseMethod, StepChooseWalletType,
-		StepMultisigImportDescriptor, StepMultisigImportReview:
+	if !m.showProgressBar() {
+		return ""
+	}
+	stepNum, totalSteps, ok := m.flowStepNumber()
+	if !ok || totalSteps == 0 {
 		return ""
 	}
 
 	progress := m.getStepProgress()
-	progressStr := m.progressBar.ViewAs(progress)
-
-	// Step indicator
-	var stepNum, totalSteps int
-	switch m.step {
-	// New wallet flow (5 steps)
-	case StepEnterName:
-		stepNum, totalSteps = 1, 5
-	case StepEnterPassword, StepConfirmPassword:
-		stepNum, totalSteps = 2, 5
-	case StepChooseScriptType:
-		stepNum, totalSteps = 3, 5
-	case StepChooseKeySource:
-		stepNum, totalSteps = 3, 5
-	case StepChooseNetwork:
-		stepNum, totalSteps = 4, 5
-		if m.isRestore {
-			stepNum = 3
-		}
-	case StepEnterPassphrase, StepConfirmPassphrase:
-		stepNum, totalSteps = 4, 5
-	case StepChooseWordCount:
-		stepNum, totalSteps = 4, 5
-	case StepShowMnemonic, StepConfirmMnemonic:
-		stepNum, totalSteps = 5, 5
-
-	// Single-sig hardware wallet flow
-	case StepHWISetup, StepHardwareWalletConnect:
-		stepNum, totalSteps = 4, 5
-	case StepHardwareWalletReview:
-		stepNum, totalSteps = 5, 5
-
-	// Restore wallet flow from seed
-	case StepRestoreEnterName:
-		stepNum, totalSteps = 1, 6
-	case StepRestoreEnterMnemonic:
-		stepNum, totalSteps = 2, 6
-	case StepRestoreEnterPassphrase, StepRestoreConfirmPassphrase:
-		stepNum, totalSteps = 3, 6
-	case StepRestoreChooseScriptType:
-		stepNum, totalSteps = 4, 6
-	case StepRestoreEnterPassword:
-		stepNum, totalSteps = 5, 6
-	case StepRestoreConfirmPassword:
-		stepNum, totalSteps = 6, 6
-
-	// Multisig flow (5 steps)
-	case StepMultisigChooseType:
-		stepNum, totalSteps = 3, 5
-	case StepMultisigConfirm:
-		stepNum, totalSteps = 3, 5
-	case StepMultisigEnterCosigners:
-		stepNum, totalSteps = 4, 5
-	case StepMultisigReview:
-		stepNum, totalSteps = 5, 5
-
-	// Restore wallet flow (from file)
-	case StepRestoreChooseFile:
-		stepNum, totalSteps = 1, 2
-	case StepRestoreFilePassword:
-		stepNum, totalSteps = 2, 2
-	}
+	progressLine := m.progressBar.ViewAs(progress) + " " +
+		styles.DimText.Render(formatProgressPercent(progress))
 
 	stepIndicator := styles.ProgressStepStyle.Render(fmt.Sprintf("Step %d/%d", stepNum, totalSteps))
 
-	progressBox := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.NeonOrange).
 		Padding(1, 2).
 		MarginBottom(2).
-		Render(stepIndicator + "\n" + progressStr)
-
-	return progressBox
+		Render(stepIndicator + "\n" + progressLine)
 }
 
 func (m WalletSetupModel) View() string {
 	var content strings.Builder
 
-	// Add progress bar for all steps except initial/choose screens
-	if m.step != StepChooseNetwork && m.step != StepChooseAction && m.step != StepRestoreChooseMethod {
-		content.WriteString(m.renderProgressBar())
+	// Add the progress bar for screens that belong to an ordered flow.
+	if progress := m.renderProgressBar(); progress != "" {
+		content.WriteString(progress)
 		content.WriteString("\n")
 	}
 
@@ -304,7 +181,7 @@ func (m WalletSetupModel) viewChooseWalletType() string {
 func (m WalletSetupModel) viewEnterName() string {
 	var title string
 	if m.isRestore && m.isMultisig {
-		title = styles.TitleStyle.Render("Import Multisig [1/5]")
+		title = styles.TitleStyle.Render("Import Multisig" + m.stepCounterSuffix())
 	}
 	instruction := styles.NormalText.Render("Wallet name:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
@@ -322,7 +199,7 @@ func (m WalletSetupModel) viewEnterName() string {
 func (m WalletSetupModel) viewEnterPassword() string {
 	var title string
 	if m.isRestore && m.isMultisig {
-		title = styles.TitleStyle.Render("Import Multisig [2/5]")
+		title = styles.TitleStyle.Render("Import Multisig" + m.stepCounterSuffix())
 	}
 	warning := styles.WarningText.Render("⚠ Password encrypts your wallet")
 	instruction := styles.NormalText.Render("Password:")
@@ -343,7 +220,7 @@ func (m WalletSetupModel) viewEnterPassword() string {
 func (m WalletSetupModel) viewConfirmPassword() string {
 	var title string
 	if m.isRestore && m.isMultisig {
-		title = styles.TitleStyle.Render("Import Multisig [2/5]")
+		title = styles.TitleStyle.Render("Import Multisig" + m.stepCounterSuffix())
 	}
 	instruction := styles.NormalText.Render("Confirm password:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))
@@ -363,7 +240,7 @@ func (m WalletSetupModel) viewConfirmPassword() string {
 func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
 	var title string
 	if restore {
-		title = styles.TitleStyle.Render("Restore from Seed [3/6]")
+		title = styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	}
 	info := styles.DimText.Render(
 		"Optional BIP39 passphrase. Leave empty for none.\n" +
@@ -389,7 +266,7 @@ func (m WalletSetupModel) viewEnterPassphrase(restore bool) string {
 func (m WalletSetupModel) viewConfirmPassphrase(restore bool) string {
 	var title string
 	if restore {
-		title = styles.TitleStyle.Render("Restore from Seed [3/6]")
+		title = styles.TitleStyle.Render("Restore from Seed" + m.stepCounterSuffix())
 	}
 	instruction := styles.NormalText.Render("Confirm BIP39 passphrase:")
 	help := styles.RenderHelp(styles.HK("enter", "continue"), styles.HK("esc", "back"))

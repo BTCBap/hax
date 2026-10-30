@@ -79,6 +79,77 @@ func (m SendModel) View() string {
 	return content
 }
 
+// sendFinalHintDesc is the primary action on the last step before signing.
+// Its width reserves the hint column so later hint items keep the same
+// position after the label morphs from "continue".
+const sendFinalHintDesc = "confirm & sign"
+
+const sendFinalHint = "enter " + sendFinalHintDesc
+
+var sendPrimaryHintWidth = lipgloss.Width(sendFinalHint)
+
+// renderSendHelp draws a send hint row with the primary action first. The
+// final step renders that action in the warning style; every step pads the
+// primary hint to the same width so the rest of the row cannot shift.
+func renderSendHelp(primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
+	parts, _ := sendHelpParts(primary, final, rest...)
+	return styles.FooterStyle.Render(strings.Join(parts, " • "))
+}
+
+// renderSendHelpWrapped keeps the primary hint's fixed column but starts a
+// new line when the next item would pass width cells.
+func renderSendHelpWrapped(width int, primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
+	parts, widths := sendHelpParts(primary, final, rest...)
+	if width <= 0 {
+		return styles.FooterStyle.Render(strings.Join(parts, " • "))
+	}
+
+	var lines []string
+	var line strings.Builder
+	lineWidth := 0
+	for i, part := range parts {
+		w := widths[i]
+		if lineWidth > 0 && lineWidth+3+w > width {
+			lines = append(lines, line.String())
+			line.Reset()
+			lineWidth = 0
+		}
+		if lineWidth > 0 {
+			line.WriteString(" • ")
+			lineWidth += 3
+		}
+		line.WriteString(part)
+		lineWidth += w
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
+	}
+	return styles.FooterStyle.Render(strings.Join(lines, "\n"))
+}
+
+func sendHelpParts(primary styles.HelpItem, final bool, rest ...styles.HelpItem) ([]string, []int) {
+	text := primary.Key + " " + primary.Desc
+	pad := sendPrimaryHintWidth - lipgloss.Width(text)
+	if pad < 0 {
+		pad = 0
+	}
+
+	var first string
+	if final {
+		first = styles.WarningText.Render(text) + strings.Repeat(" ", pad)
+	} else {
+		first = styles.HelpKeyStyle.Render(primary.Key) + " " +
+			styles.HelpDescStyle.Render(primary.Desc) + strings.Repeat(" ", pad)
+	}
+	parts := []string{first}
+	widths := []int{lipgloss.Width(text) + pad}
+	for _, item := range rest {
+		parts = append(parts, styles.HelpKeyStyle.Render(item.Key)+" "+styles.HelpDescStyle.Render(item.Desc))
+		widths = append(widths, lipgloss.Width(item.Key)+1+lipgloss.Width(item.Desc))
+	}
+	return parts, widths
+}
+
 func (m SendModel) viewAddressInput() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
 	subtitle := m.stepHeader(1, "Enter recipient address")
@@ -101,8 +172,8 @@ func (m SendModel) viewAddressInput() string {
 	// Hint about import option
 	importHint := styles.DimText.Render("Or press 'i' to import an existing PSBT")
 
-	help := styles.RenderHelp(
-		styles.HK("enter", "continue"),
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("i", "import PSBT"),
 		styles.HK("ctrl+v", "paste"),
 		styles.HK("esc", "cancel"),
@@ -160,8 +231,8 @@ func (m SendModel) viewAmountInput() string {
 		}
 	}
 
-	help := styles.RenderHelp(
-		styles.HK("enter", "continue"),
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("m", "send all"),
 		styles.HK("tab", "unit"),
 		styles.HK("esc", "back"),
@@ -214,11 +285,11 @@ func (m SendModel) viewRecipientList() string {
 		}
 	}
 
-	help := styles.RenderHelp(
+	help := renderSendHelp(
+		styles.HK("enter", "continue"), false,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("a/+", "add recipient"),
 		styles.HK("d", "delete"),
-		styles.HK("enter", "continue"),
 		styles.HK("esc", "edit last"),
 	)
 
@@ -267,16 +338,11 @@ func (m SendModel) viewUTXOSelection() string {
 			m.frozenCount, pluralize(m.frozenCount))
 	}
 
-	// List UTXOs
-	utxoList := "\n"
+	// List UTXOs. The confirmation state is helper text on the selected
+	// row, so the rows keep one width as the cursor moves.
+	utxoOptions := make([]choiceOption, len(m.utxos))
 	for i, utxo := range m.utxos {
-		cursor := "  "
 		checkbox := "[ ]"
-
-		if i == m.cursor {
-			cursor = "▶ "
-		}
-
 		if i < len(m.utxoSelected) && m.utxoSelected[i] {
 			checkbox = "[✓]"
 		}
@@ -294,28 +360,26 @@ func (m SendModel) viewUTXOSelection() string {
 			statusDesc = "unconfirmed"
 		}
 
-		utxoText := fmt.Sprintf("%s%s %s %s:%d • %s • %d sats",
-			cursor, checkbox, status, shortTxid, utxo.Vout, statusDesc, utxo.Value)
-
-		if i == m.cursor {
-			utxoList += styles.SelectedItemStyle.Render(utxoText) + "\n"
-		} else {
-			utxoList += styles.UnselectedItemStyle.Render(utxoText) + "\n"
+		utxoOptions[i] = choiceOption{
+			name: fmt.Sprintf("%s %s %s:%d • %d sats",
+				checkbox, status, shortTxid, utxo.Vout, utxo.Value),
+			desc: statusDesc,
 		}
 	}
+	utxoList := "\n" + renderChoiceMenu(utxoOptions, m.cursor)
 
-	help := styles.RenderHelp(
+	help := renderSendHelpWrapped(m.width,
+		styles.HK("tab", "continue"), false,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("space/enter", "toggle"),
 		styles.HK("a", "all"),
 		styles.HK("n", "none"),
-		styles.HK("tab", "continue"),
 		styles.HK("esc", "back"),
 	)
 	if m.sendAll {
-		help = styles.RenderHelp(
+		help = renderSendHelpWrapped(m.width,
+			styles.HK("tab", "continue"), false,
 			styles.HK("↑/↓", "navigate"),
-			styles.HK("tab", "continue"),
 			styles.HK("esc", "back"),
 		)
 	}
@@ -335,23 +399,39 @@ func (m SendModel) viewFeeSelection() string {
 	}
 
 	feeOptions := []struct {
-		name         string
-		level        FeeLevel
-		desc         string
-		timeEstimate string
+		name  string
+		level FeeLevel
+		eta   string
 	}{
-		{"🚀 High Priority", FeeLevelHigh, "Next block", "~10 minutes"},
-		{"⚡ Medium Priority", FeeLevelMedium, "Within 30 min", "~30 minutes"},
-		{"🐢 Low Priority", FeeLevelLow, "Within 1 hour", "~60 minutes"},
+		{"🚀 High Priority", FeeLevelHigh, "~10 min"},
+		{"⚡ Medium Priority", FeeLevelMedium, "~30 min"},
+		{"🐢 Low Priority", FeeLevelLow, "~1 hour"},
 	}
 
-	menu := "\n"
-	for i, opt := range feeOptions {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "▶ "
+	const customLabel = "✏️  Custom Fee"
+	labelWidth := lipgloss.Width(customLabel)
+	for _, opt := range feeOptions {
+		if w := lipgloss.Width(opt.name); w > labelWidth {
+			labelWidth = w
 		}
+	}
 
+	optionLine := func(index int, label, helper string) string {
+		marker := "  "
+		markerStyle := styles.DimText
+		labelStyle := styles.UnselectedItemStyle
+		if index == m.cursor {
+			marker = "▶ "
+			markerStyle = styles.HighlightText
+			labelStyle = styles.SelectedItemStyle
+		}
+		return markerStyle.Render(marker) +
+			labelStyle.Render(padCell(label, labelWidth)) +
+			"  " + styles.DimText.Render(helper)
+	}
+
+	menuLines := make([]string, 0, 4)
+	for i, opt := range feeOptions {
 		var feeRate float64
 		if m.feeEstimates != nil {
 			switch opt.level {
@@ -364,58 +444,44 @@ func (m SendModel) viewFeeSelection() string {
 			}
 		}
 
-		var optionText string
-		if feeRate <= 0 {
-			optionText = fmt.Sprintf("%s%s\n    %s • unavailable",
-				cursor, opt.name, opt.desc)
-		} else if m.bump != nil && m.bumpReady() && feeRate < m.bumpMinRate() {
-			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • below the minimum",
-				cursor, opt.name, opt.desc, formatFeeRate(feeRate))
-		} else {
-			estimatedFee := m.optionFee(feeRate)
-			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • ~%d sats total",
-				cursor, opt.name, opt.desc, formatFeeRate(feeRate), estimatedFee)
+		var helper string
+		switch {
+		case feeRate <= 0:
+			helper = opt.eta + " · unavailable"
+		case m.bump != nil && m.bumpReady() && feeRate < m.bumpMinRate():
+			helper = fmt.Sprintf("%s · %s sat/vB · below minimum",
+				opt.eta, formatFeeRate(feeRate))
+		default:
+			helper = fmt.Sprintf("%s · %s sat/vB · ~%d sats",
+				opt.eta, formatFeeRate(feeRate), m.optionFee(feeRate))
 		}
-
-		if i == m.cursor {
-			menu += styles.SelectedItemStyle.Render(optionText) + "\n\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(optionText) + "\n\n"
-		}
+		menuLines = append(menuLines, optionLine(i, opt.name, helper))
 	}
 
-	// Custom fee option
-	customCursor := "  "
-	if m.cursor == 3 {
-		customCursor = "▶ "
+	customHelper := "enter a rate"
+	customDetail := ""
+	switch {
+	case m.highFeePending > 0:
+		customHelper = "unusually high"
+		customDetail = styles.WarningText.Render(fmt.Sprintf(
+			"    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
+			formatFeeRate(m.highFeePending), m.optionFee(m.highFeePending),
+			highFeeConfirmWord, m.highFeeInput.View()))
+	case m.editingCustom:
+		customHelper = "enter a rate"
+		customDetail = styles.DimText.Render(fmt.Sprintf("    Enter rate: %s sat/vB",
+			m.customFeeInput.View()))
+	case m.customFeeRate > 0:
+		customHelper = fmt.Sprintf("%s sat/vB · ~%d sats",
+			formatFeeRate(m.customFeeRate), m.optionFee(m.customFeeRate))
 	}
+	customLine := optionLine(3, customLabel, customHelper)
+	if customDetail != "" {
+		customLine += "\n" + customDetail
+	}
+	menuLines = append(menuLines, customLine)
 
-	var customOptionText string
-	if m.highFeePending > 0 {
-		estimatedFee := m.optionFee(m.highFeePending)
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
-			customCursor, formatFeeRate(m.highFeePending), estimatedFee, highFeeConfirmWord, m.highFeeInput.View())
-	} else if m.editingCustom {
-		// Show input field when editing
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Enter rate: %s sat/vB\n",
-			customCursor, m.customFeeInput.View())
-	} else if m.customFeeRate > 0 {
-		// Show set custom rate (format nicely for fractional rates)
-		estimatedFee := m.optionFee(m.customFeeRate)
-		rateStr := formatFeeRate(m.customFeeRate)
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB • ~%d sats total\n",
-			customCursor, rateStr, estimatedFee)
-	} else {
-		// Show placeholder
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Press 'c' to set custom rate\n",
-			customCursor)
-	}
-
-	if m.cursor == 3 {
-		menu += styles.SelectedItemStyle.Render(customOptionText) + "\n\n"
-	} else {
-		menu += styles.UnselectedItemStyle.Render(customOptionText) + "\n\n"
-	}
+	menu := "\n" + strings.Join(menuLines, "\n\n") + "\n"
 
 	var help string
 	if m.highFeePending > 0 {
@@ -436,14 +502,13 @@ func (m SendModel) viewFeeSelection() string {
 		if m.bump.info != nil && m.bump.info.CanRBF && m.bump.info.CanCPFP {
 			items = append(items, styles.HK("m", "method"))
 		}
-		help = styles.RenderHelp(append(items,
-			styles.HK("enter", "continue"),
-			styles.HK("esc", "cancel"))...)
+		help = renderSendHelp(styles.HK("enter", "continue"), false,
+			append(items, styles.HK("esc", "cancel"))...)
 	} else {
-		help = styles.RenderHelp(
+		help = renderSendHelp(
+			styles.HK("enter", "continue"), false,
 			styles.HK("↑/↓", "navigate"),
 			styles.HK("c", "custom"),
-			styles.HK("enter", "continue"),
 			styles.HK("esc", "back"),
 		)
 	}
@@ -700,8 +765,9 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	}
 
 	// Unified help - all wallet types go to Sign & Broadcast
-	help := styles.RenderHelp(
-		styles.HK("enter", "sign & broadcast"),
+	help := renderSendHelp(
+		styles.HK("enter", sendFinalHintDesc), true,
+		styles.HK("v", "flow"),
 		styles.HK("esc", "change fee"),
 	)
 
@@ -728,8 +794,29 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 }
 
 func (m SendModel) viewReview() string {
+	if m.txFlow != nil {
+		return m.viewReviewTxFlow()
+	}
 	fixedHeader, scrollContent, help := m.buildReviewScrollable()
 	return m.renderScrollableViewport(fixedHeader, scrollContent, help)
+}
+
+// viewReviewTxFlow replaces the review body with the visualizer while the
+// screen title and step header stay in place.
+func (m SendModel) viewReviewTxFlow() string {
+	header := m.sendTitle() + "\n" + m.stepHeader(6, "Review transaction")
+	return m.renderTxFlowUnder(header)
+}
+
+// renderTxFlowUnder draws the visualizer in the rows left below header.
+func (m SendModel) renderTxFlowUnder(header string) string {
+	flow := *m.txFlow
+	flow.Width = m.width
+	flow.Height = m.height - lipgloss.Height(header) - 1
+	if flow.Height < 1 {
+		flow.Height = 1
+	}
+	return header + "\n" + flow.View()
 }
 
 func (m SendModel) viewBroadcasting() string {

@@ -71,6 +71,7 @@ func (m RootModel) autoLock() (RootModel, tea.Cmd) {
 	m.transactionHistoryModel = nil
 	m.addressesModel = nil
 	m.utxosModel = nil
+	m.feesModel = nil
 	m.settingsModel = nil
 	m.helpModel = nil
 	// These screens can hold a seed phrase, BIP39 passphrase, or RPC

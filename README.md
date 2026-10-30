@@ -52,14 +52,14 @@ Download the archive for your system from https://github.com/BTCBap/hax/releases
 
 | System | Asset |
 |---|---|
-| macOS Apple Silicon | `hax_1.3.0_darwin_arm64.tar.gz` |
-| macOS Intel | `hax_1.3.0_darwin_amd64.tar.gz` |
-| Linux x86_64 | `hax_1.3.0_linux_amd64.tar.gz` |
-| Linux ARM64 | `hax_1.3.0_linux_arm64.tar.gz` |
-| Windows x86_64 | `hax_1.3.0_windows_amd64.zip` |
+| macOS Apple Silicon | `hax_1.4.0_darwin_arm64.tar.gz` |
+| macOS Intel | `hax_1.4.0_darwin_amd64.tar.gz` |
+| Linux x86_64 | `hax_1.4.0_linux_amd64.tar.gz` |
+| Linux ARM64 | `hax_1.4.0_linux_arm64.tar.gz` |
+| Windows x86_64 | `hax_1.4.0_windows_amd64.zip` |
 
 ```bash
-tar -xzf hax_1.3.0_darwin_arm64.tar.gz   # use the file you downloaded
+tar -xzf hax_1.4.0_darwin_arm64.tar.gz   # use the file you downloaded
 chmod +x hax
 ./hax
 ```
@@ -77,7 +77,7 @@ Each release publishes archives for Linux, macOS, and Windows, plus `checksums.t
 Verify before running:
 
 ```bash
-VERSION=v1.3.0   # the release you downloaded
+VERSION=v1.4.0   # the release you downloaded
 # 1. Verify the checksum manifest was signed by this repo's release workflow
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \

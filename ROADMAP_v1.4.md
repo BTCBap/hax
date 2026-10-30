@@ -65,11 +65,27 @@ Ship the missing inspection and safety layers around the existing engine:
 | 9 | P1 | **Multi-part UR send and receive** | UR encoding is single-part (`internal/ur/psbt.go:11`, `internal/ur/ur.go:21`); BBQr already animates multiple frames (`internal/ui/models/send_psbt.go:438`). Add fountain encoding and a multi-frame decoder for QR-only signers. | M |
 | 10 | P1 | **Fee and mempool view** | Fee choices are static targets; the backend already exposes estimates. Add a fee histogram from the Electrum server or a sampled summary from Core's mempool, target selection, and a clear source label. No third-party HTTP APIs. | M |
 
+### 1.3.1 Delivered on the v1.4 design branch
+
+| Item | Status | Notes |
+|---|---|---|
+| 1. Transaction viewer | **Done (visualizer).** | Flow view (inputs → fee junction → outputs; markers for yours/change/external/fee/OP_RETURN, line weight by value, detail panel) opened with `v` from send Review, the PSBT inspector, and History. |
+| 2. BIP329 import UI | **Done.** | Settings screen: path → preview counts → result, 10 MiB limit. `input` record coverage for spend attribution not added. |
+| 3. Privacy coin selection | **Not started** | Protocol and selection work, out of scope for the design branch. |
+| 4. Inline RBF | **Done.** | ⇡ marker on pending outgoing History rows; `b` opens a speed-up tray (Fastest / 30 min / 1 hour / Custom), signing still goes through review. |
+| 5. Trays, Continue→Confirm, layout stability | **Done.** | Two-stage trays with fixed height; send hints morph from "enter continue" to "enter confirm & broadcast" on the final step with reserved width; layout_stability and 80x24 tests for every new screen. |
+| 6. Stealth mode | **Done.** | `z` masks amounts keeping units; review/PSBT/bump/visualizer screens show real values; "◌ hidden" badge. No shimmer animation. |
+| 7. Unified backup export | **Partial.** | Settings export of descriptors plus labels to an owner-only file; restore-check flow and completion moment not added. |
+| 8. UTXO upgrade | **Partial.** | Summary line (total, mempool, frozen), Value/Age/Confs/Address/Label/frozen columns, sort keys, trailing helper; script type column and filter/search not added. |
+| 9. Multi-part UR | **Not started** | |
+| 10. Fee view | **Partial.** | Fees screen (`F` from the Dashboard) with tiered estimates from the selected backend only, ETA, source label, refresh; no mempool histogram. |
+| Also delivered (not in top ten) | **Done.** | Hardware-wallet on-device address verification panel (`v` in Receive/Addresses; match/mismatch with differing groups highlighted); passphrase badge on the dashboard; grey helper text right of the selected item across menus; progress percentages derived from completed steps (never 100% early, monotonic, fixed width). |
+
 ### 1.4 Also planned (P1–P2, outside the top ten)
 
 - Descriptor export for the selected account; the settings path always uses `accounts[0]` (`internal/ui/models/settings.go:566`).
 - BIP322 message signing for address ownership proofs.
-- Argon2id wallet-key derivation with a migration path from PBKDF2 (`storage.go:23`).
+- Argon2id wallet-key derivation: **Done in v1.3.** Version-2 envelope, Argon2id with time=3, 64 MiB, and 4 threads, bounded parameters on read, and PBKDF2 v1 files migrated on unlock (`storage.go:23`).
 - Bitcoin Core cookie authentication, alongside the current user/password form.
 - Configurable or disabled block explorer links; history currently opens mempool.space (`internal/ui/models/history.go:1379`).
 - Correct mainnet derivation paths in the settings account card (`internal/ui/models/settings_views.go:298`).
@@ -176,7 +192,7 @@ Each item lists **what**, **why**, effort, priority, and a source tag where the 
 | Backup verification flow | **Partial.** After wallet creation, ask the user to re-enter selected seed words and confirm the descriptor. Mark the wallet "backup verified" only after success. | A written seed is not a tested backup. A verification checkpoint catches transcription errors early. | S–M | P1 | Inspired by Family Values |
 | Completion celebration | After successful verification, show a short ASCII burst and "Backup verified" in the tray, then return to the dashboard. Skippable and shown once. | Wallet creation is a rare, high-stakes moment. A small reward makes the step feel finished. | S | P2 | Inspired by Family Values |
 | Passphrase checkpoint | **Partial.** Create and restore already ask for the passphrase twice (`wallet_setup.go:487`). Add a persistent "passphrase attached" badge and a derived-fingerprint check at unlock. | A wrong passphrase opens a valid but different wallet, which looks like lost funds. | S | P1 | Inspired by Sparrow |
-| Argon2id key derivation | **Partial.** Replace PBKDF2-SHA256 100k (`storage.go:23`) with Argon2id tuned to about 500 ms, and migrate existing wallets on unlock with a versioned envelope. | Argon2id raises the cost of offline password guessing. Sparrow's choice is a useful reference. | M | P1 | Inspired by Sparrow |
+| Argon2id key derivation | **Done (v1.3).** Version-2 envelope with Argon2id (time=3, 64 MiB, 4 threads), bounded parameters on read, and PBKDF2 v1 files migrated on unlock (`storage.go:23`). | Argon2id raises the cost of offline password guessing. Sparrow's choice is a useful reference. | — | Done | Inspired by Sparrow |
 | Encrypted wallet file export/import | Export the encrypted wallet file and import it on another machine, with a version and network check. | Makes migration possible without exposing the seed. | M | P2 | — |
 | Seed QR export | Render the BIP39 seed as a QR for offline storage or air-gapped import, behind the existing warning flow. | Useful for users who keep paper backups and want a machine-readable copy. | S | P2 | Inspired by Sparrow |
 | Recovery drill in-app | **Partial.** A guided "test restore" flow that opens a temporary watch-only wallet from the backup and compares addresses. | Proves the backup restores the same wallet without risking the live one. | S–M | P2 | Inspired by Sparrow |
@@ -253,7 +269,7 @@ Sparrow is the reference desktop wallet for PSBT-first, standards-based Bitcoin 
 | **Tor and proxy** | Built-in Tor, proxy configuration, private-server-first guidance. | **Partial.** Optional Tor SOCKS5 with Electrum; no stream isolation or per-backend proxy auth. | **Keep and polish.** Add proxy configuration UX and diagnostics; keep selected-server-only. P2. |
 | **Server TOFU and certificate handling** | CA trust when configured; otherwise first-use certificate prompt, pinned per host, changed certificate raises an error. | **Shipped.** SHA-256 SPKI pin per `host:port`, mismatch error, explicit re-trust (`pinning.go:15`, `:83`). | **Keep.** Add fingerprint details and re-trust UI; keep the selected-server-only rule. P2. |
 | **PayNym (BIP47)** | Reusable payment codes and a directory. | **Absent.** | **Later.** Notification infrastructure and a public directory conflict with the privacy posture. P3. |
-| **Wallet encryption** | Argon2id key derivation, encrypted wallet file, encrypted seed, owner-only directories. | **Partial.** AES-256-GCM, PBKDF2-SHA256 100k (`storage.go:23`, `:338`), `0600`/`0700`. | **Adopt.** Argon2id with migration. P1. |
+| **Wallet encryption** | Argon2id key derivation, encrypted wallet file, encrypted seed, owner-only directories. | **Shipped (v1.3).** AES-256-GCM with Argon2id, PBKDF2 v1 files migrated on unlock (`storage.go:23`, `:338`), `0600`/`0700`. | **Done in v1.3.** |
 | **PSBT-first design** | PSBTs are the transaction model from keystore to editor. | **Shipped.** PSBT create, inspect, sign, finalize, export, import (`psbt.go`), HWI and QR flows. | **Keep.** Extend the viewer and signing-progress surfaces. P1. |
 
 ### 4.1 Whirlpool and privacy analysis
@@ -289,7 +305,7 @@ The map is stable, copyable, and works over SSH. It also gives the privacy check
 
 Sparrow's source exposes several practices that sit behind the feature list:
 
-- **Argon2 key derivation.** Sparrow tunes Argon2 to about 500 ms. hax uses PBKDF2-SHA256 at 100k iterations (`storage.go:23`); the Argon2id item closes this gap.
+- **Argon2 key derivation.** Sparrow tunes Argon2 to about 500 ms. hax now uses Argon2id since v1.3, with PBKDF2 v1 files migrated on unlock (`storage.go:23`); the gap is closed.
 - **Encrypted wallet envelope.** Sparrow derives an EC key and encrypts the wallet with ECIES, with the seed encrypted inside. hax encrypts the whole wallet with AES-256-GCM (`storage.go:338`) and keeps the seed inside the same envelope. Both protect confidentiality; the v1.4 migration must preserve atomic writes and backup compatibility.
 - **Consistency checks.** Sparrow refuses states such as "wallet was not encrypted, but seed is." Add explicit invariant checks alongside the Argon2 migration so a partially upgraded file cannot open.
 - **Owner-only files.** Sparrow creates owner-only directories; hax uses `0700` directories and `0600` files.
@@ -462,7 +478,7 @@ This sequencing keeps P0 work together and leaves interop work for the end, when
 | **A. Interaction foundation** | Tray system, Continue→Confirm, layout tests, stealth mode, digit grouping, pending chip, inline RBF row | Every new flow renders at 80x24 without shifting; tests cover the seed quiz, unlock, send amount, send review, and bump tray. |
 | **B. Transaction visibility** | Transaction viewer, bump tray, fee and mempool view, configurable explorer, UTXO columns and filters | A confirmed send can be inspected end to end; a pending send can be bumped from its row. |
 | **C. Privacy and safety** | Privacy-aware selection, transaction privacy check, BIP329 import UI and input records, backup export and verification, passphrase checkpoint | A user can import labels, see linkage warnings, export a restorable backup, and verify it. |
-| **D. Interoperability** | Per-account descriptor export, generic descriptor parser, multi-part UR, BSMS, BIP322, Argon2id, Core cookie auth | Descriptor and PSBT round-trip against Core and Sparrow; a QR-only signer completes a multi-frame PSBT. |
+| **D. Interoperability** | Per-account descriptor export, generic descriptor parser, multi-part UR, BSMS, BIP322, Argon2id (done in v1.3), Core cookie auth | Descriptor and PSBT round-trip against Core and Sparrow; a QR-only signer completes a multi-frame PSBT. |
 | **Release gate** | Docs, real-device matrix, funded testnet4 smoke test, recovery drill | All P0 items complete; P1 items complete or explicitly deferred with a note in `CHANGELOG.md`. |
 
 The release is complete when a new user can create a wallet, receive, send, inspect the result, bump a stuck payment, export and verify a backup, and move a descriptor to another wallet without leaving the terminal or reading source code.

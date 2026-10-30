@@ -64,6 +64,23 @@ type SettingsModel struct {
 	showSingleSigSeedInput bool   // Show seed input for watch-only single-sig
 	singleSigImportError   string // Error from seed import
 
+	// BIP329 label import
+	showLabelImport    bool
+	labelImportStage   labelImportStage
+	labelImportPath    textinput.Model
+	labelImportData    string
+	labelImportPreview bip329Preview
+	labelImportResult  string
+	labelImportError   string
+
+	// Unified backup export
+	showBackupExport   bool
+	backupExportStage  backupExportStage
+	backupTray         Tray
+	backupExportPath   string
+	backupExportResult string
+	backupExportError  string
+
 	// HWI status (cached on screen activation, not computed per render)
 	hwiStatusCached string
 
@@ -111,6 +128,14 @@ func NewSettingsModel(walletManager WalletService, configManager *config.ConfigM
 	scanPw.CharLimit = 100
 	scanPw.Width = 40
 
+	labelPath := textinput.New()
+	labelPath.Placeholder = "~/.hax/<wallet>_labels_bip329.jsonl"
+	labelPath.CharLimit = 1024
+	labelPath.Width = 60
+	if walletManager != nil {
+		labelPath.Placeholder = "~/.hax/" + walletManager.GetWalletName() + "_labels_bip329.jsonl"
+	}
+
 	return SettingsModel{
 		cosignerScanPassword:     scanPw,
 		walletManager:            walletManager,
@@ -120,6 +145,7 @@ func NewSettingsModel(walletManager WalletService, configManager *config.ConfigM
 		cosignerSeedInput:        seedInput,
 		cosignerNameInput:        nameInput,
 		cosignerFingerprintInput: fingerprintInput,
+		labelImportPath:          labelPath,
 	}
 }
 
@@ -130,6 +156,16 @@ func (m SettingsModel) Init() tea.Cmd {
 		return m.animateTick()
 	}
 	return nil
+}
+
+// CapturesTextInput reports whether a seed, password, or cosigner edit form is
+// open, so root-level shortcuts stay out of it.
+func (m SettingsModel) CapturesTextInput() bool {
+	return m.showLabelImport || m.showBackupExport ||
+		m.showCosignerSeedInput || m.showSingleSigSeedInput ||
+		m.showCosignerScanPassword || m.showCosignerEdit ||
+		m.cosignerSeedInput.Focused() || m.cosignerScanPassword.Focused() ||
+		m.cosignerNameInput.Focused() || m.cosignerFingerprintInput.Focused()
 }
 
 // checkHWIStatus probes HWI availability and version (called once on screen activation)
@@ -173,6 +209,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.showBackupExport {
+			m.backupTray = m.backupTray.WithWidth(msg.Width)
+		}
 
 	case TickMsg:
 		// Skip tick processing if screen is not active
@@ -191,6 +230,13 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		if m.showLabelImport {
+			return m.updateLabelImport(msg)
+		}
+		if m.showBackupExport {
+			return m.updateBackupExport(msg)
+		}
+
 		// Handle mnemonic warning state
 		if m.showMnemonicWarning {
 			switch msg.String() {
@@ -643,6 +689,13 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cosignerSeedInput.Focus()
 				m.singleSigImportError = ""
 			}
+			return m, nil
+		case "l":
+			// Import BIP329 labels from a JSON Lines file.
+			return m, m.openLabelImport()
+		case "B":
+			// Export descriptors, xpubs and labels without private keys.
+			m.openBackupExport()
 			return m, nil
 		case "u", "U":
 			// Cycle display unit: BTC <-> Bitcoin (BIP-177)

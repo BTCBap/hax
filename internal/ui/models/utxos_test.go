@@ -31,17 +31,36 @@ func TestUTXOs_FreezeToggle(t *testing.T) {
 		t.Fatal("f did not freeze the selected coin")
 	}
 	view := m.View()
-	for _, want := range []string{"aaaaaaaa..:0 frozen", "Frozen:", "COIN FROZEN", "freeze"} {
+	for _, want := range []string{"❄", "COIN FROZEN", "freeze"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
+	}
+	if got := strings.Count(stripANSI(view), "frozen"); got != 1 {
+		t.Fatalf("frozen appears %d times, want only the summary segment:\n%s", got, stripANSI(view))
+	}
+	if got := strings.Count(stripANSI(view), "❄"); got != 1 {
+		t.Fatalf("❄ appears %d times, want only the frozen row:\n%s", got, stripANSI(view))
+	}
+	if strings.Contains(view, "●") || strings.Contains(view, "○") {
+		t.Fatalf("coins screen still uses ●/○ markers:\n%s", stripANSI(view))
+	}
+	if !strings.Contains(stripANSI(view), "›") {
+		t.Fatalf("coins screen is missing the cursor marker:\n%s", stripANSI(view))
+	}
+	if !strings.Contains(stripANSI(view), "frozen 0.00090000 (1)") {
+		t.Fatalf("summary does not report the frozen total:\n%s", stripANSI(view))
 	}
 	assertFits(t, view, 80)
 
 	model, _ = m.Update(key)
 	m = model.(UTXOsModel)
-	if mock.IsUTXOFrozen(big.TxID, big.Vout) || strings.Contains(m.View(), "Frozen:") {
+	view = m.View()
+	if mock.IsUTXOFrozen(big.TxID, big.Vout) || strings.Contains(view, "❄") || strings.Contains(view, "COIN FROZEN") {
 		t.Fatal("second f did not unfreeze")
+	}
+	if !strings.Contains(stripANSI(view), "frozen 0.00000000 (0)") {
+		t.Fatalf("summary dropped the frozen segment after unfreezing:\n%s", stripANSI(view))
 	}
 }
 
