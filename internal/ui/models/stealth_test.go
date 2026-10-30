@@ -141,7 +141,7 @@ func TestStealthToggleKeepsLayoutStable(t *testing.T) {
 	}{
 		{"dashboard", []string{"Balance:", "Recent Activity"}, func() tea.Model { return stealthDashboard() }},
 		{"history", []string{"Amount"}, func() tea.Model { return stealthHistory() }},
-		{"utxos", []string{"coins · total", "Value"}, func() tea.Model { return stealthUTXOs() }},
+		{"utxos", []string{"coins", "mempool ", "frozen ", "Value"}, func() tea.Model { return stealthUTXOs() }},
 		{"addresses", []string{"Balance"}, func() tea.Model { return stealthAddresses() }},
 		{"receive", []string{"Balance:"}, func() tea.Model { return stealthReceive() }},
 	}

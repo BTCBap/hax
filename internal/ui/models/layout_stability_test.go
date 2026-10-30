@@ -329,8 +329,13 @@ func TestUTXOsLayoutStableAcrossCursor(t *testing.T) {
 	m := utxoLayoutModel(t, 80, 24)
 	base := m.View()
 	wantLines := requireLineCount(t, base)
-	wantSummary := requireTextPosition(t, base, "coins · total")
-	wantMarker := requireTextPosition(t, base, "●")
+	wantSummary := requireTextPosition(t, base, "coins")
+	wantMempool := requireTextPosition(t, base, "mempool ")
+	wantFrozen := requireTextPosition(t, base, "frozen ")
+	wantMarker := requireTextPosition(t, base, "›")
+	if !strings.Contains(stripANSI(base), "3 coins · 0.00080300 BTC · mempool 0.00030000 · frozen 0.00000000 (0)") {
+		t.Fatalf("unexpected summary line:\n%s", stripANSI(base))
+	}
 
 	// Sorted by value: alpha, gamma, beta.
 	rows := []struct {
@@ -353,10 +358,16 @@ func TestUTXOsLayoutStableAcrossCursor(t *testing.T) {
 		if got := requireLineCount(t, view); got != wantLines {
 			t.Fatalf("row %d: %d lines, want %d", i, got, wantLines)
 		}
-		if got := requireTextPosition(t, view, "coins · total"); got != wantSummary {
+		if got := requireTextPosition(t, view, "coins"); got != wantSummary {
 			t.Fatalf("row %d: summary moved from %+v to %+v", i, wantSummary, got)
 		}
-		if got := requireTextPosition(t, view, "●"); got.col != wantMarker.col {
+		if got := requireTextPosition(t, view, "mempool "); got != wantMempool {
+			t.Fatalf("row %d: mempool segment moved from %+v to %+v", i, wantMempool, got)
+		}
+		if got := requireTextPosition(t, view, "frozen "); got != wantFrozen {
+			t.Fatalf("row %d: frozen segment moved from %+v to %+v", i, wantFrozen, got)
+		}
+		if got := requireTextPosition(t, view, "›"); got.col != wantMarker.col {
 			t.Fatalf("row %d: marker moved from x=%d to x=%d", i, wantMarker.col, got.col)
 		}
 		for j, other := range rows {

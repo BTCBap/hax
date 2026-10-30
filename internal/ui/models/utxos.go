@@ -562,7 +562,7 @@ func (m UTXOsModel) renderHeader(cols utxoColumns) string {
 		padLeftCell("Confs", cols.conf),
 		padCell("Address", cols.addr),
 		padCell("Label", cols.label),
-		padCell("❄", cols.frozen),
+		padCell("", cols.frozen),
 		padCell("", cols.helper),
 	}
 	return headerStyle.Render(strings.Join(cells, strings.Repeat(" ", utxoGap)))
@@ -570,11 +570,11 @@ func (m UTXOsModel) renderHeader(cols utxoColumns) string {
 
 func (m UTXOsModel) renderRow(index int, row utxoDisplayRow, cols utxoColumns, displayUnit wallet.DisplayUnit) string {
 	selected := index == m.selectedIdx
-	marker := "○"
+	marker := " "
 	markerStyle := styles.DimText
 	bodyStyle := styles.NormalText
 	if selected {
-		marker = "●"
+		marker = "›"
 		markerStyle = styles.HighlightText
 		bodyStyle = styles.SelectedItemStyle
 	}
@@ -639,7 +639,8 @@ func (m UTXOsModel) renderRow(index int, row utxoDisplayRow, cols utxoColumns, d
 func utxoHelper(row utxoDisplayRow) string {
 	switch {
 	case row.frozen:
-		return "frozen"
+		// The frozen column already marks this coin with ❄.
+		return ""
 	case !row.utxo.Status.Confirmed:
 		return "unconfirmed"
 	case row.utxo.Value < 1000:
@@ -695,27 +696,40 @@ func shortenAddress(address string, width int) string {
 }
 
 func (m UTXOsModel) summaryLine(displayUnit wallet.DisplayUnit) string {
-	var total api.Satoshi
+	var total, mempool, frozen api.Satoshi
+	frozenCount := 0
 	for _, utxo := range m.utxos {
 		total += utxo.Value
-	}
-	selectedCount := 0
-	var selectedValue api.Satoshi
-	if m.selectedIdx >= 0 && m.selectedIdx < len(m.page) {
-		selectedCount = 1
-		selectedValue = m.page[m.selectedIdx].utxo.Value
+		if !utxo.Status.Confirmed {
+			mempool += utxo.Value
+		}
+		if m.walletManager.IsUTXOFrozen(utxo.TxID, utxo.Vout) {
+			frozen += utxo.Value
+			frozenCount++
+		}
 	}
 
 	totalStr := maskAmount(wallet.FormatAmountCompact(total, displayUnit), m.stealth)
-	selectedStr := maskAmount(wallet.FormatAmountCompact(selectedValue, displayUnit), m.stealth)
+	// Mempool and frozen already follow the total, so they drop the unit to
+	// keep the line compact. Both segments are always rendered so the
+	// remaining text never shifts.
+	mempoolStr := maskAmount(summaryAmount(mempool, displayUnit), m.stealth)
+	frozenStr := maskAmount(summaryAmount(frozen, displayUnit), m.stealth)
 
-	return fmt.Sprintf("%s · %s %s · %s · %s",
+	return strings.Join([]string{
 		styles.DimText.Render(fmt.Sprintf("%d coins", len(m.utxos))),
-		styles.DimText.Render("total"),
 		styles.HighlightText.Render(totalStr),
-		styles.DimText.Render(fmt.Sprintf("selected %d", selectedCount)),
-		styles.HighlightText.Render(selectedStr),
-	)
+		styles.DimText.Render("mempool ") + styles.HighlightText.Render(mempoolStr),
+		styles.DimText.Render("frozen ") + styles.HighlightText.Render(frozenStr) +
+			styles.DimText.Render(fmt.Sprintf(" (%d)", frozenCount)),
+	}, " · ")
+}
+
+// summaryAmount formats an amount without its unit suffix for the trailing
+// totals on the coins screen.
+func summaryAmount(value api.Satoshi, unit wallet.DisplayUnit) string {
+	amount, _ := splitAmountUnit(wallet.FormatAmountCompact(value, unit))
+	return amount
 }
 
 func (m UTXOsModel) tableBox(cols utxoColumns, displayUnit wallet.DisplayUnit) string {
