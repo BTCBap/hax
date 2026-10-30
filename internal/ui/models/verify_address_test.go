@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
@@ -36,71 +37,6 @@ func newVerifyView(state AddressVerifyState, width int) AddressVerifyView {
 		v.ErrMessage = "device is in mainnet mode but wallet uses testnet; verify the derivation path matches"
 	}
 	return v
-}
-
-func TestChunkAddress(t *testing.T) {
-	tests := []struct {
-		address string
-		want    []string
-	}{
-		{"", nil},
-		{"a", []string{"a"}},
-		{"abcd", []string{"abcd"}},
-		{"abcdefghij", []string{"abcd", "efgh", "ij"}},
-		{verifyTestAddress, []string{
-			"tb1q", "rp33", "g0q5", "c5tx", "sp9a", "rysr", "x4k6", "zdkf",
-			"s4nc", "e4xj", "0gdc", "ccef", "vpys", "xf3q", "0sl5", "k7",
-		}},
-	}
-
-	for _, tc := range tests {
-		got := chunkAddress(tc.address)
-		if len(got) != len(tc.want) {
-			t.Fatalf("chunkAddress(%q) = %v, want %v", tc.address, got, tc.want)
-		}
-		for i := range got {
-			if got[i] != tc.want[i] {
-				t.Fatalf("chunkAddress(%q)[%d] = %q, want %q", tc.address, i, got[i], tc.want[i])
-			}
-		}
-	}
-}
-
-func TestChunkAddressRows(t *testing.T) {
-	tests := []struct {
-		name    string
-		address string
-		perRow  int
-		want    []string
-	}{
-		{name: "empty", address: "", perRow: 8},
-		{name: "single row", address: "abcdefghijkl", perRow: 8, want: []string{"abcd efgh ijkl"}},
-		{name: "fixed group count", address: "abcdefghijklmnop", perRow: 4, want: []string{"abcd efgh ijkl mnop"}},
-		{name: "wraps whole groups", address: "abcdefghijklmnop", perRow: 3, want: []string{"abcd efgh ijkl", "mnop"}},
-		{
-			name:    "longest address uses two rows",
-			address: verifyTestAddress,
-			perRow:  8,
-			want: []string{
-				"tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
-				"s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k7",
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := chunkAddressRows(tc.address, tc.perRow)
-			if len(got) != len(tc.want) {
-				t.Fatalf("chunkAddressRows(%q, %d) = %v, want %v", tc.address, tc.perRow, got, tc.want)
-			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Fatalf("line %d = %q, want %q", i, got[i], tc.want[i])
-				}
-			}
-		})
-	}
 }
 
 func TestAddressVerifyViewIdleRendersNothing(t *testing.T) {
@@ -131,7 +67,7 @@ func TestAddressVerifyViewStates(t *testing.T) {
 		},
 		{
 			state: AddressVerifyMismatch,
-			want:  []string{"Verify on device", "Wallet", "Device", "✗ Device shows a different address", "0sl5 k8"},
+			want:  []string{"Verify on device", "Wallet", "Device", "✗ Device shows a different address", "0sl5k8"},
 			avoid: []string{"Matches device", "v retry"},
 		},
 		{
@@ -162,13 +98,11 @@ func TestAddressVerifyViewStates(t *testing.T) {
 	}
 }
 
-func TestAddressVerifyViewGroupLayout(t *testing.T) {
+func TestAddressVerifyViewAddressLayout(t *testing.T) {
 	plain := stripANSI(newVerifyView(AddressVerifyMismatch, 80).View())
 	for _, want := range []string{
-		"Wallet  tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
-		"        s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k7",
-		"Device  tb1q rp33 g0q5 c5tx sp9a rysr x4k6 zdkf",
-		"        s4nc e4xj 0gdc ccef vpys xf3q 0sl5 k8",
+		"Wallet  tb1qrp33 g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf 3q0sl5k7",
+		"Device  tb1qrp33 g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf 3q0sl5k8",
 	} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("view does not contain %q:\n%s", want, plain)
@@ -176,7 +110,7 @@ func TestAddressVerifyViewGroupLayout(t *testing.T) {
 	}
 
 	match := stripANSI(newVerifyView(AddressVerifyMatch, 80).View())
-	if got := strings.Count(match, "rp33"); got != 1 {
+	if got := strings.Count(match, "g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf"); got != 1 {
 		t.Fatalf("match should show the wallet address once, got %d copies:\n%s", got, match)
 	}
 	if !strings.Contains(match, "Device") {
@@ -184,20 +118,85 @@ func TestAddressVerifyViewGroupLayout(t *testing.T) {
 	}
 }
 
-func TestAddressVerifyViewReservedRows(t *testing.T) {
-	short := AddressVerifyView{
-		Address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
-		Path:    verifyTestPath,
-		State:   AddressVerifyWaiting,
-		Width:   80,
-	}
-	long := newVerifyView(AddressVerifyWaiting, 80)
+func TestAddressVerifyViewWrapsAddress(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
 
-	if short.Height() != long.Height() {
-		t.Fatalf("short address height = %d, long address height = %d", short.Height(), long.Height())
+	v := newVerifyView(AddressVerifyWaiting, 40)
+	if got, want := v.reservedRows(), 3; got != want {
+		t.Fatalf("reservedRows() = %d, want %d", got, want)
 	}
-	if got, want := requireLineCount(t, short.View()), requireLineCount(t, long.View()); got != want {
-		t.Fatalf("short address rendered %d lines, long address %d", got, want)
+	if got, want := v.Height(), 2*3+8; got != want {
+		t.Fatalf("Height() = %d, want %d", got, want)
+	}
+
+	formatted := ui.FormatAddress(verifyTestAddress, 0)
+	lines := wrapAddressCells(styledAddressCells(formatted), v.addressRowWidth())
+	if len(lines) != 3 {
+		t.Fatalf("address wrapped into %d lines, want 3", len(lines))
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "\x1b[") {
+			t.Fatalf("wrapped line %d lost its style: %q", i, line)
+		}
+		if got, want := lipgloss.Width(line), lipgloss.Width(stripANSI(line)); got != want {
+			t.Fatalf("wrapped line %d width = %d, want %d", i, got, want)
+		}
+	}
+
+	plain := stripANSI(v.View())
+	visible := stripANSI(formatted)
+	wantRows := []string{
+		"Wallet  " + visible[:28],
+		"        " + visible[28:56],
+		"        " + visible[56:],
+	}
+	for _, want := range wantRows {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("view does not contain %q:\n%s", want, plain)
+		}
+	}
+}
+
+func TestAddressVerifyViewMismatchHighlightsDifferentCharacters(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
+
+	rendered := newVerifyView(AddressVerifyMismatch, 80).View()
+	plain := stripANSI(rendered)
+	if strings.Count(plain, "Device  tb1qrp33") != 1 {
+		t.Fatalf("device address was not rendered:\n%s", plain)
+	}
+	for _, same := range []string{"t", "b", "1", "q", "r", "p", "3", "g", "0", "5", "c", "s", "9", "a", "y", "x", "4", "k", "6", "z", "d", "f", "n", "e", "j", "7"} {
+		if strings.Contains(rendered, styles.ErrorText.Render(same)) {
+			t.Fatalf("matching character %q was highlighted", same)
+		}
+	}
+	if !strings.Contains(rendered, styles.ErrorText.Render("8")) {
+		t.Fatalf("different character was not highlighted")
+	}
+}
+
+func TestAddressVerifyViewReservedRows(t *testing.T) {
+	for _, width := range []int{80, 40} {
+		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+			short := AddressVerifyView{
+				Address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+				Path:    verifyTestPath,
+				State:   AddressVerifyWaiting,
+				Width:   width,
+			}
+			long := newVerifyView(AddressVerifyWaiting, width)
+
+			if short.Height() != long.Height() {
+				t.Fatalf("short address height = %d, long address height = %d", short.Height(), long.Height())
+			}
+			if got, want := requireLineCount(t, short.View()), requireLineCount(t, long.View()); got != want {
+				t.Fatalf("short address rendered %d lines, long address %d", got, want)
+			}
+		})
 	}
 }
 
@@ -267,7 +266,7 @@ func TestAddressVerifyViewErrorTruncated(t *testing.T) {
 }
 
 func TestAddressVerifyViewFitsPanelWidth(t *testing.T) {
-	for _, width := range []int{80, 120} {
+	for _, width := range []int{80, 120, 40, 24} {
 		for _, state := range []AddressVerifyState{
 			AddressVerifyIdle, AddressVerifyWaiting, AddressVerifyMatch,
 			AddressVerifyMismatch, AddressVerifyError,
@@ -279,25 +278,5 @@ func TestAddressVerifyViewFitsPanelWidth(t *testing.T) {
 				}
 			}
 		}
-	}
-}
-
-func TestAddressVerifyViewMismatchHighlightsDifferentGroups(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
-	rendered := newVerifyView(AddressVerifyMismatch, 80).View()
-	plain := stripANSI(rendered)
-	if strings.Count(plain, "Device  tb1q") != 1 {
-		t.Fatalf("device address was not rendered:\n%s", plain)
-	}
-	for _, same := range []string{"tb1q", "rp33", "s4nc", "0sl5", "k7"} {
-		if strings.Contains(rendered, styles.ErrorText.Render(same)) {
-			t.Fatalf("matching group %q was highlighted", same)
-		}
-	}
-	if !strings.Contains(rendered, styles.ErrorText.Render("k8")) {
-		t.Fatalf("different group was not highlighted")
 	}
 }

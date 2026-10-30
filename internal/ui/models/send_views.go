@@ -13,6 +13,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// sendCompactAddressWidth keeps the compact address column used by the send
+// flows: two eight-character groups plus the old "..." middle.
+const sendCompactAddressWidth = 19
+
 func (m SendModel) View() string {
 	_ = m.width
 
@@ -180,8 +184,8 @@ func (m SendModel) viewAmountInput() string {
 	header := styles.TitleStyle.Render("📤 Send Bitcoin")
 	subtitle := m.stepHeader(2, "Enter amount")
 
-	// Format address with pastel colors (first/last 6 chars highlighted)
-	formattedAddr := ui.FormatBitcoinAddressColored(m.recipientAddress, 6, 6)
+	// Format the address with the shared pastel layout.
+	formattedAddr := ui.FormatAddress(m.recipientAddress, 0)
 
 	// Keep recipient details left-aligned and size the box to content.
 	addrContent := lipgloss.JoinVertical(
@@ -258,20 +262,16 @@ func (m SendModel) viewRecipientList() string {
 			cursor = "▶ "
 		}
 
-		// Format address (first 8 and last 8 chars)
-		shortAddr := r.Address
-		if len(shortAddr) > 20 {
-			shortAddr = shortAddr[:8] + "..." + shortAddr[len(shortAddr)-8:]
-		}
+		// Format the address in the same compact column as before.
+		shortAddr := ui.FormatAddress(r.Address, sendCompactAddressWidth)
 
-		recipientText := fmt.Sprintf("%s#%d: %s • %d sats",
-			cursor, i+1, shortAddr, r.Amount)
-
+		itemStyle := styles.UnselectedItemStyle
 		if i == m.cursor {
-			recipientList += styles.SelectedItemStyle.Render(recipientText) + "\n"
-		} else {
-			recipientList += styles.UnselectedItemStyle.Render(recipientText) + "\n"
+			itemStyle = styles.SelectedItemStyle
 		}
+		recipientList += itemStyle.Render(fmt.Sprintf("%s#%d: ", cursor, i+1)) +
+			shortAddr +
+			itemStyle.Render(fmt.Sprintf(" • %d sats", r.Amount)) + "\n"
 	}
 
 	help := renderSendHelp(
@@ -620,7 +620,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 			// Compact one-line address formatting to avoid hard wraps in review boxes.
 			formattedAddr := ""
 			if addr != "" {
-				formattedAddr = ui.FormatBitcoinAddressCompact(addr, 8, 8)
+				formattedAddr = ui.FormatAddress(addr, sendCompactAddressWidth)
 			}
 
 			// Combine input info on fewer lines with aligned amounts
@@ -654,7 +654,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 
 	// Show all recipients
 	for i, r := range m.recipients {
-		formattedRecipient := ui.FormatBitcoinAddressCompact(r.Address, 8, 8)
+		formattedRecipient := ui.FormatAddress(r.Address, sendCompactAddressWidth)
 		outputRows = append(outputRows,
 			"  "+styles.DimText.Render(fmt.Sprintf("Output #%d (Recipient):", i+1))+" "+formattedRecipient,
 			renderRow("  Amount:", formatBTCWithSats(r.Amount)),
@@ -682,7 +682,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 
 	// Change output (if applicable)
 	if m.psbtResult.HasChange {
-		formattedChange := ui.FormatBitcoinAddressCompact(m.psbtResult.ChangeAddress, 8, 8)
+		formattedChange := ui.FormatAddress(m.psbtResult.ChangeAddress, sendCompactAddressWidth)
 		// Add extra spaces to align "Change):" to match length of "Recipient):"
 		// "Recipient" = 9 chars, "Change" = 6 chars, difference = 3 spaces needed
 		outputRows = append(outputRows,
@@ -844,7 +844,7 @@ func (m SendModel) viewComplete() string {
 		numRecipients = len(m.recipients)
 
 		if numRecipients == 1 {
-			formattedAddr := ui.FormatBitcoinAddressColored(m.recipients[0].Address, 6, 6)
+			formattedAddr := ui.FormatAddress(m.recipients[0].Address, 0)
 			addrSection = lipgloss.JoinVertical(
 				lipgloss.Center,
 				styles.DimText.Render("To:"),

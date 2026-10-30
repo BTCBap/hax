@@ -429,8 +429,8 @@ func (m ReceiveModel) renderCombinedQRAndAddress() string {
 	// Reserve the badge column so it cannot re-center the path line.
 	statusBadge = lipgloss.NewStyle().Width(8).Render(statusBadge)
 
-	// Format address with pastel colors
-	coloredAddr := ui.FormatBitcoinAddressColored(m.selectedAddress, 8, 8)
+	// Format address with the shared pastel layout.
+	coloredAddr := ui.FormatAddress(m.selectedAddress, 0)
 
 	// Balance line
 	balanceLine := ""

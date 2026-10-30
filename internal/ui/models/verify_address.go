@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
@@ -29,9 +31,7 @@ const (
 	addressVerifyMaxWidth     = 80
 	addressVerifyMinWidth     = 24
 	addressVerifyLabelWidth   = 8
-	addressVerifyMaxGroups    = 8
 	addressVerifyLongestAddr  = 62
-	addressVerifyGroupSize    = 4
 )
 
 var addressVerifySpinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -161,29 +161,19 @@ func (v AddressVerifyView) innerWidth() int {
 	return v.panelWidth() - 4 // rounded border and one column of padding each side
 }
 
-// groupsPerRow keeps the historical eight groups per row when there is room
-// and drops to fewer groups on narrow panels.
-func (v AddressVerifyView) groupsPerRow() int {
-	available := v.innerWidth() - addressVerifyLabelWidth
-	if available < addressVerifyGroupSize {
-		available = addressVerifyGroupSize
+func (v AddressVerifyView) addressRowWidth() int {
+	width := v.innerWidth() - addressVerifyLabelWidth
+	if width < 1 {
+		width = 1
 	}
-	perRow := (available + 1) / (addressVerifyGroupSize + 1)
-	if perRow > addressVerifyMaxGroups {
-		perRow = addressVerifyMaxGroups
-	}
-	if perRow < 1 {
-		perRow = 1
-	}
-	return perRow
+	return width
 }
 
-// reservedRows is based on the longest supported address so P2WPKH and P2WSH
-// addresses render at the same height.
+// reservedRows is based on the longest supported address plus the two
+// separator spaces so P2WPKH and P2WSH addresses render at the same height.
 func (v AddressVerifyView) reservedRows() int {
-	groups := (addressVerifyLongestAddr + addressVerifyGroupSize - 1) / addressVerifyGroupSize
-	perRow := v.groupsPerRow()
-	rows := (groups + perRow - 1) / perRow
+	cells := addressVerifyLongestAddr + 2
+	rows := (cells + v.addressRowWidth() - 1) / v.addressRowWidth()
 	if rows < 1 {
 		rows = 1
 	}
@@ -241,13 +231,19 @@ func (v AddressVerifyView) titleLine(width int) string {
 	return line + strings.Repeat(" ", gap) + styles.DimText.Render(path)
 }
 
-// addressRows renders an address in fixed-size groups, using only the reserved
-// number of rows. Device rows stay blank until a mismatch is available.
+// addressRows renders an address with the shared format, wrapping it over the
+// reserved rows. Device rows stay blank until a mismatch is available.
 func (v AddressVerifyView) addressRows(address, label string, highlight bool) []string {
 	rows := v.reservedRows()
-	perRow := v.groupsPerRow()
-	groups := chunkAddress(address)
-	expected := chunkAddress(v.Address)
+
+	var addressLines []string
+	if address != "" {
+		cells := styledAddressCells(ui.FormatAddress(address, 0))
+		if highlight {
+			markAddressMismatches(cells, v.Address, address)
+		}
+		addressLines = wrapAddressCells(cells, v.addressRowWidth())
+	}
 
 	lines := make([]string, 0, rows)
 	for row := 0; row < rows; row++ {
@@ -256,23 +252,11 @@ func (v AddressVerifyView) addressRows(address, label string, highlight bool) []
 			prefix = label + strings.Repeat(" ", max(0, addressVerifyLabelWidth-lipgloss.Width(label)))
 		}
 
-		var line strings.Builder
-		line.WriteString(prefix)
-
-		start := row * perRow
-		end := min(start+perRow, len(groups))
-		for i := start; i < end; i++ {
-			if i > start {
-				line.WriteString(" ")
-			}
-			group := groups[i]
-			if highlight && (i >= len(expected) || group != expected[i]) {
-				line.WriteString(styles.ErrorText.Render(group))
-			} else {
-				line.WriteString(styles.NormalText.Render(group))
-			}
+		content := ""
+		if row < len(addressLines) {
+			content = addressLines[row]
 		}
-		lines = append(lines, padLine(line.String(), v.innerWidth()))
+		lines = append(lines, padLine(prefix+content, v.innerWidth()))
 	}
 	return lines
 }
@@ -321,34 +305,99 @@ func (v AddressVerifyView) borderColor() lipgloss.Color {
 	}
 }
 
-// chunkAddress splits an address into groups of four characters.
-func chunkAddress(address string) []string {
-	runes := []rune(address)
-	groups := make([]string, 0, (len(runes)+addressVerifyGroupSize-1)/addressVerifyGroupSize)
-	for len(runes) > 0 {
-		n := addressVerifyGroupSize
-		if len(runes) < n {
-			n = len(runes)
-		}
-		groups = append(groups, string(runes[:n]))
-		runes = runes[n:]
-	}
-	return groups
+// addressCell is one visible character of a formatted address together with
+// the SGR prefix that was active for it.
+type addressCell struct {
+	text  string
+	style string
 }
 
-// chunkAddressRows groups an address by four and wraps after perRow groups.
-func chunkAddressRows(address string, perRow int) []string {
-	if perRow < 1 {
-		perRow = 1
+func (c addressCell) render() string {
+	if c.style == "" {
+		return c.text
+	}
+	return c.style + c.text + "\x1b[0m"
+}
+
+// styledAddressCells splits a formatted address into visible cells so the
+// panel can wrap it and recolor individual characters without losing styles.
+func styledAddressCells(s string) []addressCell {
+	var cells []addressCell
+	var style strings.Builder
+
+	for i := 0; i < len(s); {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			end := i + 2
+			for end < len(s) && (s[end] < 0x40 || s[end] > 0x7e) {
+				end++
+			}
+			if end < len(s) {
+				seq := s[i : end+1]
+				if strings.HasSuffix(seq, "m") {
+					if seq == "\x1b[0m" || seq == "\x1b[m" {
+						style.Reset()
+					} else {
+						style.WriteString(seq)
+					}
+				}
+				i = end + 1
+				continue
+			}
+		}
+
+		r, size := utf8.DecodeRuneInString(s[i:])
+		cells = append(cells, addressCell{text: string(r), style: style.String()})
+		i += size
+	}
+	return cells
+}
+
+// markAddressMismatches recolors every device character that differs from the
+// wallet address at the same index.
+func markAddressMismatches(cells []addressCell, wallet, device string) {
+	errorStyle := sgrPrefix(styles.ErrorText)
+	index := 0
+	for i := range cells {
+		if cells[i].text == " " || cells[i].text == "…" {
+			continue
+		}
+		if index >= len(wallet) || index >= len(device) || device[index] != wallet[index] {
+			cells[i].style = errorStyle
+		}
+		index++
+	}
+}
+
+// wrapAddressCells breaks styled cells into lines of at most width visible
+// cells, re-emitting the active style on each continuation line.
+func wrapAddressCells(cells []addressCell, width int) []string {
+	if width < 1 {
+		width = 1
 	}
 
-	groups := chunkAddress(address)
-	lines := make([]string, 0, (len(groups)+perRow-1)/perRow)
-	for start := 0; start < len(groups); start += perRow {
-		end := min(start+perRow, len(groups))
-		lines = append(lines, strings.Join(groups[start:end], " "))
+	var lines []string
+	var line strings.Builder
+	lineWidth := 0
+	for _, cell := range cells {
+		cellWidth := lipgloss.Width(cell.text)
+		if lineWidth > 0 && lineWidth+cellWidth > width {
+			lines = append(lines, line.String())
+			line.Reset()
+			lineWidth = 0
+		}
+		line.WriteString(cell.render())
+		lineWidth += cellWidth
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
 	}
 	return lines
+}
+
+// sgrPrefix returns the escape sequence a style writes before its text.
+func sgrPrefix(style lipgloss.Style) string {
+	rendered := strings.TrimSuffix(style.Render("x"), "\x1b[0m")
+	return strings.TrimSuffix(rendered, "x")
 }
 
 func padLine(line string, width int) string {
