@@ -66,10 +66,10 @@ unusually well hardened. The material risks are concentrated in four places:
 |---|---:|
 | Critical | 0 |
 | High | 5 |
-| Medium | 16 |
-| Low | 23 |
+| Medium | 17 |
+| Low | 27 |
 | Info | 5 |
-| **Total** | **49** |
+| **Total** | **54** |
 
 ## High
 
@@ -495,6 +495,32 @@ unusually well hardened. The material risks are concentrated in four places:
   `PkScript` in the verified prevout. Reject unknown or mismatched scripts.
   Verify the script hash for both legacy and segwit paths.
 
+### H3-50 — Imported xpubs and descriptors are not verified against a derived address
+
+- **Severity:** Medium
+- **Location:** `internal/wallet/descriptor.go:525-580`, `internal/ui/models/wallet_setup_multisig.go:791-850`, `internal/ui/models/wallet_setup_multisig.go:890-930`, `internal/wallet/manager.go:360-443`, `internal/ui/models/settings_views.go:319-371`
+- **Status:** open
+- **Exploit scenario:** A user imports a single-sig or multisig output
+  descriptor, or pastes an xpub into the hardware-wallet setup flow.
+  `ParseDescriptor` validates the syntax and warns (only) when the descriptor
+  checksum is missing or wrong. The review screen shows the fingerprint and a
+  truncated xpub. `CreateHardwareWalletOnNetwork` and
+  `CreateMultisigWalletOnNetwork` check only that the xpub parses and belongs
+  to the right network. No address is derived from the imported key material
+  and compared with the device, the descriptor, or any address the user knows.
+  An attacker who supplies a descriptor that keeps the expected fingerprint
+  and key origin but substitutes their own xpub therefore creates a watch-only
+  wallet that derives the attacker's addresses. Incoming payments go to the
+  attacker, while the UI shows the expected fingerprint. A simple paste error
+  has the same effect without an attacker. Multisig imports can additionally
+  produce a wallet whose scripts no other cosigner recognizes.
+- **Recommended fix:** On the import review screen, derive and show the first
+  receive and change addresses (for example `m/.../0/0` and `m/.../1/0`) before
+  the wallet is created. For hardware-backed and descriptor imports, offer an
+  on-device display of the first receive address and refuse to continue on a
+  mismatch. Reject a checksum mismatch rather than warning, and show the full
+  xpub (or a way to scroll it) on the review screen.
+
 ## Low
 
 ### H3-22 — Debug logging records wallet addresses, paths, and transaction data
@@ -874,6 +900,87 @@ unusually well hardened. The material risks are concentrated in four places:
   any wallet identity that should be bound) as AAD to both `Seal` and `Open`.
   Reject unknown versions before decryption.
 
+### H3-51 — Electrum TLS has no user-supplied CA or certificate option
+
+- **Severity:** Low
+- **Location:** `internal/backend/config.go:18-30`, `internal/backend/electrum_backend.go:190-207`, `internal/backend/pinning.go:95-118`
+- **Status:** open
+- **Exploit scenario:** A user runs a private Electrum server with a
+  self-signed certificate or a private CA. The Electrum TLS config sets only
+  `ServerName` and the TOFU `VerifyConnection` hook; the pin is checked after
+  normal chain verification against the system roots. A self-signed server
+  therefore cannot be used with TLS at all. The workarounds are to turn SSL
+  off, which exposes the connection to the plain-TCP risks in H3-20, or to
+  install the private CA system-wide, which extends trust to every
+  application on the host. Sparrow instead accepts a CA certificate file for
+  a specific host while keeping ordinary CA validation for public servers.
+- **Recommended fix:** Add an optional CA certificate path (or inline PEM) to
+  `ElectrumConfig`, load it into a per-connection `RootCAs` pool, and keep the
+  existing pin check. Optionally allow an explicitly confirmed SPKI pin for a
+  host whose certificate the user verified out of band. Do not weaken system
+  root validation for public servers.
+
+### H3-52 — Hardware-signed PSBT is not checked against the PSBT that was reviewed
+
+- **Severity:** Low
+- **Location:** `internal/ui/models/send_hwi.go:24-47`, `internal/ui/models/send.go:756-777`, `internal/wallet/psbt_manager.go:443-483`
+- **Status:** open
+- **Exploit scenario:** `signWithHWI` sends the reviewed PSBT to HWI, parses
+  the returned PSBT with `ImportPSBTFromBase64`, and the UI replaces the
+  current result with it. The import recomputes the fee and size from the
+  returned packet but never compares its unsigned transaction with the one the
+  user reviewed. A compromised HWI binary (the PATH and installation issues in
+  H3-30), or a malicious device, can return a different unsigned transaction
+  with valid signatures. The fee shown on screen changes, but the user has
+  already approved the original outputs. Broadcasting sends the substituted
+  transaction.
+- **Recommended fix:** Canonically serialize the unsigned transaction before
+  and after signing and require byte equality. Also compare every input
+  outpoint/sequence and every output script/value. Re-run `InspectPSBT` on the
+  returned packet and surface any warning that was not present before.
+  Reject the signed PSBT on any mismatch.
+
+### H3-53 — Onboarding defaults to a public Electrum server without a privacy notice
+
+- **Severity:** Low
+- **Location:** `internal/ui/models/connection_setup.go:735-736`, `internal/ui/models/connection_setup.go:767-790`, `internal/backend/config.go:57-100`, `internal/ui/models/splash.go:48-55`, `SECURITY.md:61-62`
+- **Status:** open
+- **Exploit scenario:** The server setup screen labels "Electrum Server" as
+  "(Recommended)" and "Bitcoin Core RPC" as "Connect to your own Bitcoin Core
+  node". The Electrum screen lists public servers first and
+  `DefaultElectrumConfig` selects `electrum.blockstream.info` (mainnet) or
+  `mempool.space` (testnet4). On a first run this screen is not shown at all:
+  the wallet setup flow completes and the app connects to that network default,
+  so a user who never opens Settings sends every scripthash to a public server.
+  There is no notice on this screen that a public server learns every
+  scripthash the wallet queries. This is a privacy exposure rather than a theft
+  path, and it overlaps the residual risk in H3-40, but the UI and the default
+  path both steer users toward it.
+- **Recommended fix:** Show the server choice during onboarding, put Bitcoin
+  Core or a private server first and mark it recommended, label public servers
+  with the privacy tradeoff, and show a one-line notice before a public server
+  is saved. Keep the Tor toggle next to the public-server list. This changes
+  text, ordering, and one navigation step.
+
+### H3-54 — Send flow does not warn about address reuse
+
+- **Severity:** Low
+- **Location:** `internal/ui/models/send_keys.go:47-68`, `internal/ui/models/addresses.go:24`, `internal/ui/models/addresses.go:437`, `internal/wallet/address_manager.go:334-349`
+- **Status:** open
+- **Exploit scenario:** The recipient step checks only that the address parses
+  and belongs to the wallet's network. It does not check whether the address
+  is one of this wallet's addresses, or whether that address has already been
+  used. Sending to a used receive address links the new payment to the earlier
+  history and defeats the address rotation that the receive screen performs.
+  The addresses screen marks used addresses, but the send screen gives no
+  indication. This is a privacy regression relative to Sparrow, which flags
+  reused addresses.
+- **Recommended fix:** On address entry, look up the address in the wallet's
+  address table. If it is used, show a warning with the address index and the
+  date or label of its last use, and require confirmation before continuing.
+  Suggest the current unused receive address when the recipient is the user's
+  own used address.
+
 ### H3-45 — Dead `testnet` field with a misleading "always testnet" comment
 
 - **Severity:** Info
@@ -1033,6 +1140,295 @@ The following were investigated and are **not** reported as vulnerabilities:
 - **Backups/exports:** seed phrases and private keys are excluded from backup
   and multisig export formats (only xpubs/descriptors/labels).
 
+## Comparison with Sparrow Wallet practices
+
+Reference: the Sparrow documentation at sparrowwallet.com and the source at
+`github.com/sparrowwallet/sparrow`, read 2026-10-30. Each area below states
+Sparrow's approach, hax's current state with file references, the gap, and
+whether a fix fits hax's terminal UI without adding friction. Items marked
+"deferred to v1.4" are roadmap features, not security fixes.
+
+### Wallet file encryption and KDF
+
+**Sparrow.** Wallet files are password-encrypted. The key is derived with
+Argon2 (drongo `Argon2KeyDeriver`) and the file is encrypted with ECIES to a
+derived EC key. The seed is additionally encrypted inside the wallet, and the
+loader refuses inconsistent state ("Wallet was not encrypted, but seed is").
+Unencrypted watch-only wallets are allowed as an option.
+
+**hax.** PBKDF2-HMAC-SHA256 with 100,000 iterations and a 32-byte random salt,
+then AES-256-GCM with a fresh 12-byte nonce (`internal/wallet/storage.go:19-25`,
+`internal/wallet/storage.go:280-282`). The file is a single AEAD container with
+`Version`, `Salt`, `Nonce`, and `Data`; there is no KDF identifier or parameter
+block (`internal/wallet/storage.go:148-153`, `internal/wallet/storage.go:210-216`).
+The minimum password is 8 characters (`internal/wallet/validation.go:10`,
+`internal/wallet/validation.go:38-42`), with a strength hint in the setup UI
+(`internal/ui/models/password_strength.go:12-45`). Watch-only wallets are
+encrypted as well, which is stricter than Sparrow's optional plaintext mode.
+
+**Gap.** H3-01 covers the KDF and password policy. H3-43 and H3-44 cover
+format validation and the unauthenticated outer metadata. The missing KDF
+parameters in the file are the practical obstacle to a transparent Argon2
+migration.
+
+**Fit.** Yes. Argon2id with stored parameters, a format version bump, and a
+higher minimum password change only the unlock delay and require a one-time
+migration message. This is the H3-01 remediation.
+
+### Owner-only data directories and files
+
+**Sparrow.** Creates data directories owner-only (`createOwnerOnlyDirectory`),
+including the TLS `certs/` directory. Wallet, config, and certificate files are
+readable only by the owner.
+
+**hax.** `~/.hax` is created 0700 (`internal/wallet/storage.go:161-166`); the
+config directory is created 0700 and `config.json` written 0600
+(`internal/config/config.go:97-109`); the pin directory is created 0700 and
+`known_servers.json` written 0600 (`internal/backend/pinning.go:68-80`);
+wallet files are written 0600 through a temporary file and rename
+(`internal/wallet/storage.go:220-229`).
+
+**Gap.** H3-17: permissions are set at creation only. A directory or file that
+already exists with looser modes is left as it is, and there is no ownership
+check. H3-16 separately covers durability and safe temporary-file handling.
+
+**Fit.** Yes. `Chmod` on load/save and refusing group/world-readable paths has
+no user-visible cost, apart from a clear error when the user must fix
+permissions.
+
+### Electrum TLS certificate handling
+
+**Sparrow.** If a CA certificate file is configured for a host, that CA is
+used for trust. Otherwise it is trust-on-first-use: the first connection
+presents the certificate to the user, the certificate is saved owner-only in a
+`certs/` directory keyed by host, later connections are pinned to it, a changed
+certificate raises an error instead of connecting, and expired unknown
+certificates are flagged.
+
+**hax.** Normal chain verification against the system roots always runs, then
+a TOFU hook pins the hex SHA-256 of the leaf certificate's
+SubjectPublicKeyInfo, keyed by `host:port`, in `~/.hax/known_servers.json`
+(`internal/backend/pinning.go:20-21`, `internal/backend/pinning.go:95-118`,
+`cmd/hax/main.go:53`). A changed key raises `PinMismatchError` with both
+fingerprints (`internal/backend/pinning.go:136-145`), and the dashboard offers
+a re-trust prompt that requires an explicit `y` (`internal/ui/models/retrust.go:54-90`).
+First use is silent (H3-24). The TLS config has no CA override and no minimum
+version (`internal/backend/electrum_backend.go:190-207`,
+`internal/backend/config.go:18-30`; H3-29). The certificate fingerprint is
+shown only after a successful test, truncated (`internal/ui/models/connection_setup.go:951-957`).
+Go's chain verification rejects expired certificates, so the expired-certificate
+case is handled, though the error is generic.
+
+**Gap.** H3-24 (silent first use), H3-29 (no TLS floor), and H3-51 (no
+per-host CA or explicit certificate override). The pin-on-change behavior
+matches Sparrow.
+
+**Fit.** Yes. A first-use fingerprint prompt is one screen; a CA file field
+belongs in the custom-server form; `MinVersion` is one line. H3-51 is new;
+H3-24 and H3-29 were already reported.
+
+### Private-server-first and no silent fallback
+
+**Sparrow.** The documentation recommends your own Bitcoin Core node or a
+private Electrum server, presents public servers as a privacy tradeoff,
+supports Tor and a proxy, and does not automatically fall back to another
+server when a private one is selected.
+
+**hax.** Both Electrum and Bitcoin Core RPC are available. The server setup
+screen labels Electrum "(Recommended)" and Core "Connect to your own Bitcoin
+Core node" (`internal/ui/models/connection_setup.go:735-736`), lists public
+servers first, and `DefaultElectrumConfig` selects
+`electrum.blockstream.info` for mainnet or `mempool.space` for testnet4
+(`internal/ui/models/connection_setup.go:767-790`,
+`internal/backend/config.go:57-100`). The first-run flow does not open this
+screen; it connects to the network default. There is no fallback when a
+connection fails: `reconnect` retries the same backend with backoff
+(`internal/wallet/sync_manager.go:423-448`); pin mismatches and network
+mismatches stop for the user (`internal/wallet/sync_manager.go:458-467`); and
+`ResolveBackendConfig` substitutes the network default only when the saved
+backend is for a different network (`internal/backend/config.go:70-77`). The
+one silent substitution is an unknown backend type, which becomes a testnet4
+Electrum configuration (H3-27).
+
+**Gap.** H3-53 (the UI recommends a public server, and first run uses one
+without a privacy notice) and H3-27 (unknown type). The no-silent-fallback
+property matches Sparrow.
+
+**Fit.** Yes. Reordering the menu, showing it during onboarding, and adding
+one line of text changes no existing workflow. `NewBackend` should return an
+error for an unknown type; that is the H3-27 fix.
+
+### xpub and descriptor verification and display
+
+**Sparrow.** Displays and exports the xpub and descriptor with the master
+fingerprint and derivation path, shows multisig cosigner fingerprints, and
+supports comparing the wallet against a hardware device.
+
+**hax.** `GenerateDescriptor` includes the master fingerprint, derivation
+path, xpub, and checksum (`internal/wallet/descriptor.go:125-211`);
+`ExportDescriptor` handles software, hardware, and multisig wallets
+(`internal/wallet/descriptor.go:213-281`); UR export exists
+(`internal/wallet/descriptor.go:283-300`). The settings screen shows the full
+descriptor with a QR code, copy, and file export
+(`internal/ui/models/settings_views.go:319-371`), a truncated xpub and
+derivation path (`internal/ui/models/settings_views.go:268-305`), and cosigner
+fingerprints and xpubs (`internal/ui/models/settings_multisig.go:57-84`).
+Descriptor exports are checked against Core's `deriveaddresses` and
+`importdescriptors` in the regtest tests
+(`docs/hardware-wallet-compatibility.md`).
+
+**Gap.** H3-50: the import path parses the descriptor and shows a truncated
+xpub but never derives the first address or compares it with the device or a
+known address. H3-28: a checksum mismatch is only a warning. H3-05: `multi`
+and `sortedmulti` are conflated.
+
+**Fit.** Yes. Deriving and showing the first receive and change addresses on
+the review screen is one extra block of text; an optional "show on device"
+check reuses the existing receive verification code. A checksum mismatch
+should be fatal. H3-50 is new.
+
+### Address verification on hardware devices
+
+**Sparrow.** Displays the receive address on the hardware device, together
+with its derivation path, so the user can compare it with the screen.
+
+**hax.** On the receive screen, `v` calls `DisplayAddressOnDevice`
+(`internal/ui/models/receive.go:148-156`, `internal/ui/models/receive.go:241-250`).
+The manager enumerates HWI devices, prefers the one whose fingerprint matches
+the wallet's hardware configuration (falling back to the first device when the
+wallet has no such configuration, as with multisig), calls HWI
+`displayaddress`, and compares the returned address with the expected one
+(`internal/wallet/psbt_manager.go:619-704`,
+`internal/wallet/hardware.go:255-278`). A mismatch is an error, with a specific
+message for a device left in mainnet mode on a testnet wallet. xpub retrieval
+also asks the device to display the derivation
+(`internal/ui/models/wallet_setup_hw.go:382-420`,
+`internal/ui/models/wallet_setup_multisig.go:455-460`).
+
+**Gap.** Verification exists only in the receive flow. The import and setup
+flows do not perform the same check (folded into H3-50). Real-device coverage
+is tracked as unvalidated in `docs/hardware-wallet-compatibility.md`; that is
+a validation task rather than a code gap.
+
+**Fit.** Yes. The existing verification path can be called during setup once
+an address is derived; this adds one confirmation screen and no new device
+interaction.
+
+### PSBT handling
+
+**Sparrow.** PSBT-first. The editor shows every input and output, the fee and
+fee rate, and identifies change by derivation and ownership. Signing works
+through PSBT files and QR formats for air-gapped devices.
+
+**hax.** Create, import, export, sign, finalize, and broadcast are present,
+including UR/BBQr QR paths. `InspectPSBT` recomputes ownership by deriving the
+wallet's keys and comparing scripts, rather than trusting the PSBT's claims
+(`internal/wallet/psbt_inspect.go:62-174`, `internal/wallet/psbt_inspect.go:201-239`).
+The UI shows inputs and outputs with full addresses (the first five inputs
+and ten outputs, then a count), marks change with a check, shows fee, fee
+rate, vsize, amount sent, and RBF, and lists warnings
+(`internal/ui/models/send_inspect.go:55-140`). Change is marked used after
+broadcast (`internal/wallet/psbt_manager.go:548-575`).
+
+**Gap.** H3-03: the inspection is advisory and `s` signs without a gate.
+H3-04: imported legacy inputs trust `WitnessUtxo` and the displayed fee can be
+understated. H3-21: multisig signing does not verify the supplied script
+against the prevout. H3-35: a negative fee is clamped to zero. H3-52: a
+hardware-returned PSBT is not compared with the reviewed one. The inspection
+itself is at Sparrow's level.
+
+**Fit.** Yes. Gating signing on warning classes adds one confirmation only
+when a warning exists. Requiring `NonWitnessUtxo` for legacy inputs is
+invisible for honest PSBTs. Comparing the signed PSBT has no UX cost.
+H3-52 is new.
+
+### BIP 129 multisig setup
+
+**Sparrow.** Uses BIP 129 (BSMS) for multisig setup, alongside descriptor
+import/export and wallet policy registration.
+
+**hax.** Multisig setup collects cosigners one at a time by xpub, seed, or
+hardware wallet, with fingerprint and derivation path
+(`internal/ui/models/wallet_setup_multisig.go`). Descriptor import and export
+exist (`internal/wallet/descriptor.go:525-730`). There is no BIP 129/BSMS
+encoder, decoder, or QR flow anywhere in the tree.
+
+**Gap.** BIP 129/BSMS is absent. Manual entry works but leaves room for
+transcription errors; the descriptor checksum catches some of them when it is
+present.
+
+**Fit.** BSMS needs a new message format, QR/file exchange, and round-trip
+validation. That is a roadmap-sized feature, not a security fix: **deferred to
+v1.4**. Until then, H3-28 and H3-50 reduce the transcription risk.
+
+### Hardware wallet verification and policy registration
+
+**Sparrow.** Verifies xpubs and descriptors, displays addresses on the device,
+signs PSBTs, and registers wallet policies with the device.
+
+**hax.** HWI provides enumerate, xpub, `displayaddress`, and PSBT signing.
+Device fingerprints are shown and matched for address display
+(`internal/wallet/psbt_manager.go:635-650`). PSBTs carry previous transactions
+and BIP371 fields; the emulator tests cover single-sig and 2-of-3 multisig
+(`docs/hardware-wallet-compatibility.md`). There is no wallet policy
+registration. The real-device matrix is entirely "Not run".
+
+**Gap.** Wallet policy registration is absent and the device matrix is
+unvalidated. H3-50 and H3-52 cover the code-level verification gaps; H3-30
+covers HWI PATH and PIN handling.
+
+**Fit.** Policy registration requires device support, persistent policy
+storage, and an import/export flow. That is roadmap-sized: **deferred to
+v1.4**. First-address verification during setup fits now as part of H3-50.
+
+### Privacy defaults
+
+**Sparrow.** Coin control, UTXO labels, BIP 329 export/import, privacy-aware
+coin selection that avoids address reuse and script-type mixing, payjoin
+(BIP 78), Tor support, a transaction viewer, BIP 322 message signing,
+watch-only wallets, broad hardware-wallet support, PayNym (BIP 47), and
+Whirlpool mixing (now defunct).
+
+**hax.** Coin control allows per-UTXO selection and freezing
+(`internal/ui/models/send_keys.go:294-370`,
+`internal/ui/models/utxos.go:214-225`, `internal/wallet/frozen.go`). Coin
+selection uses Branch-and-Bound changeless selection and falls back to
+largest-first (`internal/wallet/transaction.go:161-287`). Transaction and
+address labels, and frozen outputs, use BIP 329 export and import
+(`internal/wallet/label_manager.go:128-250`). Receive and change addresses are
+freshly rotated, and used/spent badges are shown
+(`internal/wallet/address_manager.go:275-290`,
+`internal/wallet/address_manager.go:334-349`,
+`internal/ui/models/receive.go:392-410`). Tor is available as a SOCKS5 proxy
+(`internal/backend/electrum_backend.go:173-200`,
+`internal/ui/models/connection_setup.go:333-350`). There is no third-party fee
+API, and watch-only wallets are supported. Single-sig sends use one account,
+so script types are not mixed within a transaction.
+
+**Gap.** H3-53: public Electrum is the recommended default. H3-54: the send
+flow does not warn when the recipient is one of the wallet's own used
+addresses. H3-40 covers Tor being optional and the explorer opening the system
+browser. Payjoin, BIP 47/PayNym, and coinjoin are absent.
+
+**Fit.** The reuse warning is a lookup and one confirmation. The onboarding
+change is text and ordering. Payjoin, BIP 47, and coinjoin require protocol
+work and new UI: **deferred to v1.4**.
+
+### Comparison summary
+
+| Area | hax current state | Gap or plan |
+|---|---|---|
+| Wallet encryption | PBKDF2 100k + AES-256-GCM; no KDF params on disk | H3-01; move to Argon2id with stored parameters |
+| Data directories | 0700/0600 at creation; existing modes unchanged | H3-17 |
+| Electrum TLS | System roots + SPKI TOFU; hard error on change | H3-24, H3-29, H3-51 |
+| Private server | Both backends; public default; no silent server fallback | H3-53; unknown-type fallback H3-27 |
+| xpub/descriptor | Export and display present; import not verified | H3-50, H3-28, H3-05 |
+| Device address check | Receive flow verifies and compares the address | H3-50 for setup/import |
+| PSBT | Strong independent inspection; signing is advisory | H3-03, H3-04, H3-21, H3-35, H3-52 |
+| BIP 129 / BSMS | Absent | Deferred to v1.4 |
+| Wallet policy registration | Absent | Deferred to v1.4 |
+| Privacy | Coin control, labels, address rotation, optional Tor | H3-53, H3-54; payjoin/BIP 47/coinjoin deferred to v1.4 |
+
 ## Summary table
 
 | ID | Severity | Area | Location | Status |
@@ -1086,6 +1482,11 @@ The following were investigated and are **not** reported as vulnerabilities:
 | H3-47 | Info | Testnet4 params | `internal/wallet/testnet4.go` | open |
 | H3-48 | Info | RBF policy | `internal/wallet/psbt.go:438` | open |
 | H3-49 | Info | Backup policy | `internal/wallet/backup.go`; `internal/ui/models/wallet_setup_backup.go` | open |
+| H3-50 | Medium | Key import | `internal/wallet/descriptor.go:525-580`; `internal/ui/models/wallet_setup_multisig.go:791-850,890-930`; `internal/wallet/manager.go:360-443` | open |
+| H3-51 | Low | Electrum TLS | `internal/backend/config.go:18-30`; `internal/backend/electrum_backend.go:190-207`; `internal/backend/pinning.go:95-118` | open |
+| H3-52 | Low | Hardware signing | `internal/ui/models/send_hwi.go:24-47`; `internal/ui/models/send.go:756-777`; `internal/wallet/psbt_manager.go:443-483` | open |
+| H3-53 | Low | Onboarding privacy | `internal/ui/models/connection_setup.go:735-736,767-790`; `internal/backend/config.go:57-100`; `internal/ui/models/splash.go:48-55` | open |
+| H3-54 | Low | Address reuse | `internal/ui/models/send_keys.go:47-68`; `internal/ui/models/addresses.go:24,437`; `internal/wallet/address_manager.go:334-349` | open |
 
 ## Dependency scan detail
 
@@ -1125,12 +1526,14 @@ tracked as H3-41.
    fees, gate signing on inspection warnings, and verify legacy input amounts.
 2. **H3-01, H3-10** — upgrade the KDF to Argon2id, raise the password policy,
    and add unlock throttling.
-3. **H3-05, H3-21** — fix descriptor key ordering and multisig script
-   verification before advertising multisig interoperability.
+3. **H3-05, H3-21, H3-50** — fix descriptor key ordering, verify imported
+   xpubs/descriptors against a derived address, and verify multisig scripts
+   before advertising multisig interoperability.
 4. **H3-06, H3-07, H3-08, H3-09** — harden the Electrum trust boundary and
    response handling.
-5. **H3-11 through H3-20** — reduce secret lifetime, clear the clipboard, fix
-   RPC transport/URL handling, make writes durable, tighten permissions, fix
-   auto-lock, and require explicit cosigner-seed consent.
-6. **H3-22 through H3-44** — hygiene, defense in depth, and release
-   reproducibility.
+5. **H3-11 through H3-20, H3-53, H3-54** — reduce secret lifetime, clear the
+   clipboard, fix RPC transport/URL handling, make writes durable, tighten
+   permissions, fix auto-lock, require explicit cosigner-seed consent, and
+   improve the privacy defaults and address-reuse warning.
+6. **H3-22 through H3-44, H3-51, H3-52** — hygiene, defense in depth, TLS
+   options, signed-PSBT verification, and release reproducibility.
