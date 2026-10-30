@@ -3,6 +3,7 @@ package fsutil
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,8 +29,10 @@ func TestWriteFileAtomicReplacesContentWithPrivateMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("mode = %o, want 600", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("mode = %o, want 600", perm)
+		}
 	}
 }
 
@@ -60,12 +63,17 @@ func TestEnsurePrivateDirTightensExistingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o700 {
-		t.Fatalf("mode = %o, want 700", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o700 {
+			t.Fatalf("mode = %o, want 700", perm)
+		}
 	}
 }
 
 func TestTightenFileIgnoresSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permission semantics are POSIX-specific")
+	}
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
 	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {

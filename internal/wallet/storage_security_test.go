@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -85,8 +86,10 @@ func TestLoadWalletKeyInfoMigratesLegacyPBKDF2File(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("wallet mode = %o, want 600", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("wallet mode = %o, want 600", perm)
+		}
 	}
 
 	// The migrated file must open with the same password.
@@ -132,15 +135,19 @@ func TestSaveWalletUsesArgon2idAndPrivatePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("wallet mode = %o, want 600", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("wallet mode = %o, want 600", perm)
+		}
 	}
 	dirInfo, err := os.Stat(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
-		t.Fatalf("directory mode = %o, want 700", perm)
+	if runtime.GOOS != "windows" {
+		if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+			t.Fatalf("directory mode = %o, want 700", perm)
+		}
 	}
 }
 
@@ -227,7 +234,9 @@ func TestWalletFilesLiveInPrivateDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o700 {
-		t.Fatalf("directory mode = %o, want 700", perm)
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o700 {
+			t.Fatalf("directory mode = %o, want 700", perm)
+		}
 	}
 }
