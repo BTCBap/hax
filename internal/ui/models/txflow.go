@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -244,60 +245,23 @@ func (v *TxFlowView) SwitchSide(side ...TxFlowSide) {
 	v.ensureOffset()
 }
 
-// View renders the flow at a stable line count for every cursor position.
+// View renders the flow at a stable line count for every cursor position,
+// side, and scroll offset.
 func (v TxFlowView) View() string {
-	width := v.Width
-	if width <= 0 {
-		width = 80
-	}
-	rows := v.diagramRows()
-
-	leftW, bandW, rightW := flowColumnWidths(width)
-	inputs, outputs := v.Flow.Inputs, v.itemsFor(FlowOutput)
-
-	inStart, inCount, inMore := flowWindow(len(inputs), v.effectiveOffset(FlowInput), rows)
-	outStart, outCount, outMore := flowWindow(len(outputs), v.effectiveOffset(FlowOutput), rows)
-
-	var lines []string
-	lines = append(lines, flowHeader(v.Flow, leftW, bandW, rightW))
-
-	inTotal, _ := flowTotal(inputs)
-	outTotal, _ := flowTotal(outputs)
-	for r := 0; r < rows; r++ {
-		var inItem, outItem *TxFlowItem
-		if r < inCount {
-			item := inputs[inStart+r]
-			inItem = &item
-		}
-		if r < outCount {
-			item := outputs[outStart+r]
-			outItem = &item
-		}
-
-		inCell := strings.Repeat(" ", leftW)
-		switch {
-		case inItem != nil:
-			inCell = renderFlowItem(*inItem, leftW, v.Side == FlowInput && v.Cursor == inStart+r)
-		case inMore > 0 && r == inCount:
-			inCell = renderMoreCell(inMore, leftW)
-		}
-		outCell := strings.Repeat(" ", rightW)
-		switch {
-		case outItem != nil:
-			outCell = renderFlowItem(*outItem, rightW, v.Side == FlowOutput && v.Cursor == outStart+r)
-		case outMore > 0 && r == outCount:
-			outCell = renderMoreCell(outMore, rightW)
-		}
-
-		band := renderFlowBand(bandW, inItem, outItem,
-			r == 0, r == inCount-1, r == 0, r == outCount-1,
-			inTotal, outTotal)
-		lines = append(lines, inCell+band+outCell)
+	width := v.effectiveWidth()
+	height := v.effectiveHeight()
+	diagramHeight := height - 7 // header, blank, padding, blank, 3 detail rows, hint
+	if diagramHeight < 0 {
+		diagramHeight = 0
 	}
 
+	lines := make([]string, 0, height)
+	lines = append(lines, v.headerLine(width))
+	lines = append(lines, "")
+	lines = append(lines, v.diagramLines(width, diagramHeight)...)
+	lines = append(lines, "")
 	lines = append(lines, v.detailLines(width)...)
-	lines = append(lines, styles.FooterStyle.Render(
-		fitFlowText("↑/↓ select • tab side • esc back", width)))
+	lines = append(lines, v.hintLine(width))
 
 	for i, line := range lines {
 		if ansi.StringWidth(line) > width {
@@ -307,14 +271,24 @@ func (v TxFlowView) View() string {
 	return strings.Join(lines, "\n")
 }
 
-func (v TxFlowView) diagramRows() int {
-	rows := v.Height
-	if rows <= 0 {
-		rows = 24
+func (v TxFlowView) effectiveWidth() int {
+	if v.Width > 0 {
+		return v.Width
 	}
-	rows -= 5 // header, three detail rows, key hint
-	if rows < 1 {
-		rows = 1
+	return 80
+}
+
+func (v TxFlowView) effectiveHeight() int {
+	if v.Height > 0 {
+		return v.Height
+	}
+	return 24
+}
+
+func (v TxFlowView) diagramRows() int {
+	rows := v.effectiveHeight() - 7
+	if rows < 0 {
+		rows = 0
 	}
 	return rows
 }
@@ -331,92 +305,10 @@ func (v TxFlowView) itemsFor(side TxFlowSide) []TxFlowItem {
 		}
 	}
 	return append(out, TxFlowItem{
-		Label:      "Network fee",
 		Value:      v.Flow.Fee,
 		ValueKnown: v.Flow.FeeKnown,
 		Kind:       KindFee,
 	})
-}
-
-func (v TxFlowView) effectiveOffset(side TxFlowSide) int {
-	n := len(v.itemsFor(side))
-	rows := v.diagramRows()
-	if n <= flowRowsFor(rows) {
-		return 0
-	}
-	slots := flowSlots(n, rows)
-	off := v.Offset[side.index()]
-	if off < 0 {
-		off = 0
-	}
-	maxOff := n - slots
-	if off > maxOff {
-		off = maxOff
-	}
-	if v.Side == side {
-		c := v.Cursor
-		if c < 0 {
-			c = 0
-		}
-		if c >= n {
-			c = n - 1
-		}
-		if c < off {
-			off = c
-		}
-		if c >= off+slots {
-			off = c - slots + 1
-		}
-		if off > maxOff {
-			off = maxOff
-		}
-	}
-	if off < 0 {
-		off = 0
-	}
-	return off
-}
-
-func (v *TxFlowView) ensureOffset() {
-	n := len(v.itemsFor(v.Side))
-	rows := v.diagramRows()
-	side := v.Side.index()
-	if n == 0 {
-		v.Cursor = 0
-		v.Offset[side] = 0
-		return
-	}
-	if v.Cursor < 0 {
-		v.Cursor = 0
-	}
-	if v.Cursor >= n {
-		v.Cursor = n - 1
-	}
-	if n <= flowRowsFor(rows) {
-		v.Offset[side] = 0
-		return
-	}
-	slots := flowSlots(n, rows)
-	off := v.Offset[side]
-	if off < 0 {
-		off = 0
-	}
-	if off > n-slots {
-		off = n - slots
-	}
-	if v.Cursor < off {
-		off = v.Cursor
-	}
-	if v.Cursor >= off+slots {
-		off = v.Cursor - slots + 1
-	}
-	if off < 0 {
-		off = 0
-	}
-	if off > n-slots {
-		off = n - slots
-	}
-	v.Offset[side] = off
 }
 
 func (s TxFlowSide) index() int {
@@ -426,88 +318,164 @@ func (s TxFlowSide) index() int {
 	return 0
 }
 
-func flowRowsFor(rows int) int {
-	if rows < 1 {
-		return 1
-	}
-	return rows
-}
-
-// flowSlots is the number of real item rows when a "+N more" row may be
-// appended. With a one-row diagram the item takes the row alone.
-func flowSlots(n, rows int) int {
-	rows = flowRowsFor(rows)
-	if n <= rows {
-		return n
-	}
-	if rows == 1 {
-		return 1
-	}
-	return rows - 1
-}
-
-func flowWindow(n, offset, rows int) (start, count, more int) {
-	rows = flowRowsFor(rows)
+func (v TxFlowView) effectiveOffset(side TxFlowSide) int {
+	n := len(v.itemsFor(side))
 	if n == 0 {
-		return 0, 0, 0
+		return 0
 	}
-	if n <= rows {
-		return 0, n, 0
+	off := clampFlowIndex(v.Offset[side.index()], n)
+	if v.Side != side {
+		return off
 	}
-	if rows == 1 {
-		if offset < 0 {
-			offset = 0
-		}
-		if offset > n-1 {
-			offset = n - 1
-		}
-		return offset, 1, 0
+	rows := v.diagramRows()
+	if rows < 1 {
+		rows = 1
 	}
-	slots := rows - 1
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > n-slots {
-		offset = n - slots
-	}
-	return offset, slots, n - (offset + slots)
+	return flowFitOffset(n, off, v.Cursor, rows)
 }
 
-// flowColumnWidths keeps each address column near 3/8 of the terminal and
-// gives the remaining quarter to the flow band. At 80 columns that is
-// 30/20/30; wider terminals widen both the columns and the band.
+func (v *TxFlowView) ensureOffset() {
+	n := len(v.itemsFor(v.Side))
+	side := v.Side.index()
+	if n == 0 {
+		v.Cursor = 0
+		v.Offset[side] = 0
+		return
+	}
+	v.Cursor = clampFlowIndex(v.Cursor, n)
+	rows := v.diagramRows()
+	if rows < 1 {
+		rows = 1
+	}
+	v.Offset[side] = flowFitOffset(n, v.Offset[side], v.Cursor, rows)
+}
+
+func clampFlowIndex(i, n int) int {
+	if i < 0 {
+		return 0
+	}
+	if i >= n {
+		return n - 1
+	}
+	return i
+}
+
+// flowFitOffset moves offset the smallest amount that keeps cursor visible.
+func flowFitOffset(n, off, cursor, rows int) int {
+	off = clampFlowIndex(off, n)
+	cursor = clampFlowIndex(cursor, n)
+	for i := 0; i < 4; i++ {
+		_, count, _, _ := flowWindow(n, off, rows)
+		if count < 1 {
+			count = 1
+		}
+		switch {
+		case cursor < off:
+			off = cursor
+		case cursor >= off+count:
+			off = cursor - count + 1
+		default:
+			return off
+		}
+		off = clampFlowIndex(off, n)
+	}
+	return off
+}
+
+// flowWindow returns the visible item range and the counts of items hidden
+// above and below it. A scrolled window reserves rows for the indicators.
+func flowWindow(n, offset, rows int) (start, count, above, below int) {
+	if n <= 0 || rows <= 0 {
+		return 0, 0, 0, 0
+	}
+	offset = clampFlowIndex(offset, n)
+	if n <= rows {
+		return 0, n, 0, 0
+	}
+	if rows == 1 {
+		return offset, 1, 0, 0
+	}
+	if offset == 0 {
+		count = rows - 1
+		return 0, count, 0, n - count
+	}
+	remaining := n - offset
+	if remaining <= rows-1 {
+		return offset, remaining, offset, 0
+	}
+	count = rows - 2
+	if count < 1 {
+		count = 1
+	}
+	return offset, count, offset, n - offset - count
+}
+
+// flowColumnWidths splits the terminal into two item columns and a central
+// band. At 80 columns that is 32/16/32.
 func flowColumnWidths(width int) (left, band, right int) {
 	if width <= 0 {
 		return 0, 0, 0
 	}
-	if width < 12 {
-		left = width / 2
-		right = width - left
-		return left, 0, right
+	band = width / 5
+	if band < 16 {
+		band = 16
 	}
-	left = width * 3 / 8
-	right = width * 3 / 8
-	band = width - left - right
+	if band > width {
+		band = width
+	}
+	left = (width - band) / 2
+	right = width - band - left
 	return left, band, right
 }
 
-func flowHeader(flow TxFlow, leftW, bandW, rightW int) string {
-	in, _ := flowTotal(flow.Inputs)
-	out, _ := flowTotal(flow.Outputs)
-	left := padFlowRight(fitFlowText("Inputs "+flowHeaderTotal(flow.Inputs, in), leftW), leftW)
-	right := padFlowLeft(fitFlowText("Outputs "+flowHeaderTotal(flow.Outputs, out), rightW), rightW)
+// flowBusColumns keeps both buses inside the band with room for the core
+// label between them.
+func flowBusColumns(leftW, band int) (busL, busR int) {
+	if band <= 0 {
+		return leftW, leftW
+	}
+	busL = leftW + 3
+	busR = leftW + band - 4
+	if busR-busL < 2 {
+		busL = leftW + band/2 - 1
+		busR = leftW + band/2
+		if busL < leftW {
+			busL = leftW
+		}
+		if busR >= leftW+band {
+			busR = leftW + band - 1
+		}
+	}
+	return busL, busR
+}
+
+func (v TxFlowView) headerLine(width int) string {
+	leftW, bandW, rightW := flowColumnWidths(width)
+	inTotal, _ := flowTotal(v.Flow.Inputs)
+	outTotal, _ := flowTotal(v.Flow.Outputs)
+	left := fitFlowText(flowHeaderText(" Inputs", v.Flow.Inputs, inTotal, leftW), leftW)
+	left = padFlowRight(left, leftW)
+	right := fitFlowText(flowHeaderText("Outputs", v.Flow.Outputs, outTotal, rightW), rightW)
+	right = padFlowLeft(right, rightW)
 	return styles.HighlightText.Render(left) +
 		strings.Repeat(" ", bandW) +
 		styles.HighlightText.Render(right)
 }
 
-func flowHeaderTotal(items []TxFlowItem, total api.Satoshi) string {
-	if len(items) == 0 {
-		return "0.0000 BTC"
+func flowHeaderText(prefix string, items []TxFlowItem, total api.Satoshi, width int) string {
+	totalText := flowHeaderTotal(items, total)
+	for _, gap := range []string{"   ", " ", ""} {
+		text := prefix + gap + totalText
+		if ansi.StringWidth(text) <= width {
+			return text
+		}
 	}
-	_, unknown := flowTotal(items)
-	text := formatFlowTotal(total)
-	if unknown > 0 {
+	return prefix + " " + totalText
+}
+
+func flowHeaderTotal(items []TxFlowItem, total api.Satoshi) string {
+	text := formatFlowBTC(total)
+	if _, unknown := flowTotal(items); unknown > 0 {
 		text += " + ?"
 	}
 	return text
@@ -526,46 +494,405 @@ func flowTotal(items []TxFlowItem) (api.Satoshi, int) {
 	return total, unknown
 }
 
-func renderFlowItem(item TxFlowItem, width int, selected bool) string {
-	if width <= 0 {
-		return ""
+// flowSideTotal is the value used for connector weighting. The fee is not
+// part of the output total because the header reports it separately.
+func flowSideTotal(items []TxFlowItem) api.Satoshi {
+	var total, fee api.Satoshi
+	for _, item := range items {
+		if !item.ValueKnown {
+			continue
+		}
+		if item.Kind == KindFee {
+			fee += item.Value
+			continue
+		}
+		total += item.Value
+	}
+	if total == 0 {
+		return fee
+	}
+	return total
+}
+
+func (v TxFlowView) diagramLines(width, height int) []string {
+	if height <= 0 {
+		return nil
+	}
+	inputs := v.Flow.Inputs
+	outputs := v.itemsFor(FlowOutput)
+	n := len(inputs)
+	if len(outputs) > n {
+		n = len(outputs)
+	}
+	if n == 0 {
+		return make([]string, height)
+	}
+
+	spaced := 2*n-1 <= height
+	used := n
+	if spaced {
+		used = 2*n - 1
+	}
+	if used > height {
+		used = height
+	}
+	center := used / 2
+
+	leftW, bandW, rightW := flowColumnWidths(width)
+	busL, busR := flowBusColumns(leftW, bandW)
+	grid := newFlowGrid(width, height)
+
+	inLayout := v.layoutSide(FlowInput, inputs, n, used, center, spaced)
+	outLayout := v.layoutSide(FlowOutput, outputs, n, used, center, spaced)
+
+	inLayout.draw(grid, center, FlowInput, leftW, bandW, rightW, busL, busR, width, v)
+	outLayout.draw(grid, center, FlowOutput, leftW, bandW, rightW, busL, busR, width, v)
+	v.drawCore(grid, center, busL, busR)
+
+	return grid.lines()
+}
+
+func (v TxFlowView) layoutSide(side TxFlowSide, items []TxFlowItem, n, used, center int, spaced bool) flowSideLayout {
+	layout := flowSideLayout{
+		items: items,
+		rows:  make([]flowSideRow, used),
+		total: flowSideTotal(items),
+	}
+	for i := range layout.rows {
+		layout.rows[i].item = -1
+	}
+	m := len(items)
+	if m == 0 || used <= 0 {
+		return layout
+	}
+
+	switch {
+	case m <= used && spaced:
+		startSlot := (n - m) / 2
+		for i := 0; i < m; i++ {
+			row := 2 * (startSlot + i)
+			if row >= 0 && row < used {
+				layout.rows[row].item = i
+			}
+		}
+	case m <= used:
+		startRow := (used - m) / 2
+		for i := 0; i < m; i++ {
+			row := startRow + i
+			if row >= 0 && row < used {
+				layout.rows[row].item = i
+			}
+		}
+	default:
+		start, count, above, below := flowWindow(m, v.effectiveOffset(side), used)
+		itemStart := 0
+		if above > 0 {
+			layout.rows[0] = flowSideRow{item: -1, more: above, up: true}
+			itemStart = 1
+		}
+		for i := 0; i < count; i++ {
+			row := itemStart + i
+			if row >= 0 && row < used {
+				layout.rows[row].item = start + i
+			}
+		}
+		if below > 0 {
+			layout.rows[used-1] = flowSideRow{item: -1, more: below}
+		}
+	}
+
+	layout.hasBus = true
+	if m == 1 {
+		itemRow := 0
+		for r, row := range layout.rows {
+			if row.item >= 0 {
+				itemRow = r
+				break
+			}
+		}
+		layout.busTop = itemRow
+		layout.busBottom = itemRow
+		if center < layout.busTop {
+			layout.busTop = center
+		}
+		if center > layout.busBottom {
+			layout.busBottom = center
+		}
+		layout.single = true
+		return layout
+	}
+	layout.busTop = 0
+	layout.busBottom = used - 1
+	return layout
+}
+
+type flowSideRow struct {
+	item int
+	more int
+	up   bool
+}
+
+type flowSideLayout struct {
+	items     []TxFlowItem
+	rows      []flowSideRow
+	total     api.Satoshi
+	busTop    int
+	busBottom int
+	hasBus    bool
+	single    bool
+}
+
+func (l flowSideLayout) draw(grid *flowGrid, center int, side TxFlowSide, leftW, bandW, rightW, busL, busR, width int, v TxFlowView) {
+	if !l.hasBus {
+		return
+	}
+	isLeft := side == FlowInput
+	busCol := busR
+	rightStart := leftW + bandW
+	if isLeft {
+		busCol = busL
+	}
+	connStart := flowLeftConnectorStart(leftW)
+	connEnd := flowRightConnectorEnd(rightStart, rightW)
+
+	for row := l.busTop; row <= l.busBottom; row++ {
+		var sideRow flowSideRow
+		if row >= 0 && row < len(l.rows) {
+			sideRow = l.rows[row]
+		}
+		hasContent := sideRow.item >= 0 || sideRow.more > 0
+		selected := sideRow.item >= 0 && v.Side == side && v.Cursor == sideRow.item
+
+		if hasContent {
+			if isLeft {
+				if sideRow.item >= 0 {
+					item := l.items[sideRow.item]
+					grid.text(row, 0, flowLeftItemText(item, leftW), flowCellKindFor(item.Kind), selected)
+				} else {
+					grid.text(row, 0, flowMoreCellText(sideRow.more, sideRow.up, leftW, true), flowCellDim, false)
+				}
+			} else if sideRow.item >= 0 {
+				item := l.items[sideRow.item]
+				grid.text(row, rightStart, flowRightItemText(item, rightW), flowCellKindFor(item.Kind), selected)
+			} else {
+				grid.text(row, rightStart, flowMoreCellText(sideRow.more, sideRow.up, rightW, false), flowCellDim, false)
+			}
+
+			weight := flowThin
+			connKind := flowCellConnector
+			if sideRow.item >= 0 {
+				weight = flowWeightFor(l.items[sideRow.item], l.total)
+			}
+			if sideRow.more > 0 {
+				connKind = flowCellDim
+			}
+			if selected {
+				connKind = flowCellAccent
+			}
+			if isLeft {
+				for col := connStart; col < busCol; col++ {
+					grid.set(row, col, flowHorizontal(weight), connKind, false)
+				}
+			} else {
+				for col := busCol + 1; col <= connEnd; col++ {
+					grid.set(row, col, flowHorizontal(weight), connKind, false)
+				}
+			}
+		}
+
+		glyph, jointKind := l.joint(row, center, side, hasContent, selected)
+		grid.set(row, busCol, glyph, jointKind, false)
+	}
+}
+
+func (l flowSideLayout) joint(row, center int, side TxFlowSide, hasContent, selected bool) (rune, flowCellKind) {
+	isLeft := side == FlowInput
+	if row == center {
+		if hasContent {
+			kind := flowCellBus
+			if selected {
+				kind = flowCellAccent
+			}
+			if l.single {
+				return '━', kind
+			}
+			return '╋', kind
+		}
+		if isLeft {
+			return '┣', flowCellBus
+		}
+		return '┫', flowCellBus
+	}
+	if hasContent {
+		kind := flowCellBus
+		if selected {
+			kind = flowCellAccent
+		}
+		hasAbove := row > l.busTop
+		hasBelow := row < l.busBottom
+		if isLeft {
+			return flowLeftJoint(hasAbove, hasBelow), kind
+		}
+		return flowRightJoint(hasAbove, hasBelow), kind
+	}
+	if row == l.busTop {
+		if isLeft {
+			return '┓', flowCellBus
+		}
+		return '┏', flowCellBus
+	}
+	if row == l.busBottom {
+		if isLeft {
+			return '┛', flowCellBus
+		}
+		return '┗', flowCellBus
+	}
+	return '┃', flowCellBus
+}
+
+func flowLeftJoint(hasAbove, hasBelow bool) rune {
+	switch {
+	case hasAbove && hasBelow:
+		return '┫'
+	case hasAbove:
+		return '┛'
+	case hasBelow:
+		return '┓'
+	default:
+		return '━'
+	}
+}
+
+func flowRightJoint(hasAbove, hasBelow bool) rune {
+	switch {
+	case hasAbove && hasBelow:
+		return '┣'
+	case hasAbove:
+		return '┗'
+	case hasBelow:
+		return '┏'
+	default:
+		return '━'
+	}
+}
+
+func (v TxFlowView) drawCore(grid *flowGrid, center, busL, busR int) {
+	if center < 0 || center >= grid.height {
+		return
+	}
+	gap := busR - busL - 1
+	if gap <= 0 {
+		return
+	}
+	label := fitFlowText(v.coreLabel(), gap)
+	pad := (gap - ansi.StringWidth(label)) / 2
+	grid.text(center, busL+1+pad, label, flowCellDim, false)
+}
+
+func (v TxFlowView) coreLabel() string {
+	rate := v.Flow.FeeRate
+	if rate <= 0 && v.Flow.FeeKnown && v.Flow.VSize > 0 && v.Flow.Fee > 0 {
+		rate = float64(v.Flow.Fee) / float64(v.Flow.VSize)
+	}
+	if rate <= 0 {
+		return "tx"
+	}
+	if math.Abs(rate-math.Round(rate)) < 0.05 {
+		return fmt.Sprintf("%.0f s/vB", rate)
+	}
+	return fmt.Sprintf("%.1f s/vB", rate)
+}
+
+func flowAmountReserve(colW int) int {
+	if colW >= 28 {
+		return 4
+	}
+	return 2
+}
+
+// flowRightAmountReserve adds the cell that the left column spends on its
+// leading blank, keeping both amount columns equally far from the band.
+func flowRightAmountReserve(colW int) int {
+	return flowAmountReserve(colW) + 1
+}
+
+func flowLeftConnectorStart(leftW int) int {
+	start := leftW - flowAmountReserve(leftW) + 2
+	if start < 1 {
+		start = 1
+	}
+	return start
+}
+
+func flowRightConnectorEnd(rightStart, rightW int) int {
+	return rightStart + flowRightAmountReserve(rightW) - 3
+}
+
+func flowLeftItemText(item TxFlowItem, colW int) string {
+	reserve := flowAmountReserve(colW)
+	amount := flowAmountText(item)
+	amountW := ansi.StringWidth(amount)
+	amountStart := colW - reserve - amountW
+	if amountStart < 1 {
+		amountStart = 1
 	}
 	marker := flowMarker(item.Kind)
-	amount := "unknown"
-	if item.ValueKnown {
-		amount = formatFlowBTC(item.Value)
-	}
 	markerW := ansi.StringWidth(marker)
-	amountW := ansi.StringWidth(amount)
-	// Reserve one cell between the shortened address and the amount.
-	addrW := width - markerW - 1 - amountW - 1
+	addrW := amountStart - 2 - (markerW + 2)
 	if addrW < 1 {
 		addrW = 1
 	}
-	addr := shortFlowAddress(flowItemName(item), addrW)
-	text := marker + " " + addr
-	gap := width - ansi.StringWidth(text) - amountW
-	if gap < 1 {
-		gap = 1
+	prefix := " " + marker + " " + shortFlowAddress(flowItemName(item), addrW)
+	prefixW := ansi.StringWidth(prefix)
+	if prefixW > amountStart {
+		prefix = ansi.Truncate(prefix, amountStart, "")
+		prefixW = ansi.StringWidth(prefix)
 	}
-	text += strings.Repeat(" ", gap) + amount
-	text = fitFlowText(text, width)
-	text = padFlowRight(text, width)
-
-	style := flowItemStyle(item.Kind)
-	if selected {
-		style = style.Reverse(true)
-	}
-	return style.Render(text)
+	text := prefix + strings.Repeat(" ", max(0, amountStart-prefixW)) + amount
+	return fitFlowText(text, colW)
 }
 
-func renderMoreCell(more, width int) string {
-	if width <= 0 {
-		return ""
+func flowRightItemText(item TxFlowItem, colW int) string {
+	reserve := flowRightAmountReserve(colW)
+	amount := flowAmountText(item)
+	amountW := ansi.StringWidth(amount)
+	marker := flowMarker(item.Kind)
+	markerW := ansi.StringWidth(marker)
+	addrStart := reserve + amountW + 2 + markerW + 1
+	addrW := colW - addrStart
+	if addrW < 1 {
+		addrW = 1
 	}
-	text := fitFlowText(fmt.Sprintf("+%d more", more), width)
-	text = padFlowRight(text, width)
-	return styles.DimText.Render(text)
+	text := strings.Repeat(" ", reserve) + amount + "  " + marker + " " +
+		shortFlowAddress(flowItemName(item), addrW)
+	return fitFlowText(text, colW)
+}
+
+func flowMoreCellText(more int, up bool, colW int, left bool) string {
+	text := fmt.Sprintf("+%d more", more)
+	if up {
+		text = fmt.Sprintf("%d more ↑", more)
+	}
+	reserve := flowAmountReserve(colW)
+	if !left {
+		reserve = flowRightAmountReserve(colW)
+	}
+	area := colW - reserve
+	if area < 1 {
+		area = 1
+	}
+	text = fitFlowText(text, area)
+	if left {
+		return padFlowLeft(text, area)
+	}
+	return strings.Repeat(" ", reserve) + padFlowRight(text, area)
+}
+
+func flowAmountText(item TxFlowItem) string {
+	if !item.ValueKnown {
+		return "unknown"
+	}
+	return formatFlowCoin(item.Value)
 }
 
 func flowItemName(item TxFlowItem) string {
@@ -576,7 +903,7 @@ func flowItemName(item TxFlowItem) string {
 	case KindOpReturn:
 		return "OP_RETURN"
 	case KindFee:
-		return "Network fee"
+		return "fee"
 	default:
 		return "(no address)"
 	}
@@ -597,18 +924,43 @@ func flowMarker(kind TxFlowKind) string {
 	}
 }
 
-func flowItemStyle(kind TxFlowKind) lipgloss.Style {
-	switch kind {
-	case KindOwnInput, KindReceive:
-		return lipgloss.NewStyle().Foreground(styles.SuccessGreen).Bold(true)
-	case KindChange:
-		return lipgloss.NewStyle().Foreground(styles.PastelPurple)
-	case KindFee:
-		return lipgloss.NewStyle().Foreground(styles.Amber).Bold(true)
-	case KindOpReturn:
-		return lipgloss.NewStyle().Foreground(styles.TextMuted)
+type flowWeight int
+
+const (
+	flowThin flowWeight = iota
+	flowMedium
+	flowThick
+	flowDotted
+)
+
+func flowWeightFor(item TxFlowItem, total api.Satoshi) flowWeight {
+	if !item.ValueKnown {
+		return flowDotted
+	}
+	if total <= 0 || item.Value <= 0 {
+		return flowThin
+	}
+	share := float64(item.Value) / float64(total)
+	switch {
+	case share > 0.5:
+		return flowThick
+	case share >= 0.15:
+		return flowMedium
 	default:
-		return lipgloss.NewStyle().Foreground(styles.TextSecondary)
+		return flowThin
+	}
+}
+
+func flowHorizontal(weight flowWeight) rune {
+	switch weight {
+	case flowMedium:
+		return '━'
+	case flowThick:
+		return '█'
+	case flowDotted:
+		return '┄'
+	default:
+		return '─'
 	}
 }
 
@@ -620,8 +972,8 @@ func (v TxFlowView) detailLines(width int) []string {
 			side = "outputs"
 		}
 		return []string{
-			styles.BoldText.Render(fitFlowText("No "+side+" selected", width)),
-			styles.NormalText.Render(fitFlowText("Select an item to see its details", width)),
+			flowDetailRow("Address  ", "no "+side+" selected", width),
+			flowDetailRow("Amount   ", "unknown", width),
 			styles.DimText.Render(fitFlowText("—", width)),
 		}
 	}
@@ -629,37 +981,58 @@ func (v TxFlowView) detailLines(width int) []string {
 	address := item.Address
 	switch {
 	case address != "":
-		// Keep the whole address; the detail row truncates only when the
-		// terminal itself is narrower than the address.
 	case item.Kind == KindOpReturn:
-		address = "OP_RETURN  (no address)"
+		address = "OP_RETURN"
 	case item.Kind == KindFee:
-		address = "Network fee"
+		address = "fee"
 	default:
 		address = "(no address)"
 	}
 
-	amount := "amount unknown"
+	amount := "unknown"
 	if item.ValueKnown {
 		amount = formatFlowBTC(item.Value) + " · " + formatFlowSats(item.Value) + " sats"
 	}
+
 	label := item.Label
 	if label == "" {
 		label = "no label"
 	}
-	details := amount + " · " + label
-
-	ownership := flowOwnership(item.Kind)
+	third := flowOwnership(item.Kind) + " · " + label
 	if v.Side == FlowInput && item.OutPoint != "" {
-		details = amount + " · " + label
-		ownership += " · " + item.OutPoint
+		third += " · " + item.OutPoint
 	}
 
 	return []string{
-		styles.BoldText.Render(fitFlowText(address, width)),
-		styles.NormalText.Render(fitFlowText(details, width)),
-		styles.DimText.Render(fitFlowText(ownership, width)),
+		flowDetailRow("Address  ", address, width),
+		flowDetailRow("Amount   ", amount, width),
+		v.ownershipLine(item.Kind, third, width),
 	}
+}
+
+func flowDetailRow(label, value string, width int) string {
+	labelW := ansi.StringWidth(label)
+	if labelW >= width {
+		return styles.DimText.Render(fitFlowText(label, width))
+	}
+	value = fitFlowText(value, width-labelW)
+	return styles.DimText.Render(label) + styles.NormalText.Render(value)
+}
+
+func (v TxFlowView) ownershipLine(kind TxFlowKind, text string, width int) string {
+	ownership := flowOwnership(kind)
+	ownW := ansi.StringWidth(ownership)
+	if ownW >= width {
+		return styles.DimText.Render(fitFlowText(text, width))
+	}
+	suffix := strings.TrimPrefix(text, ownership)
+	suffix = fitFlowText(suffix, width-ownW)
+	return flowCellStyle(flowCellKindFor(kind), false).Render(ownership) +
+		styles.DimText.Render(suffix)
+}
+
+func (v TxFlowView) hintLine(width int) string {
+	return styles.DimText.Render(fitFlowText("↑/↓ select • tab side • esc back", width))
 }
 
 func (v TxFlowView) selectedItem() (TxFlowItem, bool) {
@@ -680,169 +1053,6 @@ func flowOwnership(kind TxFlowKind) string {
 		return "fee"
 	default:
 		return "external"
-	}
-}
-
-func renderFlowBand(width int, inItem, outItem *TxFlowItem, inTop, inBottom, outTop, outBottom bool, inTotal, outTotal api.Satoshi) string {
-	if width <= 0 {
-		return ""
-	}
-	cells := make([]rune, width)
-	for i := range cells {
-		cells[i] = ' '
-	}
-	center := width / 2
-	cells[center] = '│'
-
-	if inItem != nil {
-		weight := flowWeightFor(*inItem, inTotal)
-		for i := 0; i < center; i++ {
-			cells[i] = flowHorizontal(weight)
-		}
-		cells[0] = flowLeftEnd(weight, inTop, inBottom)
-	}
-	if outItem != nil {
-		weight := flowWeightFor(*outItem, outTotal)
-		for i := center + 1; i < width; i++ {
-			cells[i] = flowHorizontal(weight)
-		}
-		cells[width-1] = flowRightEnd(weight, outTop, outBottom)
-	}
-
-	switch {
-	case inItem != nil && outItem != nil:
-		cells[center] = flowJunction(flowWeightFor(*inItem, inTotal), flowWeightFor(*outItem, outTotal))
-	case inItem != nil:
-		cells[center] = flowJoinLeft(flowWeightFor(*inItem, inTotal))
-	case outItem != nil:
-		cells[center] = flowJoinRight(flowWeightFor(*outItem, outTotal))
-	}
-	return string(cells)
-}
-
-type flowWeight int
-
-const (
-	flowThin flowWeight = iota
-	flowMedium
-	flowThick
-)
-
-func flowWeightFor(item TxFlowItem, total api.Satoshi) flowWeight {
-	if total <= 0 || !item.ValueKnown || item.Value <= 0 {
-		return flowThin
-	}
-	share := float64(item.Value) / float64(total)
-	switch {
-	case share >= 0.35:
-		return flowThick
-	case share >= 0.12:
-		return flowMedium
-	default:
-		return flowThin
-	}
-}
-
-func flowHorizontal(w flowWeight) rune {
-	switch w {
-	case flowMedium:
-		return '━'
-	case flowThick:
-		return '█'
-	default:
-		return '─'
-	}
-}
-
-func flowLeftEnd(w flowWeight, top, bottom bool) rune {
-	if w == flowThick {
-		switch {
-		case top:
-			return '█'
-		case bottom:
-			return '█'
-		default:
-			return '█'
-		}
-	}
-	if w == flowMedium {
-		switch {
-		case top:
-			return '┏'
-		case bottom:
-			return '┗'
-		default:
-			return '┃'
-		}
-	}
-	switch {
-	case top:
-		return '╭'
-	case bottom:
-		return '╰'
-	default:
-		return '│'
-	}
-}
-
-func flowRightEnd(w flowWeight, top, bottom bool) rune {
-	if w == flowThick {
-		return '█'
-	}
-	if w == flowMedium {
-		switch {
-		case top:
-			return '┓'
-		case bottom:
-			return '┛'
-		default:
-			return '┃'
-		}
-	}
-	switch {
-	case top:
-		return '╮'
-	case bottom:
-		return '╯'
-	default:
-		return '│'
-	}
-}
-
-func flowJunction(a, b flowWeight) rune {
-	w := a
-	if b > w {
-		w = b
-	}
-	switch w {
-	case flowThick:
-		return '█'
-	case flowMedium:
-		return '╋'
-	default:
-		return '┼'
-	}
-}
-
-func flowJoinLeft(w flowWeight) rune {
-	switch w {
-	case flowThick:
-		return '█'
-	case flowMedium:
-		return '┫'
-	default:
-		return '┤'
-	}
-}
-
-func flowJoinRight(w flowWeight) rune {
-	switch w {
-	case flowThick:
-		return '█'
-	case flowMedium:
-		return '┣'
-	default:
-		return '├'
 	}
 }
 
@@ -869,7 +1079,7 @@ func shortFlowAddress(addr string, width int) string {
 	return string(r[:left]) + "…" + string(r[len(r)-right:])
 }
 
-func formatFlowBTC(v api.Satoshi) string {
+func formatFlowCoin(v api.Satoshi) string {
 	neg := v < 0
 	if neg {
 		v = -v
@@ -878,24 +1088,11 @@ func formatFlowBTC(v api.Satoshi) string {
 	if neg {
 		sign = "-"
 	}
-	return fmt.Sprintf("%s%d.%08d BTC", sign, int64(v)/100_000_000, int64(v)%100_000_000)
+	return fmt.Sprintf("%s%d.%08d", sign, int64(v)/100_000_000, int64(v)%100_000_000)
 }
 
-func formatFlowTotal(v api.Satoshi) string {
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	frac := fmt.Sprintf("%08d", int64(v)%100_000_000)
-	frac = strings.TrimRight(frac, "0")
-	if len(frac) < 4 {
-		frac += strings.Repeat("0", 4-len(frac))
-	}
-	sign := ""
-	if neg {
-		sign = "-"
-	}
-	return fmt.Sprintf("%s%d.%s BTC", sign, int64(v)/100_000_000, frac)
+func formatFlowBTC(v api.Satoshi) string {
+	return formatFlowCoin(v) + " BTC"
 }
 
 func formatFlowSats(v api.Satoshi) string {
@@ -944,4 +1141,136 @@ func padFlowLeft(s string, width int) string {
 		return s
 	}
 	return strings.Repeat(" ", width-w) + s
+}
+
+type flowCellKind int
+
+const (
+	flowCellBlank flowCellKind = iota
+	flowCellYours
+	flowCellChange
+	flowCellExternal
+	flowCellFee
+	flowCellOpReturn
+	flowCellDim
+	flowCellConnector
+	flowCellBus
+	flowCellAccent
+)
+
+func flowCellKindFor(kind TxFlowKind) flowCellKind {
+	switch kind {
+	case KindOwnInput, KindReceive:
+		return flowCellYours
+	case KindChange:
+		return flowCellChange
+	case KindFee:
+		return flowCellFee
+	case KindOpReturn:
+		return flowCellOpReturn
+	default:
+		return flowCellExternal
+	}
+}
+
+func flowCellStyle(kind flowCellKind, selected bool) lipgloss.Style {
+	var style lipgloss.Style
+	switch kind {
+	case flowCellYours:
+		style = lipgloss.NewStyle().Foreground(styles.SuccessGreen).Bold(true)
+	case flowCellChange:
+		style = lipgloss.NewStyle().Foreground(styles.InfoBlue)
+	case flowCellFee:
+		style = lipgloss.NewStyle().Foreground(styles.Amber).Bold(true)
+	case flowCellOpReturn:
+		style = lipgloss.NewStyle().Foreground(styles.TextMuted)
+	case flowCellDim:
+		style = lipgloss.NewStyle().Foreground(styles.TextMuted)
+	case flowCellConnector:
+		style = lipgloss.NewStyle().Foreground(styles.TextSecondary)
+	case flowCellBus:
+		style = lipgloss.NewStyle().Foreground(styles.TextMuted)
+	case flowCellAccent:
+		style = lipgloss.NewStyle().Foreground(styles.BitcoinOrange).Bold(true)
+	default:
+		style = lipgloss.NewStyle()
+	}
+	if selected && kind >= flowCellYours && kind <= flowCellOpReturn {
+		style = style.Reverse(true)
+	}
+	return style
+}
+
+type flowCell struct {
+	r        rune
+	kind     flowCellKind
+	selected bool
+}
+
+type flowGrid struct {
+	width  int
+	height int
+	cells  [][]flowCell
+}
+
+func newFlowGrid(width, height int) *flowGrid {
+	cells := make([][]flowCell, height)
+	for r := range cells {
+		cells[r] = make([]flowCell, width)
+		for c := range cells[r] {
+			cells[r][c] = flowCell{r: ' ', kind: flowCellBlank}
+		}
+	}
+	return &flowGrid{width: width, height: height, cells: cells}
+}
+
+func (g *flowGrid) set(row, col int, r rune, kind flowCellKind, selected bool) {
+	if row < 0 || row >= g.height || col < 0 || col >= g.width {
+		return
+	}
+	g.cells[row][col] = flowCell{r: r, kind: kind, selected: selected}
+}
+
+func (g *flowGrid) text(row, col int, text string, kind flowCellKind, selected bool) {
+	if col < 0 {
+		return
+	}
+	pos := col
+	for _, r := range text {
+		if pos >= g.width {
+			return
+		}
+		g.set(row, pos, r, kind, selected)
+		pos++
+	}
+}
+
+func (g *flowGrid) lines() []string {
+	out := make([]string, g.height)
+	for row := 0; row < g.height; row++ {
+		last := g.width - 1
+		for last >= 0 && g.cells[row][last].r == ' ' {
+			last--
+		}
+		if last < 0 {
+			out[row] = ""
+			continue
+		}
+		var b strings.Builder
+		for col := 0; col <= last; {
+			kind := g.cells[row][col].kind
+			selected := g.cells[row][col].selected
+			start := col
+			for col <= last && g.cells[row][col].kind == kind && g.cells[row][col].selected == selected {
+				col++
+			}
+			var seg strings.Builder
+			for i := start; i < col; i++ {
+				seg.WriteRune(g.cells[row][i].r)
+			}
+			b.WriteString(flowCellStyle(kind, selected).Render(seg.String()))
+		}
+		out[row] = b.String()
+	}
+	return out
 }

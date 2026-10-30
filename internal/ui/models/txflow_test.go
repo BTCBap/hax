@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -61,6 +62,54 @@ func txFlowFixture(inputs, outputs int) TxFlow {
 		})
 	}
 	return flow
+}
+
+// txFlowExample mirrors the 2-input, 2-output-plus-fee diagram used by the
+// design mockup.
+func txFlowExample() TxFlow {
+	addr := func(prefix, suffix string) string {
+		return prefix + strings.Repeat("0", 40) + suffix
+	}
+	return TxFlow{
+		TxID:     "example",
+		Fee:      141,
+		FeeKnown: true,
+		FeeRate:  1,
+		VSize:    141,
+		Inputs: []TxFlowItem{
+			{
+				Address:    addr("tb1qrp", "0sl5k7"),
+				OutPoint:   strings.Repeat("aa", 32) + ":0",
+				Value:      700_000,
+				ValueKnown: true,
+				Mine:       true,
+				Kind:       KindOwnInput,
+			},
+			{
+				Address:    addr("tb1qw5", "xpjzsx"),
+				OutPoint:   strings.Repeat("bb", 32) + ":1",
+				Value:      50_000,
+				ValueKnown: true,
+				Mine:       true,
+				Kind:       KindOwnInput,
+			},
+		},
+		Outputs: []TxFlowItem{
+			{
+				Address:    addr("tb1q9v", "vgkx0l"),
+				Value:      100_000,
+				ValueKnown: true,
+				Kind:       KindExternal,
+			},
+			{
+				Address:    addr("tb1qqq", "rxh6hy"),
+				Value:      649_859,
+				ValueKnown: true,
+				Mine:       true,
+				Kind:       KindChange,
+			},
+		},
+	}
 }
 
 func TestTxFlowFromInspection(t *testing.T) {
@@ -179,18 +228,17 @@ func TestTxFlow_RenderingFitsAndStaysStable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		for _, width := range []int{60, 80, 120, 200} {
-			for _, height := range []int{24, 40} {
+			for _, height := range []int{12, 24, 40} {
 				t.Run(fmt.Sprintf("%s/%dx%d", tc.name, width, height), func(t *testing.T) {
 					v := TxFlowView{Flow: txFlowFixture(tc.inputs, tc.outputs), Width: width, Height: height}
-					wantLines := height
 					for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
 						v.SwitchSide(side)
 						n := len(v.itemsFor(side))
 						for i := 0; i < n; i++ {
 							view := v.View()
 							lines := strings.Split(ansi.Strip(view), "\n")
-							if len(lines) != wantLines {
-								t.Fatalf("%s cursor %d: %d lines, want %d", sideName(side), i, len(lines), wantLines)
+							if len(lines) != height {
+								t.Fatalf("%s cursor %d: %d lines, want %d", sideName(side), i, len(lines), height)
 							}
 							for lineNo, line := range lines {
 								if w := ansi.StringWidth(line); w > width {
@@ -199,8 +247,15 @@ func TestTxFlow_RenderingFitsAndStaysStable(t *testing.T) {
 								}
 							}
 							item := v.itemsFor(side)[i]
-							if item.Address != "" && !strings.Contains(ansi.Strip(view), item.Address) {
-								t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, item.Address)
+							if item.Address != "" {
+								available := width - ansi.StringWidth("Address  ")
+								if ansi.StringWidth(item.Address) <= available {
+									if !strings.Contains(ansi.Strip(view), item.Address) {
+										t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, item.Address)
+									}
+								} else if !strings.Contains(ansi.Strip(view), "…") {
+									t.Errorf("%s cursor %d: long address is not truncated", sideName(side), i)
+								}
 							}
 							v.MoveDown()
 						}
@@ -221,7 +276,7 @@ func sideName(side TxFlowSide) string {
 func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 	v := TxFlowView{Flow: txFlowFixture(25, 12), Width: 80, Height: 24}
 	plain := ansi.Strip(v.View())
-	if !strings.Contains(plain, "+7 more") {
+	if !strings.Contains(plain, "+9 more") {
 		t.Fatalf("first view does not show the hidden input count:\n%s", plain)
 	}
 	wantLines := len(strings.Split(plain, "\n"))
@@ -235,8 +290,11 @@ func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 	if !strings.Contains(plain, txFlowAddr(24)) {
 		t.Fatalf("last input is not visible after scrolling:\n%s", plain)
 	}
-	if strings.Contains(plain, "more") {
-		t.Fatalf("more row still shown at the bottom:\n%s", plain)
+	if strings.Contains(plain, "+9 more") {
+		t.Fatalf("bottom more row still shown after scrolling to the end:\n%s", plain)
+	}
+	if !strings.Contains(plain, "9 more ↑") {
+		t.Fatalf("top more indicator is missing after scrolling:\n%s", plain)
 	}
 	if got := len(strings.Split(plain, "\n")); got != wantLines {
 		t.Fatalf("line count changed from %d to %d while scrolling", wantLines, got)
@@ -245,6 +303,116 @@ func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 	v.MoveUp()
 	if got := len(strings.Split(ansi.Strip(v.View()), "\n")); got != wantLines {
 		t.Fatalf("line count changed after moving up: %d, want %d", got, wantLines)
+	}
+}
+
+func TestTxFlow_NoDanglingBusInPadding(t *testing.T) {
+	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
+	lines := strings.Split(ansi.Strip(v.View()), "\n")
+	const diagramStart = 2 // header plus blank row
+	const usedRows = 5     // three items with spacer rows
+	for i := diagramStart + usedRows; i < len(lines); i++ {
+		if strings.ContainsRune(lines[i], '┃') {
+			t.Fatalf("dangling bus on padding line %d: %q", i, lines[i])
+		}
+	}
+	if !strings.ContainsRune(lines[diagramStart+usedRows-1], '┛') {
+		t.Errorf("left bus does not close on its last row: %q", lines[diagramStart+usedRows-1])
+	}
+	if !strings.ContainsRune(lines[diagramStart+usedRows-1], '┗') {
+		t.Errorf("right bus does not close on its last row: %q", lines[diagramStart+usedRows-1])
+	}
+}
+
+func TestTxFlow_CenterLabelAndJoints(t *testing.T) {
+	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
+	plain := ansi.Strip(v.View())
+	lines := strings.Split(plain, "\n")
+	centerLine := 2 + (2*3-1)/2
+	if !strings.Contains(lines[centerLine], "1 s/vB") {
+		t.Fatalf("center row does not contain the fee rate: %q", lines[centerLine])
+	}
+	for _, glyph := range []string{"┓", "┛", "┏", "┗", "╋", "█"} {
+		if !strings.Contains(plain, glyph) {
+			t.Errorf("view is missing %q:\n%s", glyph, plain)
+		}
+	}
+	for _, marker := range []string{"●", "◆", "○", "⛁"} {
+		if !strings.Contains(plain, marker) {
+			t.Errorf("view is missing marker %q:\n%s", marker, plain)
+		}
+	}
+	if !strings.Contains(lines[2], "…") {
+		t.Errorf("addresses are not truncated in the middle: %q", lines[2])
+	}
+}
+
+func TestTxFlow_ConnectorWeightTiers(t *testing.T) {
+	flow := TxFlow{
+		Fee: 100_000, FeeKnown: true, FeeRate: 2, VSize: 50_000,
+		Inputs: []TxFlowItem{
+			{Address: "bc1qunknown", Kind: KindForeignInput},
+			{Address: "bc1qlarge", Value: 600_000, ValueKnown: true, Kind: KindOwnInput},
+			{Address: "bc1qmedium", Value: 300_000, ValueKnown: true, Kind: KindOwnInput},
+			{Address: "bc1qsmall", Value: 100_000, ValueKnown: true, Kind: KindOwnInput},
+		},
+		Outputs: []TxFlowItem{
+			{Address: "bc1qdest", Value: 900_000, ValueKnown: true, Kind: KindExternal},
+		},
+	}
+	v := TxFlowView{Flow: flow, Width: 80, Height: 24}
+	lines := strings.Split(ansi.Strip(v.View()), "\n")
+	// Items sit on diagram rows 0, 2, 4, and 6.
+	if !strings.ContainsRune(lines[2], '┄') {
+		t.Errorf("unknown value does not use a dotted connector: %q", lines[2])
+	}
+	if !strings.ContainsRune(lines[4], '█') {
+		t.Errorf(">50%% item does not use a thick connector: %q", lines[4])
+	}
+	if !strings.ContainsRune(lines[6], '━') {
+		t.Errorf("15-50%% item does not use a heavy connector: %q", lines[6])
+	}
+	if !strings.ContainsRune(lines[8], '─') {
+		t.Errorf("<15%% item does not use a light connector: %q", lines[8])
+	}
+	if !strings.Contains(lines[5], "2 s/vB") {
+		t.Errorf("center row does not contain the fee rate: %q", lines[5])
+	}
+}
+
+func TestTxFlow_80(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
+
+	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
+	got := v.View()
+
+	const path = "testdata/TestTxFlow_80.golden"
+	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(path, []byte(got), 0o600); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden (run UPDATE_GOLDEN=1 go test -run TestTxFlow_80): %v", err)
+	}
+	if string(want) == got {
+		return
+	}
+	wantLines := strings.Split(string(want), "\n")
+	gotLines := strings.Split(got, "\n")
+	for i := 0; i < len(wantLines) || i < len(gotLines); i++ {
+		var wantLine, gotLine string
+		if i < len(wantLines) {
+			wantLine = wantLines[i]
+		}
+		if i < len(gotLines) {
+			gotLine = gotLines[i]
+		}
+		if wantLine != gotLine {
+			t.Fatalf("golden mismatch at line %d:\nwant %q\ngot  %q", i, wantLine, gotLine)
+		}
 	}
 }
 
