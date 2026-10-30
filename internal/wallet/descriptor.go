@@ -538,8 +538,14 @@ func ParseDescriptor(descriptor string) (*DescriptorParseResult, error) {
 		descriptorBody := descriptor[:idx]
 
 		expectedChecksum := DescriptorChecksum(descriptorBody)
+		if providedChecksum == "" {
+			return nil, fmt.Errorf("descriptor checksum is empty; remove the trailing # or provide a valid checksum")
+		}
 		if expectedChecksum != providedChecksum {
-			warnings = append(warnings, fmt.Sprintf("checksum mismatch: expected %s, got %s", expectedChecksum, providedChecksum))
+			// A wrong checksum means the descriptor was mistyped or
+			// tampered with, so continue would derive unintended
+			// addresses (H3-28).
+			return nil, fmt.Errorf("descriptor checksum mismatch: expected %s, got %s", expectedChecksum, providedChecksum)
 		}
 		descriptor = descriptorBody
 	} else {
@@ -726,6 +732,7 @@ func parseMultisigDescriptor(descriptor string) (*MultisigWalletConfig, []string
 		M:          m,
 		N:          n,
 		ScriptType: int(scriptType),
+		Unsorted:   !strings.Contains(descriptor, "sortedmulti("),
 		Cosigners:  cosigners,
 	}, warnings, nil
 }

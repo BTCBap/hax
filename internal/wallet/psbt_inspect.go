@@ -57,6 +57,18 @@ type PSBTInspection struct {
 	RBF      bool        // signals BIP125 replaceability
 	LockTime uint32
 	Warnings []string
+
+	// SignBlocked is set when the PSBT cannot be signed safely at all
+	// (unverified input amount or outputs exceeding inputs).
+	SignBlocked bool
+	// ExternalOutput is set when any output pays someone other than this
+	// wallet. It is expected in hax's own send flow but needs confirmation
+	// when the PSBT came from outside.
+	ExternalOutput bool
+	// SignDangerous is set when signing needs explicit confirmation:
+	// spoofed ownership, non-ALL sighash, or a very high fee. The UI asks
+	// for a second confirmation keypress.
+	SignDangerous bool
 }
 
 // InspectPSBT describes a PSBT for review before signing. Ownership of
@@ -94,8 +106,17 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 		prevOut := inputPrevOut(packet, i)
 		if prevOut == nil {
 			allKnown = false
+			insp.SignBlocked = true
 			warn("Input %d has no amount, so the fee can't be checked.", i+1)
 		} else {
+			verified, verr := verifiedInputPrevOut(packet, i)
+			if verr != nil {
+				allKnown = false
+				insp.SignBlocked = true
+				warn("Input %d can't be verified: %s.", i+1, verr)
+			} else {
+				prevOut = verified
+			}
 			ii.Value, ii.ValueKnown = api.Satoshi(prevOut.Value), true
 			inTotal += prevOut.Value
 			ii.Address = scriptAddress(prevOut.PkScript, network)
@@ -103,6 +124,7 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 				in.Bip32Derivation, in.TaprootBip32Derivation)
 			ii.Mine = mine != OutputExternal
 			if spoofed {
+				insp.SignDangerous = true
 				warn("Input %d claims a key of this wallet that doesn't "+
 					"match its script.", i+1)
 			}
@@ -116,6 +138,7 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 			}
 		}
 		if s := in.SighashType; s != 0 && s != txscript.SigHashAll {
+			insp.SignDangerous = true
 			warn("Input %d uses sighash %s: parts of the transaction can "+
 				"change after you sign.", i+1, sighashName(s))
 		}
@@ -133,11 +156,13 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 			Owner:   owner,
 		}
 		if spoofed {
+			insp.SignDangerous = true
 			warn("Output %d claims to be this wallet's but isn't: it "+
 				"pays someone else.", i+1)
 		}
 		if owner == OutputExternal {
 			insp.Sent += io.Value
+			insp.ExternalOutput = true
 		}
 		if io.Address != "" && io.Value < GetDustLimit(io.Address) {
 			warn("Output %d is below the dust limit; nodes won't relay "+
@@ -149,6 +174,7 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 
 	if allKnown && len(tx.TxIn) > 0 {
 		if inTotal < outTotal {
+			insp.SignBlocked = true
 			warn("The outputs are worth more than the inputs.")
 		} else {
 			insp.FeeKnown = true
@@ -158,6 +184,7 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 			}
 			switch {
 			case insp.FeeRate > inspectHighFeeRate:
+				insp.SignDangerous = true
 				warn("The fee rate is very high (%.0f sat/vB).", insp.FeeRate)
 			case insp.FeeRate < incrementalRelayFee:
 				warn("The fee rate is below 1 sat/vB; most nodes won't " +
@@ -165,6 +192,7 @@ func (m *WalletManager) InspectPSBT(packet *psbt.Packet) *PSBTInspection {
 			}
 			if insp.Sent > 0 &&
 				insp.Fee*100 > insp.Sent*inspectHighFeePercent {
+				insp.SignDangerous = true
 				warn("The fee is more than %d%% of the amount sent.",
 					inspectHighFeePercent)
 			}

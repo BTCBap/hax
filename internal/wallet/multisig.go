@@ -34,6 +34,21 @@ func (m *WalletManager) CreateMultisigWalletOnNetwork(
 	scriptType MultisigScriptType,
 	network string,
 ) error {
+	return m.CreateMultisigWalletWithOrderOnNetwork(name, password, requiredSigs, cosigners, scriptType, network, false)
+}
+
+// CreateMultisigWalletWithOrderOnNetwork is CreateMultisigWalletOnNetwork
+// for a descriptor that used multi(...) and therefore must keep the supplied
+// key order instead of sorting it per BIP67 (H3-05).
+func (m *WalletManager) CreateMultisigWalletWithOrderOnNetwork(
+	name string,
+	password string,
+	requiredSigs int,
+	cosigners []MultisigCosignerConfig,
+	scriptType MultisigScriptType,
+	network string,
+	unsorted bool,
+) error {
 	params, err := ParamsForNetwork(network)
 	if err != nil {
 		return err
@@ -83,6 +98,7 @@ func (m *WalletManager) CreateMultisigWalletOnNetwork(
 			M:          requiredSigs,
 			N:          len(cosigners),
 			ScriptType: int(scriptType),
+			Unsorted:   unsorted,
 			Cosigners:  cosigners,
 		},
 	}
@@ -160,6 +176,7 @@ func (m *WalletManager) GetMultisigAddress(change bool, index uint32) (string, [
 		M:          config.M,
 		N:          config.N,
 		ScriptType: MultisigScriptType(config.ScriptType),
+		Unsorted:   config.Unsorted,
 	}
 
 	address, witnessScript, err := GenerateMultisigAddress(msConfig, pubKeys, network)

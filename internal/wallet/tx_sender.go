@@ -30,6 +30,12 @@ func (m *WalletManager) resolveUTXOs(accountIndex uint32, utxos []api.UTXO, addr
 			if int(utxo.Vout) >= len(tx.Vout) {
 				return nil, fmt.Errorf("invalid vout index %d for transaction %s", utxo.Vout, utxo.TxID)
 			}
+			// The backend's listunspent value is a claim. Reject it unless
+			// the transaction it just returned agrees, so a hostile server
+			// cannot skew change and fee (H3-06).
+			if tx.Vout[utxo.Vout].Value != utxo.Value {
+				return nil, fmt.Errorf("UTXO %s:%d value does not match its transaction", utxo.TxID, utxo.Vout)
+			}
 			utxoAddr := tx.Vout[utxo.Vout].ScriptpubkeyAddress
 			var path string
 			found := false

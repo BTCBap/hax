@@ -45,7 +45,7 @@ func TestStorage_KeyRoundTripWithoutPassword(t *testing.T) {
 func TestManager_WipeKeyZeroesBuffers(t *testing.T) {
 	m := &WalletManager{}
 	key, salt := bytes.Repeat([]byte{0xAA}, 32), bytes.Repeat([]byte{0xBB}, 16)
-	m.setKey(salt, key)
+	m.setKey(&WalletKey{Salt: salt, Key: key})
 	if !m.hasKey() {
 		t.Fatal("expected key")
 	}

@@ -2,12 +2,16 @@ package wallet
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+	"unicode"
 )
 
 // HardwareWalletType represents supported hardware wallet types
@@ -130,27 +134,7 @@ type HWIClient struct {
 // NewHWIClient creates a new HWI client.
 // Returns nil if HWI is not installed.
 func NewHWIClient(testnet bool) *HWIClient {
-	// Check if hwi is available in PATH
-	path, err := exec.LookPath("hwi")
-	if err != nil {
-		// Try common installation locations
-		// Note: exec.LookPath doesn't expand ~, so we need to handle that
-		homeDir, _ := os.UserHomeDir()
-		commonPaths := []string{
-			"/usr/local/bin/hwi",
-			"/opt/homebrew/bin/hwi",
-		}
-		if homeDir != "" {
-			commonPaths = append(commonPaths, homeDir+"/.local/bin/hwi")
-		}
-		for _, p := range commonPaths {
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
-				path = p
-				break
-			}
-		}
-	}
-
+	path := resolveHWIPath()
 	if path == "" {
 		return &HWIClient{available: false}
 	}
@@ -160,6 +144,38 @@ func NewHWIClient(testnet bool) *HWIClient {
 		testnet:   testnet,
 		available: true,
 	}
+}
+
+// resolveHWIPath finds an executable HWI that the current user can trust.
+// HAX_HWI_PATH takes priority; otherwise PATH and common install locations
+// are tried. Candidates that are not regular files or are group/world
+// writable are skipped so a planted binary cannot run as the wallet (H3-30).
+func resolveHWIPath() string {
+	var candidates []string
+	if configured := os.Getenv("HAX_HWI_PATH"); configured != "" {
+		candidates = append(candidates, configured)
+	} else {
+		if path, err := exec.LookPath("hwi"); err == nil {
+			candidates = append(candidates, path)
+		}
+		homeDir, _ := os.UserHomeDir()
+		candidates = append(candidates, "/usr/local/bin/hwi", "/opt/homebrew/bin/hwi")
+		if homeDir != "" {
+			candidates = append(candidates, filepath.Join(homeDir, ".local", "bin", "hwi"))
+		}
+	}
+	for _, candidate := range candidates {
+		abs, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(abs) //nolint:gosec // HAX_HWI_PATH and install locations are user-chosen
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&0o022 != 0 {
+			continue
+		}
+		return abs
+	}
+	return ""
 }
 
 // IsAvailable returns true if HWI is installed and accessible
@@ -196,8 +212,23 @@ func (h *HWIClient) EnumerateDevices() ([]HardwareDevice, error) {
 	if err := json.Unmarshal([]byte(output), &devices); err != nil {
 		return nil, fmt.Errorf("failed to parse device list: %w", err)
 	}
+	for i := range devices {
+		devices[i].Model = sanitizeHWIText(devices[i].Model)
+		devices[i].Error = sanitizeHWIText(devices[i].Error)
+	}
 
 	return devices, nil
+}
+
+// sanitizeHWIText strips control and format characters from text that may
+// come from a device or a compromised HWI binary before the UI renders it.
+func sanitizeHWIText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // GetXpub retrieves the extended public key at the given derivation path
@@ -306,8 +337,8 @@ func (h *HWIClient) SendPin(device HardwareDevice, pin string) error {
 		}
 	}
 
-	args := []string{"-d", device.Path, "-t", string(device.Type), "sendpin", pin}
-	_, err := h.runCommand(args...)
+	args := []string{"-d", device.Path, "-t", string(device.Type), "sendpin"}
+	_, err := h.runCommandInput(pin+"\n", args...)
 	if err != nil {
 		return fmt.Errorf("failed to send PIN: %w", err)
 	}
@@ -317,6 +348,12 @@ func (h *HWIClient) SendPin(device HardwareDevice, pin string) error {
 
 // runCommand executes an HWI command and returns the output
 func (h *HWIClient) runCommand(args ...string) (string, error) {
+	return h.runCommandInput("", args...)
+}
+
+// runCommandInput executes HWI with stdin (used for PIN entry, which must
+// never appear in the process list).
+func (h *HWIClient) runCommandInput(stdin string, args ...string) (string, error) {
 	cmdArgs := make([]string, 0, len(args)+2)
 
 	// Only pass --chain for device-specific commands (HWI 2.x).
@@ -326,14 +363,23 @@ func (h *HWIClient) runCommand(args ...string) (string, error) {
 	}
 	cmdArgs = append(cmdArgs, args...)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
 	// #nosec G204 -- hwiPath is the resolved HWI binary; args are passed as argv, not via a shell
-	cmd := exec.Command(h.hwiPath, cmdArgs...)
+	cmd := exec.CommandContext(ctx, h.hwiPath, cmdArgs...)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("hwi timed out")
+		}
 		// Try to extract error from stderr or stdout
 		errMsg := strings.TrimSpace(stderr.String())
 		if errMsg == "" {

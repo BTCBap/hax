@@ -130,6 +130,63 @@ func TestInspectPSBT_ChangeIsVerified(t *testing.T) {
 	}
 }
 
+// TestInspectPSBT_SigningGate checks the flags the UI uses to decide
+// whether a PSBT can be signed, and how loudly.
+func TestInspectPSBT_SigningGate(t *testing.T) {
+	t.Run("external payment is allowed", func(t *testing.T) {
+		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
+		res, _ := inspectTestPSBT(t, m, b)
+		insp := m.InspectPSBT(res.Packet)
+		if insp.SignBlocked || insp.SignDangerous {
+			t.Fatalf("clean payment marked blocked=%v dangerous=%v", insp.SignBlocked, insp.SignDangerous)
+		}
+		if !insp.ExternalOutput {
+			t.Fatal("payment to another party was not flagged as external")
+		}
+	})
+
+	t.Run("missing amount blocks signing", func(t *testing.T) {
+		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
+		res, _ := inspectTestPSBT(t, m, b)
+		res.Packet.Inputs[0].WitnessUtxo = nil
+		res.Packet.Inputs[0].NonWitnessUtxo = nil
+		if insp := m.InspectPSBT(res.Packet); !insp.SignBlocked {
+			t.Fatal("input without an amount did not block signing")
+		}
+	})
+
+	t.Run("non-ALL sighash needs confirmation", func(t *testing.T) {
+		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
+		res, _ := inspectTestPSBT(t, m, b)
+		res.Packet.Inputs[0].SighashType = txscript.SigHashNone
+		if insp := m.InspectPSBT(res.Packet); !insp.SignDangerous {
+			t.Fatal("non-ALL sighash did not need confirmation")
+		}
+	})
+
+	t.Run("outputs above inputs block signing", func(t *testing.T) {
+		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
+		res, _ := inspectTestPSBT(t, m, b)
+		res.Packet.UnsignedTx.TxOut[1].Value += 1_000_000
+		if insp := m.InspectPSBT(res.Packet); !insp.SignBlocked {
+			t.Fatal("outputs above inputs did not block signing")
+		}
+	})
+}
+
+func TestImportPSBTRejectsOutputsAboveInputs(t *testing.T) {
+	m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
+	res, _ := inspectTestPSBT(t, m, b)
+	res.Packet.UnsignedTx.TxOut[0].Value = 1_000_000_000
+	b64, err := m.ExportPSBTBase64(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ImportPSBTFromBase64(b64); err == nil {
+		t.Fatal("PSBT paying more than its inputs was imported")
+	}
+}
+
 func TestInspectPSBT_Warnings(t *testing.T) {
 	cases := []struct {
 		name   string
