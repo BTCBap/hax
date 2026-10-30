@@ -8,9 +8,6 @@ import (
 )
 
 const (
-	// amountMask is the fixed mask shown in place of a hidden amount.
-	amountMask = "••••••"
-
 	// stealthBadgeWidth keeps the header badge in a fixed slot.
 	stealthBadgeWidth = 10
 
@@ -18,22 +15,41 @@ const (
 	passphraseBadgeWidth = 13
 )
 
-// maskAmount replaces an amount with a right-aligned mask that occupies the
-// same number of cells as the real value, so nearby labels never move.
+// maskAmount replaces the numeric part of a left-aligned amount with bullets,
+// preserving the unit suffix and the original width so nearby text never moves.
 func maskAmount(s string, hidden bool) string {
+	return maskAmountAligned(s, hidden, false)
+}
+
+// maskAmountRight is maskAmount for right-aligned numeric columns.
+func maskAmountRight(s string, hidden bool) string {
+	return maskAmountAligned(s, hidden, true)
+}
+
+func maskAmountAligned(s string, hidden, right bool) string {
 	if !hidden {
 		return s
 	}
-	width := lipgloss.Width(s)
-	if width <= 0 {
+	if s == "" {
 		return ""
 	}
-	mask := amountMask
-	for lipgloss.Width(mask) > width {
-		r := []rune(mask)
-		mask = string(r[:len(r)-1])
+	value, unit := splitAmountUnit(s)
+	masked := strings.Repeat("•", lipgloss.Width(value)) + unit
+	if width := lipgloss.Width(s); right && lipgloss.Width(masked) < width {
+		masked = strings.Repeat(" ", width-lipgloss.Width(masked)) + masked
 	}
-	return strings.Repeat(" ", width-lipgloss.Width(mask)) + mask
+	return masked
+}
+
+// splitAmountUnit separates a formatted amount from its trailing unit suffix,
+// keeping the separating space with the suffix.
+func splitAmountUnit(s string) (value, unit string) {
+	for _, suffix := range []string{" BTC", " sats"} {
+		if strings.HasSuffix(s, suffix) {
+			return strings.TrimSuffix(s, suffix), suffix
+		}
+	}
+	return s, ""
 }
 
 // stealthBadge returns the dim "◌ hidden" badge in a fixed-width slot, or an

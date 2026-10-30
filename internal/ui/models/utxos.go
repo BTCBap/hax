@@ -351,7 +351,7 @@ func (m *UTXOsModel) sortAndUpdateTable() {
 		}
 
 		// Value
-		valueStr := maskAmount(wallet.FormatAmountCompact(utxo.Value, displayUnit), m.stealth)
+		valueStr := maskAmountRight(wallet.FormatAmountCompact(utxo.Value, displayUnit), m.stealth)
 
 		rows = append(rows, table.Row{
 			dateStr,

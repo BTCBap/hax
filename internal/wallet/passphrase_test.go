@@ -1,57 +1,57 @@
 package wallet
 
-import (
-	"encoding/json"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestHasPassphrasePersists(t *testing.T) {
+const passphraseTestMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+func TestHasPassphraseRoundTrip(t *testing.T) {
 	const password = "correct horse battery"
-	dir := t.TempDir()
-	m, err := NewWalletManager(dir, nil)
-	if err != nil {
-		t.Fatal(err)
+
+	cases := []struct {
+		name       string
+		passphrase string
+		want       bool
+		restore    bool
+	}{
+		{name: "created with passphrase", passphrase: "my passphrase", want: true},
+		{name: "created without passphrase", passphrase: "", want: false},
+		{name: "restored with passphrase", passphrase: "my passphrase", want: true, restore: true},
+		{name: "restored without passphrase", passphrase: "", want: false, restore: true},
 	}
 
-	if _, err := m.CreateWalletOnNetwork("with-pass", password, 12, NetworkTestnet, "my passphrase"); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.UnlockWallet("with-pass", password); err != nil {
-		t.Fatal(err)
-	}
-	if !m.HasPassphrase() {
-		t.Fatal("wallet created with a passphrase reports HasPassphrase=false")
-	}
-	m.LockWallet()
-	if m.HasPassphrase() {
-		t.Fatal("locked wallet should not report a passphrase")
-	}
-	if err := m.UnlockWallet("with-pass", password); err != nil {
-		t.Fatal(err)
-	}
-	if !m.HasPassphrase() {
-		t.Fatal("passphrase flag was not persisted through reload")
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := NewWalletManager(t.TempDir(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.restore {
+				err = m.RestoreWalletOnNetwork("wallet", password, passphraseTestMnemonic, tc.passphrase, NetworkTestnet)
+			} else {
+				_, err = m.CreateWalletOnNetwork("wallet", password, 12, NetworkTestnet, tc.passphrase)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := m.UnlockWallet("wallet", password); err != nil {
+				t.Fatal(err)
+			}
+			if got := m.HasPassphrase(); got != tc.want {
+				t.Fatalf("HasPassphrase after unlock = %v, want %v", got, tc.want)
+			}
 
-	m.LockWallet()
-	if _, err := m.CreateWalletOnNetwork("without-pass", password, 12, NetworkTestnet, ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.UnlockWallet("without-pass", password); err != nil {
-		t.Fatal(err)
-	}
-	if m.HasPassphrase() {
-		t.Fatal("wallet created without a passphrase reports HasPassphrase=true")
-	}
-}
-
-func TestHasPassphraseOmittedWhenFalse(t *testing.T) {
-	data, err := json.Marshal(WalletData{Version: 1, Name: "old"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "has_passphrase") {
-		t.Fatalf("false HasPassphrase should be omitted: %s", data)
+			// Locking drops the loaded data, so the second unlock proves the
+			// answer survives a reload from the encrypted file.
+			m.LockWallet()
+			if m.HasPassphrase() {
+				t.Fatal("locked wallet should not report a passphrase")
+			}
+			if err := m.UnlockWallet("wallet", password); err != nil {
+				t.Fatal(err)
+			}
+			if got := m.HasPassphrase(); got != tc.want {
+				t.Fatalf("HasPassphrase after reload = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

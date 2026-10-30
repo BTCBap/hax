@@ -529,7 +529,7 @@ func (m *AddressesModel) updateTable() {
 		}
 
 		// Balance
-		balanceStr := maskAmount(wallet.FormatAmountCompact(addr.Balance, displayUnit), m.stealth)
+		balanceStr := maskAmountRight(wallet.FormatAmountCompact(addr.Balance, displayUnit), m.stealth)
 
 		row := table.Row{
 			indexStr,

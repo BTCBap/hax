@@ -825,7 +825,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		amountStr := fmt.Sprintf("%s%.8f BTC",
 			getAmountPrefix(analysis.NetAmount),
 			absAmount.ToBTC())
-		amountStr = maskAmount(amountStr, m.stealth)
+		amountStr = maskAmountRight(amountStr, m.stealth)
 
 		// Format status with confirmation progress
 		status := formatConfirmations(tx.Status.BlockHeight, m.blockHeight, tx.Status.Confirmed)

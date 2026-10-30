@@ -113,15 +113,20 @@ func TestMaskAmount(t *testing.T) {
 		t.Fatalf("visible amount changed: %q", got)
 	}
 	hidden := maskAmount(visible, true)
+	if hidden != "•••••••••• BTC" {
+		t.Fatalf("mask = %q, want bullets for the digits and a visible unit", hidden)
+	}
 	if lipgloss.Width(hidden) != lipgloss.Width(visible) {
 		t.Fatalf("mask width = %d, want %d", lipgloss.Width(hidden), lipgloss.Width(visible))
 	}
-	if !strings.HasSuffix(hidden, "••••••") {
-		t.Fatalf("mask = %q, want bullets", hidden)
+	if got := maskAmount("0 BTC", true); got != "• BTC" {
+		t.Fatalf("short mask = %q, want %q", got, "• BTC")
 	}
-	short := maskAmount("0 BTC", true)
-	if lipgloss.Width(short) != lipgloss.Width("0 BTC") {
-		t.Fatalf("short mask width = %d", lipgloss.Width(short))
+	if got := maskAmount("12 sats", true); got != "•• sats" {
+		t.Fatalf("sats mask = %q, want %q", got, "•• sats")
+	}
+	if got := maskAmountRight("0.00123456 BTC", true); got != hidden {
+		t.Fatalf("right-aligned mask = %q, want %q", got, hidden)
 	}
 	if maskAmount("", true) != "" {
 		t.Fatal("empty amount should stay empty")
