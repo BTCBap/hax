@@ -738,28 +738,12 @@ func (m ConnectionSetupModel) viewChooseBackend() string {
 	title := styles.TitleStyle.Render("Connection Setup")
 	subtitle := styles.SubtitleStyle.Render("Choose how to connect to Bitcoin network")
 
-	options := []struct {
-		name string
-		desc string
-	}{
-		{"Electrum Server", "Direct protocol connection (Recommended)"},
-		{"Bitcoin Core RPC", "Connect to your own Bitcoin Core node"},
+	options := []choiceOption{
+		{name: "Electrum Server", desc: "Direct protocol connection (Recommended)"},
+		{name: "Bitcoin Core RPC", desc: "Connect to your own Bitcoin Core node"},
 	}
 
-	menu := "\n"
-	for i, opt := range options {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = styles.HighlightText.Render("▶ ")
-			name := styles.SelectedItemStyle.Render(opt.name)
-			desc := styles.DimText.Render(" - " + opt.desc)
-			menu += cursor + name + desc + "\n"
-		} else {
-			name := styles.UnselectedItemStyle.Render(opt.name)
-			desc := styles.DimText.Render(" - " + opt.desc)
-			menu += cursor + name + desc + "\n"
-		}
-	}
+	menu := "\n" + renderChoiceMenu(options, m.cursor)
 
 	help := styles.RenderHelp(
 		styles.HK("↑/↓", "navigate"),
@@ -776,59 +760,51 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 
 	publicServers := backend.PublicElectrumServers[m.network]
 
-	menu := "\n"
-
-	// Public servers
+	publicCursor := -1
+	if !m.customServer && m.cursor < len(publicServers) {
+		publicCursor = m.cursor
+	}
+	publicOptions := make([]choiceOption, len(publicServers))
 	for i, server := range publicServers {
-		cursor := "  "
-		if m.cursor == i && !m.customServer {
-			cursor = styles.HighlightText.Render("▶ ")
-			name := styles.SelectedItemStyle.Render(server.Name)
-			host := styles.DimText.Render(fmt.Sprintf(" (%s:%d)", server.Host, server.Port))
-			menu += cursor + name + host + "\n"
-		} else {
-			name := styles.UnselectedItemStyle.Render(server.Name)
-			host := styles.DimText.Render(fmt.Sprintf(" (%s:%d)", server.Host, server.Port))
-			menu += cursor + name + host + "\n"
+		publicOptions[i] = choiceOption{
+			name: server.Name,
+			desc: fmt.Sprintf("%s:%d", server.Host, server.Port),
 		}
 	}
+	menu := "\n" + renderChoiceMenu(publicOptions, publicCursor)
 
 	// Recent servers
 	if len(m.recentServers) > 0 {
 		menu += "\n"
 		menu += styles.DimText.Render("  Recent Servers") + "\n"
-		for i, rs := range m.recentServers {
-			idx := len(publicServers) + i
-			cursor := "  "
-			if m.cursor == idx && !m.customServer {
-				cursor = styles.HighlightText.Render("▶ ")
-				name := styles.SelectedItemStyle.Render(rs.Name)
-				detail := fmt.Sprintf(" (%s:%d", rs.Host, rs.Port)
-				if rs.UseTor {
-					detail += ", Tor"
-				}
-				detail += ")"
-				host := styles.DimText.Render(detail)
-				menu += cursor + name + host + "\n"
-			} else {
-				name := styles.UnselectedItemStyle.Render(rs.Name)
-				detail := fmt.Sprintf(" (%s:%d", rs.Host, rs.Port)
-				if rs.UseTor {
-					detail += ", Tor"
-				}
-				detail += ")"
-				host := styles.DimText.Render(detail)
-				menu += cursor + name + host + "\n"
-			}
+
+		recentCursor := -1
+		if !m.customServer && m.cursor >= len(publicServers) && m.cursor < m.customServerIndex() {
+			recentCursor = m.cursor - len(publicServers)
 		}
+		recentOptions := make([]choiceOption, len(m.recentServers))
+		for i, rs := range m.recentServers {
+			detail := fmt.Sprintf("%s:%d", rs.Host, rs.Port)
+			if rs.UseTor {
+				detail += ", Tor"
+			}
+			recentOptions[i] = choiceOption{name: rs.Name, desc: detail}
+		}
+		menu += renderChoiceMenu(recentOptions, recentCursor)
 	}
 
-	// Custom server option
+	// Custom server option. Its input rows are reserved on every cursor
+	// position so choosing Custom Server does not move the proxy settings.
 	menu += "\n"
-	cursor := "  "
+	customCursor := -1
 	if m.customServer {
-		cursor = styles.HighlightText.Render("▶ ")
-		menu += cursor + styles.SelectedItemStyle.Render("Custom Server") + "\n"
+		customCursor = 0
+	}
+	menu += renderChoiceMenu([]choiceOption{{
+		name: "Custom Server",
+		desc: "enter host and port",
+	}}, customCursor)
+	if m.customServer {
 		menu += "\n"
 		menu += styles.InputLabelStyle.Render("Host: ") +
 			lipgloss.NewStyle().Width(33).Render(m.hostInput.View()) + "\n"
@@ -841,7 +817,7 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 		}
 		menu += styles.InputLabelStyle.Render("  ") + sslToggle + "\n"
 	} else {
-		menu += cursor + styles.UnselectedItemStyle.Render("Custom Server") + "\n"
+		menu += strings.Repeat("\n", 4)
 	}
 
 	// Tor proxy settings
@@ -883,6 +859,9 @@ func (m ConnectionSetupModel) viewConfigureElectrum() string {
 		styles.HK("enter", "test"),
 		styles.HK("esc", "back"),
 	))
+	if m.width > 0 && helpWidth > m.width {
+		helpWidth = m.width
+	}
 	help := lipgloss.NewStyle().Width(helpWidth).Render(styles.RenderHelp(items...))
 
 	return styles.CenterHorizontal(title+"\n"+subtitle+menu+"\n"+help, m.width)

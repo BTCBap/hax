@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -28,6 +29,19 @@ func requireTextPosition(t *testing.T, view, text string) viewPosition {
 func requireLineCount(t *testing.T, view string) int {
 	t.Helper()
 	return len(strings.Split(stripANSI(view), "\n"))
+}
+
+// requireHelperOnSelectedLine checks that helper sits on the same row as name.
+func requireHelperOnSelectedLine(t *testing.T, view, name, helper string) {
+	t.Helper()
+	lines := strings.Split(stripANSI(view), "\n")
+	line, _, ok := findChoiceLine(lines, name)
+	if !ok {
+		t.Fatalf("%q not found in view:\n%s", name, stripANSI(view))
+	}
+	if !strings.Contains(lines[line], helper) {
+		t.Fatalf("helper %q is not on the row of %q:\n%s", helper, name, stripANSI(view))
+	}
 }
 
 // The backup word check asks for words with single- and double-digit numbers.
@@ -471,5 +485,331 @@ func TestSendFeeHelperColumnStartsAtSameX(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestConnectionChooseBackendLayoutStable(t *testing.T) {
+	m := NewConnectionSetupModel(nil, false)
+	m.width, m.height = 80, 24
+	m.step = StepChooseBackend
+
+	base := m.View()
+	wantLines := requireLineCount(t, base)
+	wantTitle := requireTextPosition(t, base, "Connection Setup")
+	wantSubtitle := requireTextPosition(t, base, "Choose how to connect")
+	wantHelp := requireTextPosition(t, base, "↑/↓ navigate")
+
+	names := []string{"Electrum Server", "Bitcoin Core RPC"}
+	descs := []string{
+		"Direct protocol connection (Recommended)",
+		"Connect to your own Bitcoin Core node",
+	}
+	wantNames := make([]viewPosition, len(names))
+	for i, name := range names {
+		wantNames[i] = requireTextPosition(t, base, name)
+	}
+
+	for cursor := range names {
+		m.cursor = cursor
+		view := m.View()
+
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("cursor %d: %d lines, want %d", cursor, got, wantLines)
+		}
+		if got := requireTextPosition(t, view, "Connection Setup"); got != wantTitle {
+			t.Fatalf("cursor %d: title moved from %+v to %+v", cursor, wantTitle, got)
+		}
+		if got := requireTextPosition(t, view, "Choose how to connect"); got != wantSubtitle {
+			t.Fatalf("cursor %d: subtitle moved from %+v to %+v", cursor, wantSubtitle, got)
+		}
+		if got := requireTextPosition(t, view, "↑/↓ navigate"); got != wantHelp {
+			t.Fatalf("cursor %d: help moved from %+v to %+v", cursor, wantHelp, got)
+		}
+		for i, name := range names {
+			if got := requireTextPosition(t, view, name); got != wantNames[i] {
+				t.Fatalf("cursor %d: %q moved from %+v to %+v",
+					cursor, name, wantNames[i], got)
+			}
+		}
+		requireHelperOnSelectedLine(t, view, names[cursor], descs[cursor])
+		assertFits(t, view, 80)
+	}
+}
+
+func TestConnectionElectrumLayoutStable(t *testing.T) {
+	m := NewConnectionSetupModel(nil, false)
+	m.width, m.height = 80, 24
+	m.step = StepConfigureElectrum
+	m.recentServers = []backend.SavedServer{
+		{Name: "My Node", Host: "10.0.0.1", Port: 50001},
+		{Name: "Tor Node", Host: "tor.onion", Port: 50002, UseTor: true},
+	}
+
+	publicServers := backend.PublicElectrumServers[m.network]
+	total := len(publicServers) + len(m.recentServers) + 1
+
+	base := m.View()
+	wantLines := requireLineCount(t, base)
+	fixed := []string{
+		"Electrum Server", "Select a server or enter custom",
+		"Recent Servers", "Custom Server", "Proxy Settings", "↑/↓ navigate",
+	}
+	wantFixed := make([]viewPosition, len(fixed))
+	for i, text := range fixed {
+		wantFixed[i] = requireTextPosition(t, base, text)
+	}
+
+	names := make([]string, 0, total)
+	descs := make([]string, 0, total)
+	for _, server := range publicServers {
+		names = append(names, server.Name)
+		descs = append(descs, fmt.Sprintf("%s:%d", server.Host, server.Port))
+	}
+	for _, rs := range m.recentServers {
+		names = append(names, rs.Name)
+		desc := fmt.Sprintf("%s:%d", rs.Host, rs.Port)
+		if rs.UseTor {
+			desc += ", Tor"
+		}
+		descs = append(descs, desc)
+	}
+	names = append(names, "Custom Server")
+	descs = append(descs, "enter host and port")
+
+	wantNames := make([]viewPosition, len(names))
+	for i, name := range names {
+		wantNames[i] = requireTextPosition(t, base, name)
+	}
+
+	for cursor := 0; cursor < total; cursor++ {
+		m.cursor = cursor
+		m.customServer = cursor == total-1
+		view := m.View()
+
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("cursor %d: %d lines, want %d", cursor, got, wantLines)
+		}
+		for i, text := range fixed {
+			if got := requireTextPosition(t, view, text); got != wantFixed[i] {
+				t.Fatalf("cursor %d: %q moved from %+v to %+v",
+					cursor, text, wantFixed[i], got)
+			}
+		}
+		for i, name := range names {
+			if got := requireTextPosition(t, view, name); got != wantNames[i] {
+				t.Fatalf("cursor %d: %q moved from %+v to %+v",
+					cursor, name, wantNames[i], got)
+			}
+		}
+		requireHelperOnSelectedLine(t, view, names[cursor], descs[cursor])
+		assertFits(t, view, 80)
+	}
+}
+
+func TestSendUTXOSelectionLayoutStable(t *testing.T) {
+	m := newTestSend(t)
+	advanceToUTXOSelection(&m)
+	m.width, m.height = 80, 24
+
+	base := m.View()
+	wantLines := requireLineCount(t, base)
+	wantHeader := requireTextPosition(t, base, "Send Bitcoin")
+	wantStep := requireTextPosition(t, base, "Select UTXOs")
+	wantSelection := requireTextPosition(t, base, "Selected: 3 UTXOs")
+	wantHelp := requireTextPosition(t, base, "↑/↓ navigate")
+
+	names := []string{
+		"aaaa1111...bbbb2222:0",
+		"bbbb2222...cccc3333:1",
+		"cccc3333...dddd4444:0",
+	}
+	helpers := []string{"confirmed", "confirmed", "unconfirmed"}
+	wantNames := make([]viewPosition, len(names))
+	for i, name := range names {
+		wantNames[i] = requireTextPosition(t, base, name)
+	}
+
+	var wantHelperCol int
+	for cursor := range names {
+		m.cursor = cursor
+		view := m.View()
+
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("cursor %d: %d lines, want %d", cursor, got, wantLines)
+		}
+		for i, name := range names {
+			if got := requireTextPosition(t, view, name); got != wantNames[i] {
+				t.Fatalf("cursor %d: %q moved from %+v to %+v",
+					cursor, name, wantNames[i], got)
+			}
+		}
+		if got := requireTextPosition(t, view, "Send Bitcoin"); got != wantHeader {
+			t.Fatalf("cursor %d: header moved from %+v to %+v", cursor, wantHeader, got)
+		}
+		if got := requireTextPosition(t, view, "Select UTXOs"); got != wantStep {
+			t.Fatalf("cursor %d: step moved from %+v to %+v", cursor, wantStep, got)
+		}
+		if got := requireTextPosition(t, view, "Selected: 3 UTXOs"); got != wantSelection {
+			t.Fatalf("cursor %d: selection summary moved from %+v to %+v", cursor, wantSelection, got)
+		}
+		if got := requireTextPosition(t, view, "↑/↓ navigate"); got != wantHelp {
+			t.Fatalf("cursor %d: help moved from %+v to %+v", cursor, wantHelp, got)
+		}
+
+		requireHelperOnSelectedLine(t, view, names[cursor], helpers[cursor])
+		helper := requireTextPosition(t, view, helpers[cursor])
+		if cursor == 0 {
+			wantHelperCol = helper.col
+		} else if helper.col != wantHelperCol {
+			t.Fatalf("cursor %d: helper starts at x=%d, want %d", cursor, helper.col, wantHelperCol)
+		}
+		assertFits(t, view, 80)
+	}
+}
+
+func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
+	devices := []wallet.HardwareDevice{
+		{Type: "trezor", Model: "Trezor One", Fingerprint: "abcd1234", NeedsPin: true},
+		{Type: "ledger", Model: "Ledger Nano X", Fingerprint: "deadbeef1234", NeedsPass: true},
+	}
+
+	t.Run("send", func(t *testing.T) {
+		m := newTestSend(t)
+		m.width, m.height = 80, 24
+		m.showPSBTExport = true
+		m.showHWIDevices = true
+		m.hwiDevices = devices
+		assertDeviceMenuStable(t, devices, "Connected devices:", func(selected int) string {
+			m.selectedHWDevice = selected
+			return m.View()
+		})
+	})
+
+	t.Run("wallet setup", func(t *testing.T) {
+		m := NewWalletSetupModel(NewMockWalletManager(), nil)
+		m.width, m.height = 80, 24
+		m.step = StepHardwareWalletConnect
+		m.hwiDevices = devices
+		assertDeviceMenuStable(t, devices, "Found 2 device(s):", func(selected int) string {
+			m.selectedHWDevice = selected
+			return m.View()
+		})
+	})
+
+	t.Run("multisig import", func(t *testing.T) {
+		m := NewWalletSetupModel(NewMockWalletManager(), nil)
+		m.width, m.height = 80, 24
+		m.isMultisig = true
+		m.step = StepMultisigEnterCosigners
+		m.showHWIDevices = true
+		m.hwiDevices = devices
+		assertDeviceMenuStable(t, devices, "Connected devices:", func(selected int) string {
+			m.selectedHWDevice = selected
+			return m.View()
+		})
+	})
+}
+
+func assertDeviceMenuStable(t *testing.T, devices []wallet.HardwareDevice, listHeader string, render func(int) string) {
+	t.Helper()
+
+	options := hardwareDeviceChoices(devices)
+	base := render(0)
+	wantLines := requireLineCount(t, base)
+	wantHelp := requireTextPosition(t, base, "↑/↓")
+	wantActions := requireTextPosition(t, base, listHeader)
+
+	wantNames := make([]viewPosition, len(options))
+	for i, opt := range options {
+		wantNames[i] = requireTextPosition(t, base, opt.name)
+	}
+
+	var wantHelperCol int
+	for selected := range options {
+		view := render(selected)
+
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("device %d: %d lines, want %d", selected, got, wantLines)
+		}
+		if got := requireTextPosition(t, view, "↑/↓"); got != wantHelp {
+			t.Fatalf("device %d: help moved from %+v to %+v", selected, wantHelp, got)
+		}
+		if got := requireTextPosition(t, view, listHeader); got != wantActions {
+			t.Fatalf("device %d: list header moved from %+v to %+v", selected, wantActions, got)
+		}
+		for i, opt := range options {
+			if got := requireTextPosition(t, view, opt.name); got != wantNames[i] {
+				t.Fatalf("device %d: %q moved from %+v to %+v",
+					selected, opt.name, wantNames[i], got)
+			}
+		}
+
+		opt := options[selected]
+		if opt.desc == "" {
+			continue
+		}
+		requireHelperOnSelectedLine(t, view, opt.name, opt.desc)
+		helper := requireTextPosition(t, view, opt.desc)
+		if selected == 0 {
+			wantHelperCol = helper.col
+		} else if helper.col != wantHelperCol {
+			t.Fatalf("device %d: helper starts at x=%d, want %d",
+				selected, helper.col, wantHelperCol)
+		}
+		assertFits(t, view, 80)
+	}
+}
+
+func TestPSBTFileBrowserLayoutStable(t *testing.T) {
+	m := newTestSend(t)
+	m.width, m.height = 80, 24
+	m.showFileBrowser = true
+	m.psbtFiles = []string{"/tmp/a.psbt", "/home/me/Desktop/b.psbt"}
+
+	base := m.View()
+	wantLines := requireLineCount(t, base)
+	wantHeader := requireTextPosition(t, base, "Import PSBT")
+	wantList := requireTextPosition(t, base, "Found PSBT files")
+	wantHelp := requireTextPosition(t, base, "↑/↓ navigate")
+
+	names := []string{"a.psbt", "b.psbt"}
+	helpers := []string{"tmp", "Desktop"}
+	wantNames := make([]viewPosition, len(names))
+	for i, name := range names {
+		wantNames[i] = requireTextPosition(t, base, name)
+	}
+
+	var wantHelperCol int
+	for cursor := range names {
+		m.fileBrowserCursor = cursor
+		view := m.View()
+
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("cursor %d: %d lines, want %d", cursor, got, wantLines)
+		}
+		if got := requireTextPosition(t, view, "Import PSBT"); got != wantHeader {
+			t.Fatalf("cursor %d: header moved from %+v to %+v", cursor, wantHeader, got)
+		}
+		if got := requireTextPosition(t, view, "Found PSBT files"); got != wantList {
+			t.Fatalf("cursor %d: list header moved from %+v to %+v", cursor, wantList, got)
+		}
+		if got := requireTextPosition(t, view, "↑/↓ navigate"); got != wantHelp {
+			t.Fatalf("cursor %d: help moved from %+v to %+v", cursor, wantHelp, got)
+		}
+		for i, name := range names {
+			if got := requireTextPosition(t, view, name); got != wantNames[i] {
+				t.Fatalf("cursor %d: %q moved from %+v to %+v",
+					cursor, name, wantNames[i], got)
+			}
+		}
+
+		requireHelperOnSelectedLine(t, view, names[cursor], helpers[cursor])
+		helper := requireTextPosition(t, view, helpers[cursor])
+		if cursor == 0 {
+			wantHelperCol = helper.col
+		} else if helper.col != wantHelperCol {
+			t.Fatalf("cursor %d: helper starts at x=%d, want %d", cursor, helper.col, wantHelperCol)
+		}
+		assertFits(t, view, 80)
 	}
 }

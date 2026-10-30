@@ -1,11 +1,13 @@
 package models
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type choiceOption struct {
@@ -45,4 +47,42 @@ func renderChoiceMenu(options []choiceOption, cursor int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// hardwareDeviceChoices turns detected devices into menu rows. Device state
+// that used to sit on its own row below the list becomes the selected row's
+// helper text, so moving between devices never changes the line count.
+func hardwareDeviceChoices(devices []wallet.HardwareDevice) []choiceOption {
+	options := make([]choiceOption, len(devices))
+	for i, device := range devices {
+		name := string(device.Type)
+		if device.Model != "" {
+			name = device.Model
+		}
+
+		fp := device.Fingerprint
+		switch {
+		case fp == "" || fp == "00000000":
+			fp = "unknown"
+		case len(fp) > 8:
+			fp = fp[:8]
+		}
+
+		var details []string
+		if device.NeedsPin {
+			details = append(details, "⚠ needs PIN — unlock device first")
+		}
+		if device.NeedsPass {
+			details = append(details, "needs passphrase")
+		}
+		if device.Error != "" {
+			details = append(details, strings.Join(strings.Fields(device.Error), " "))
+		}
+
+		options[i] = choiceOption{
+			name: fmt.Sprintf("%s [%s]", name, fp),
+			desc: strings.Join(details, " · "),
+		}
+	}
+	return options
 }

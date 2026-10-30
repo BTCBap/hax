@@ -127,8 +127,21 @@ func TestSendHintMorphTextAndAlignment(t *testing.T) {
 				pad = 0
 			}
 			wantLine := tc.primary + strings.Repeat(" ", pad) + " • " + strings.Join(tc.rest, " • ")
-			if got := strings.TrimRight(strings.Split(plain, "\n")[primary.line], " "); got != wantLine {
+			// The coins step wraps its last hint at 80 columns so the row
+			// stays inside the terminal while keeping the primary column.
+			wantNextLine := ""
+			if tc.name == "utxos" {
+				wantLine = strings.TrimSuffix(wantLine, " • esc back")
+				wantNextLine = "esc back"
+			}
+			lines := strings.Split(plain, "\n")
+			if got := strings.TrimRight(lines[primary.line], " "); got != wantLine {
 				t.Fatalf("hint row = %q, want %q", got, wantLine)
+			}
+			if wantNextLine != "" {
+				if got := strings.TrimRight(lines[primary.line+1], " "); got != wantNextLine {
+					t.Fatalf("wrapped hint row = %q, want %q", got, wantNextLine)
+				}
 			}
 		})
 	}

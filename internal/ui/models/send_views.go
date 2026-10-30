@@ -90,6 +90,42 @@ var sendPrimaryHintWidth = lipgloss.Width(sendFinalHint)
 // final step renders that action in the warning style; every step pads the
 // primary hint to the same width so the rest of the row cannot shift.
 func renderSendHelp(primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
+	parts, _ := sendHelpParts(primary, final, rest...)
+	return styles.FooterStyle.Render(strings.Join(parts, " • "))
+}
+
+// renderSendHelpWrapped keeps the primary hint's fixed column but starts a
+// new line when the next item would pass width cells.
+func renderSendHelpWrapped(width int, primary styles.HelpItem, final bool, rest ...styles.HelpItem) string {
+	parts, widths := sendHelpParts(primary, final, rest...)
+	if width <= 0 {
+		return styles.FooterStyle.Render(strings.Join(parts, " • "))
+	}
+
+	var lines []string
+	var line strings.Builder
+	lineWidth := 0
+	for i, part := range parts {
+		w := widths[i]
+		if lineWidth > 0 && lineWidth+3+w > width {
+			lines = append(lines, line.String())
+			line.Reset()
+			lineWidth = 0
+		}
+		if lineWidth > 0 {
+			line.WriteString(" • ")
+			lineWidth += 3
+		}
+		line.WriteString(part)
+		lineWidth += w
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
+	}
+	return styles.FooterStyle.Render(strings.Join(lines, "\n"))
+}
+
+func sendHelpParts(primary styles.HelpItem, final bool, rest ...styles.HelpItem) ([]string, []int) {
 	text := primary.Key + " " + primary.Desc
 	pad := sendPrimaryHintWidth - lipgloss.Width(text)
 	if pad < 0 {
@@ -104,10 +140,12 @@ func renderSendHelp(primary styles.HelpItem, final bool, rest ...styles.HelpItem
 			styles.HelpDescStyle.Render(primary.Desc) + strings.Repeat(" ", pad)
 	}
 	parts := []string{first}
+	widths := []int{lipgloss.Width(text) + pad}
 	for _, item := range rest {
 		parts = append(parts, styles.HelpKeyStyle.Render(item.Key)+" "+styles.HelpDescStyle.Render(item.Desc))
+		widths = append(widths, lipgloss.Width(item.Key)+1+lipgloss.Width(item.Desc))
 	}
-	return styles.FooterStyle.Render(strings.Join(parts, " • "))
+	return parts, widths
 }
 
 func (m SendModel) viewAddressInput() string {
@@ -298,16 +336,11 @@ func (m SendModel) viewUTXOSelection() string {
 			m.frozenCount, pluralize(m.frozenCount))
 	}
 
-	// List UTXOs
-	utxoList := "\n"
+	// List UTXOs. The confirmation state is helper text on the selected
+	// row, so the rows keep one width as the cursor moves.
+	utxoOptions := make([]choiceOption, len(m.utxos))
 	for i, utxo := range m.utxos {
-		cursor := "  "
 		checkbox := "[ ]"
-
-		if i == m.cursor {
-			cursor = "▶ "
-		}
-
 		if i < len(m.utxoSelected) && m.utxoSelected[i] {
 			checkbox = "[✓]"
 		}
@@ -325,17 +358,15 @@ func (m SendModel) viewUTXOSelection() string {
 			statusDesc = "unconfirmed"
 		}
 
-		utxoText := fmt.Sprintf("%s%s %s %s:%d • %s • %d sats",
-			cursor, checkbox, status, shortTxid, utxo.Vout, statusDesc, utxo.Value)
-
-		if i == m.cursor {
-			utxoList += styles.SelectedItemStyle.Render(utxoText) + "\n"
-		} else {
-			utxoList += styles.UnselectedItemStyle.Render(utxoText) + "\n"
+		utxoOptions[i] = choiceOption{
+			name: fmt.Sprintf("%s %s %s:%d • %d sats",
+				checkbox, status, shortTxid, utxo.Vout, utxo.Value),
+			desc: statusDesc,
 		}
 	}
+	utxoList := "\n" + renderChoiceMenu(utxoOptions, m.cursor)
 
-	help := renderSendHelp(
+	help := renderSendHelpWrapped(m.width,
 		styles.HK("tab", "continue"), false,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("space/enter", "toggle"),
@@ -344,7 +375,7 @@ func (m SendModel) viewUTXOSelection() string {
 		styles.HK("esc", "back"),
 	)
 	if m.sendAll {
-		help = renderSendHelp(
+		help = renderSendHelpWrapped(m.width,
 			styles.HK("tab", "continue"), false,
 			styles.HK("↑/↓", "navigate"),
 			styles.HK("esc", "back"),

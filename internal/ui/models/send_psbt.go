@@ -883,6 +883,7 @@ func (m SendModel) viewFileBrowser() string {
 			maxShow = len(m.psbtFiles)
 		}
 
+		options := make([]choiceOption, 0, maxShow)
 		for i := 0; i < maxShow; i++ {
 			file := m.psbtFiles[i]
 			// Get just the filename for display
@@ -890,14 +891,9 @@ func (m SendModel) viewFileBrowser() string {
 			// Get parent directory name
 			parentDir := filepath.Base(filepath.Dir(file))
 
-			var line string
-			if i == m.fileBrowserCursor {
-				line = styles.SelectedItemStyle.Render(fmt.Sprintf("▶ %s (%s)", filename, parentDir))
-			} else {
-				line = styles.UnselectedItemStyle.Render(fmt.Sprintf("  %s (%s)", filename, parentDir))
-			}
-			content.WriteString(line + "\n")
+			options = append(options, choiceOption{name: filename, desc: parentDir})
 		}
+		content.WriteString(renderChoiceMenu(options, m.fileBrowserCursor))
 
 		if len(m.psbtFiles) > maxShow {
 			content.WriteString(styles.DimText.Render(fmt.Sprintf("\n  ... and %d more files", len(m.psbtFiles)-maxShow)))

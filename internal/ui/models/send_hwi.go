@@ -97,53 +97,7 @@ func (m SendModel) viewHWIDeviceSelection() string {
 		content.WriteString(styles.DimText.Render("Press 'r' to retry or 'esc' to go back.") + "\n")
 	} else {
 		content.WriteString(styles.NormalText.Render("Connected devices:") + "\n\n")
-
-		for i, device := range m.hwiDevices {
-			// Format device info with model and type
-			deviceName := string(device.Type)
-			if device.Model != "" {
-				deviceName = device.Model
-			}
-
-			// Show fingerprint if available
-			fp := device.Fingerprint
-			if fp == "" || fp == "00000000" {
-				fp = "unknown"
-			} else if len(fp) > 8 {
-				fp = fp[:8]
-			}
-
-			line := fmt.Sprintf("  %s [%s]", deviceName, fp)
-
-			// Highlight selected device
-			if i == m.selectedHWDevice {
-				line = styles.HighlightText.Render("► " + line)
-			} else {
-				line = styles.DimText.Render("  " + line)
-			}
-
-			// Show status flags with warnings
-			if device.NeedsPin {
-				line += " " + styles.WarningText.Render("⚠ needs PIN")
-			}
-			if device.NeedsPass {
-				line += " " + styles.DimText.Render("(needs passphrase)")
-			}
-			if device.Error != "" {
-				line += "\n    " + styles.ErrorText.Render(device.Error)
-			}
-
-			content.WriteString(line + "\n")
-		}
-
-		// Show PIN warning for selected device
-		if m.selectedHWDevice >= 0 && m.selectedHWDevice < len(m.hwiDevices) {
-			selected := m.hwiDevices[m.selectedHWDevice]
-			if selected.NeedsPin {
-				content.WriteString("\n" + styles.WarningText.Render(
-					"⚠ Enter PIN on your device first, then press Enter to sign.") + "\n")
-			}
-		}
+		content.WriteString(renderChoiceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
 	}
 
 	// Instructions

@@ -407,48 +407,7 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 		content.WriteString(styles.DimText.Render("Press 'r' to retry or 'esc' to go back.") + "\n")
 	} else {
 		content.WriteString(styles.NormalText.Render("Connected devices:") + "\n\n")
-
-		for i, device := range m.hwiDevices {
-			deviceName := string(device.Type)
-			if device.Model != "" {
-				deviceName = device.Model
-			}
-
-			fp := device.Fingerprint
-			if fp == "" || fp == "00000000" {
-				fp = "unknown"
-			} else if len(fp) > 8 {
-				fp = fp[:8]
-			}
-
-			line := fmt.Sprintf("  %s [%s]", deviceName, fp)
-
-			if i == m.selectedHWDevice {
-				line = styles.HighlightText.Render("► " + line)
-			} else {
-				line = styles.DimText.Render("  " + line)
-			}
-
-			if device.NeedsPin {
-				line += " " + styles.WarningText.Render("⚠ needs PIN")
-			}
-			if device.NeedsPass {
-				line += " " + styles.DimText.Render("(needs passphrase)")
-			}
-			if device.Error != "" {
-				line += "\n    " + styles.ErrorText.Render(device.Error)
-			}
-
-			content.WriteString(line + "\n")
-		}
-
-		// PIN warning for selected device
-		if m.selectedHWDevice >= 0 && m.selectedHWDevice < len(m.hwiDevices) {
-			if m.hwiDevices[m.selectedHWDevice].NeedsPin {
-				content.WriteString("\n" + styles.WarningText.Render(
-					"⚠ Enter PIN on your device first, then press Enter.") + "\n")
-			}
-		}
+		content.WriteString(renderChoiceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
 	}
 
 	instructions := styles.DimText.Render(
