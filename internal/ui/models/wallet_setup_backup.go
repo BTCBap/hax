@@ -115,6 +115,7 @@ func (m WalletSetupModel) finishCreate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.saveLastWalletName(m.walletName)
+	m.flowComplete = true
 	m.wipeSecrets()
 	return m, func() tea.Msg { return NavigateMsg{Target: StateMainDashboard} }
 }

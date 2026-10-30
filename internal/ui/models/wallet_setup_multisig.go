@@ -13,7 +13,7 @@ import (
 func (m WalletSetupModel) viewMultisigChooseType() string {
 	var title string
 	if m.isRestore {
-		title = styles.TitleStyle.Render("Import Multisig [3/5]")
+		title = styles.TitleStyle.Render("Import Multisig" + m.stepCounterSuffix())
 	} else {
 		title = ""
 	}
@@ -267,7 +267,7 @@ func (m WalletSetupModel) viewMultisigEnterCosigners() string {
 
 	var titlePrefix string
 	if m.isRestore {
-		titlePrefix = "Import Multisig [4/5] - "
+		titlePrefix = "Import Multisig" + m.stepCounterSuffix() + " - "
 	} else {
 		titlePrefix = ""
 	}
@@ -709,6 +709,7 @@ func (m WalletSetupModel) handleMultisigReview(msg tea.KeyMsg) (tea.Model, tea.C
 
 		// Save as last wallet
 		m.saveLastWalletName(m.walletName)
+		m.flowComplete = true
 
 		// Navigate to dashboard
 		return m, func() tea.Msg {

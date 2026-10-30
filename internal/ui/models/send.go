@@ -12,7 +12,6 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -186,10 +185,9 @@ type SendModel struct {
 	urInput     textinput.Model // Text input for pasting UR string
 
 	// UI state
-	loading  bool
-	spinner  spinner.Model
-	progress progress.Model
-	err      error
+	loading bool
+	spinner spinner.Model
+	err     error
 }
 
 // FeeEstimatesMsg carries fee estimates
@@ -288,12 +286,6 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 
 	s := styles.NewStandardSpinner()
 
-	// Create progress bar
-	prog := progress.New(
-		progress.WithDefaultGradient(),
-		progress.WithWidth(40),
-	)
-
 	// Viewport for smooth scrolling in Step 6/7 (matches Help screen behavior)
 	vp := viewport.New(0, 0)
 	vp.MouseWheelEnabled = true
@@ -321,7 +313,6 @@ func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cached
 		customFeeInput: customFeeInput,
 		psbtFileInput:  fileInput,
 		spinner:        s,
-		progress:       prog,
 		scrollViewport: vp,
 		usesBTC:        true,
 		feeLevel:       FeeLevelMedium,

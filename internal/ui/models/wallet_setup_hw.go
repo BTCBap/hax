@@ -142,7 +142,7 @@ func (m WalletSetupModel) verifyHWIInstallCmd() tea.Cmd {
 }
 
 func (m WalletSetupModel) viewHardwareWalletConnect() string {
-	title := styles.TitleStyle.Render("Connect Hardware Wallet [4/5]")
+	title := styles.TitleStyle.Render("Connect Hardware Wallet" + m.stepCounterSuffix())
 
 	var content strings.Builder
 
@@ -256,7 +256,7 @@ func (m WalletSetupModel) handleHardwareWalletConnect(msg tea.KeyMsg) (tea.Model
 }
 
 func (m WalletSetupModel) viewHardwareWalletReview() string {
-	title := styles.TitleStyle.Render("Review Hardware Wallet [5/5]")
+	title := styles.TitleStyle.Render("Review Hardware Wallet" + m.stepCounterSuffix())
 
 	// Determine address type name and purpose
 	var addrTypeName string
@@ -360,6 +360,7 @@ func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyMsg) (tea.Model,
 
 		// Save as last wallet
 		m.saveLastWalletName(m.walletName)
+		m.flowComplete = true
 
 		// Navigate to dashboard
 		return m, func() tea.Msg {
