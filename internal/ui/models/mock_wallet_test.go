@@ -132,6 +132,7 @@ type MockWalletManager struct {
 	ExportDescriptorURFn   func() (string, error)
 	ExportMultisigConfigFn func() ([]byte, error)
 	ExportColdcardFn       func() (string, error)
+	ExportUnifiedBackupFn  func() ([]byte, error)
 
 	// Internal state for tests
 	state *wallet.WalletState
@@ -795,6 +796,13 @@ func (m *MockWalletManager) ExportColdcardMultisig() (string, error) {
 		return m.ExportColdcardFn()
 	}
 	return "", nil
+}
+
+func (m *MockWalletManager) ExportUnifiedBackup() ([]byte, error) {
+	if m.ExportUnifiedBackupFn != nil {
+		return m.ExportUnifiedBackupFn()
+	}
+	return nil, nil
 }
 
 // Compile-time interface check

@@ -56,6 +56,12 @@ type Tray struct {
 	// option so callers can describe the choice that is about to happen.
 	SummaryFor func(selected int) []TraySummaryRow
 
+	// note is a dim, wrapped line shown below the confirm rows. Its rows
+	// are reserved on the choose stage too, so the tray keeps one height.
+	note        string
+	noteLines   []string
+	confirmHint string
+
 	width  int
 	stage  TrayStage
 	cursor int
@@ -81,12 +87,6 @@ func NewTray(title string, options []TrayOption, summary []TraySummaryRow, width
 	if t.SummaryFor != nil {
 		t.summary = t.SummaryFor(0)
 	}
-	// The height is fixed here from the larger stage. Later summary
-	// changes pad or truncate to these rows instead of resizing the tray.
-	t.rowsHeight = len(t.options)
-	if len(t.summary) > t.rowsHeight {
-		t.rowsHeight = len(t.summary)
-	}
 	t.recalculate()
 	return t
 }
@@ -99,6 +99,20 @@ func (t Tray) WithWidth(width int) Tray {
 	return t
 }
 
+// WithNote sets a dim note shown on the confirm stage. The note is wrapped
+// to the tray width and its rows are reserved on both stages.
+func (t Tray) WithNote(note string) Tray {
+	t.note = note
+	t.recalculate()
+	return t
+}
+
+// WithConfirmHint overrides the confirm stage key hint.
+func (t Tray) WithConfirmHint(hint string) Tray {
+	t.confirmHint = hint
+	return t
+}
+
 // View renders the tray with rounded borders.
 func (t Tray) View() string {
 	rows := make([]string, t.rowsHeight)
@@ -106,6 +120,18 @@ func (t Tray) View() string {
 	case TrayStageConfirm:
 		for i := 0; i < t.rowsHeight && i < len(t.summary); i++ {
 			rows[i] = t.renderSummaryRow(t.summary[i])
+		}
+		if len(t.noteLines) > 0 {
+			if i := len(t.summary); i < t.rowsHeight {
+				rows[i] = ""
+			}
+			for j, line := range t.noteLines {
+				i := len(t.summary) + 1 + j
+				if i >= t.rowsHeight {
+					break
+				}
+				rows[i] = styles.DimText.Render(padCell(line, t.contentWidth))
+			}
 		}
 	default:
 		for i := 0; i < t.rowsHeight && i < len(t.options); i++ {
@@ -116,6 +142,9 @@ func (t Tray) View() string {
 	hint := "enter continue • esc cancel"
 	if t.stage == TrayStageConfirm {
 		hint = "enter confirm • esc back"
+		if t.confirmHint != "" {
+			hint = t.confirmHint
+		}
 	}
 
 	inner := []string{
@@ -177,6 +206,12 @@ func (t *Tray) recalculate() {
 	t.width = outer
 	t.contentWidth = outer - 4 // rounded border and one cell of padding each side
 
+	if t.note != "" {
+		t.noteLines = wrapWords(t.note, t.contentWidth)
+	} else {
+		t.noteLines = nil
+	}
+
 	maxLabel, maxHelper := 0, 0
 	for _, opt := range t.options {
 		if w := lipgloss.Width(opt.Label); w > maxLabel {
@@ -232,6 +267,16 @@ func (t *Tray) recalculate() {
 		}
 	}
 
+	// The height is fixed from the larger stage. Later summary changes pad
+	// or truncate to these rows instead of resizing the tray.
+	confirmRows := len(t.summary)
+	if len(t.noteLines) > 0 {
+		confirmRows += 1 + len(t.noteLines)
+	}
+	t.rowsHeight = len(t.options)
+	if confirmRows > t.rowsHeight {
+		t.rowsHeight = confirmRows
+	}
 	if t.rowsHeight < 1 {
 		t.rowsHeight = 1
 	}

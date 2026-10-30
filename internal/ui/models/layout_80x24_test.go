@@ -83,7 +83,49 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.stealth = true
 			return m
 		},
-		"settings":   func(w *MockWalletManager) tea.Model { return NewSettingsModel(w, nil) },
+		"settings": func(w *MockWalletManager) tea.Model { return NewSettingsModel(w, nil) },
+		"settings_labels_import": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.openLabelImport()
+			m.labelImportPath.SetValue("")
+			return m
+		},
+		"settings_labels_import_preview": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.showLabelImport = true
+			m.labelImportStage = labelImportStagePreview
+			m.labelImportPreview = bip329Preview{Tx: 2, Addr: 1, Output: 2, Frozen: 1}
+			m.labelImportPath.SetValue("~/.hax/test-wallet_labels_bip329.jsonl")
+			return m
+		},
+		"settings_labels_import_result": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.showLabelImport = true
+			m.labelImportStage = labelImportStageResult
+			m.labelImportResult = "✓ Imported 42 labels"
+			m.labelImportPath.SetValue("~/.hax/test-wallet_labels_bip329.jsonl")
+			return m
+		},
+		"settings_backup_export": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.openBackupExport()
+			return m
+		},
+		"settings_backup_export_confirm": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.openBackupExport()
+			m.backupTray, _ = m.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m.backupExportStage = backupExportStageConfirm
+			return m
+		},
+		"settings_backup_export_result": func(w *MockWalletManager) tea.Model {
+			m := NewSettingsModel(w, nil)
+			m.openBackupExport()
+			m.backupExportStage = backupExportStageResult
+			m.backupExportResult = "✓ Backup saved"
+			m.backupExportPath = "~/.hax/test-wallet_backup.json"
+			return m
+		},
 		"help":       func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
 		"setup":      func(w *MockWalletManager) tea.Model { return NewWalletSetupModel(w, nil) },
 		"connection": func(*MockWalletManager) tea.Model { return NewConnectionSetupModel(nil, false) },

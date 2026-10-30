@@ -133,6 +133,7 @@ type WalletService interface {
 	ExportDescriptorUR() (string, error)
 	ExportMultisigConfig() ([]byte, error)
 	ExportColdcardMultisig() (string, error)
+	ExportUnifiedBackup() ([]byte, error)
 }
 
 // Compile-time check: *wallet.WalletManager satisfies WalletService

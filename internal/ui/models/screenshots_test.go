@@ -343,5 +343,18 @@ func renderScreens(w, h int) []renderedScreen {
 	hp.fadeIn = 1.0
 	screens = append(screens, renderedScreen{"help", hp.View()})
 
+	labelScreen := sized(NewSettingsModel(mock, nil), w, h)
+	labelScreen.showLabelImport = true
+	labelScreen.labelImportStage = labelImportStagePreview
+	labelScreen.labelImportPreview = bip329Preview{Tx: 3, Addr: 2, Output: 1, Frozen: 1}
+	labelScreen.labelImportPath.SetValue("~/.hax/demo-testnet4_labels_bip329.jsonl")
+	screens = append(screens, renderedScreen{"labels_import_preview", labelScreen.View()})
+
+	backupScreen := sized(NewSettingsModel(mock, nil), w, h)
+	backupScreen.openBackupExport()
+	backupScreen.backupTray, _ = backupScreen.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	backupScreen.backupExportStage = backupExportStageConfirm
+	screens = append(screens, renderedScreen{"backup_export_confirm", backupScreen.View()})
+
 	return screens
 }

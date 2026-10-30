@@ -3,6 +3,8 @@ package models
 import (
 	"strings"
 	"unicode"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // truncateRunes shortens s to at most max runes, replacing the tail with
@@ -33,4 +35,33 @@ func sanitizeLine(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// wrapWords breaks plain text into lines of at most width cells, breaking
+// between words. A word longer than width is kept whole so callers can
+// truncate it without losing text silently.
+func wrapWords(text string, width int) []string {
+	if text == "" {
+		return nil
+	}
+	if width <= 0 {
+		return []string{text}
+	}
+	var lines []string
+	var line string
+	for _, word := range strings.Fields(text) {
+		switch {
+		case line == "":
+			line = word
+		case lipgloss.Width(line)+1+lipgloss.Width(word) <= width:
+			line += " " + word
+		default:
+			lines = append(lines, line)
+			line = word
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
 }

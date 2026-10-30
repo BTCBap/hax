@@ -311,6 +311,8 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 		lines = append(lines, m.shortcut("c", "Copy xpub"))
 	}
 	lines = append(lines, m.shortcut("d", "Open descriptor screen"))
+	lines = append(lines, m.shortcut("l", "Import labels (BIP329 JSON Lines)"))
+	lines = append(lines, m.shortcut("B", "Export unified backup (descriptors + labels, no keys)"))
 	lines = append(lines, m.shortcut("u", "Toggle display unit"))
 	lines = append(lines, m.shortcut("g", "Cycle address gap limit"))
 	switch m.walletMode() {

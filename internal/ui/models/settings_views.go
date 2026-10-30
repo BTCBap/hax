@@ -17,6 +17,14 @@ import (
 func (m SettingsModel) View() string {
 	_ = m.width
 
+	if m.showLabelImport {
+		return m.viewLabelImport()
+	}
+
+	if m.showBackupExport {
+		return m.viewBackupExport()
+	}
+
 	// If showing mnemonic warning, show that screen
 	if m.showMnemonicWarning {
 		return m.viewMnemonicWarning()
@@ -127,6 +135,9 @@ func (m SettingsModel) View() string {
 	// Connection Settings Section
 	connectionInfo := m.renderConnectionSection()
 
+	// Backup and label actions
+	actions := m.renderSettingsActions()
+
 	// Help footer - includes unit toggle hotkey
 	unitLabel := "BTC"
 	if m.displayUnit == config.DisplayUnitBitcoin {
@@ -138,6 +149,8 @@ func (m SettingsModel) View() string {
 		styles.HK("u", "unit:"+unitLabel),
 		styles.HK("g", fmt.Sprintf("gap:%d", m.gapLimit)),
 		styles.HK("b", "backend"),
+		styles.HK("l", "import labels"),
+		styles.HK("B", "export backup"),
 	}
 
 	if m.walletManager.IsMultisig() {
@@ -163,6 +176,7 @@ func (m SettingsModel) View() string {
 	fixedHeader := header + copyStatus + "\n" + subtitle
 
 	scrollContent := connectionInfo + "\n" +
+		actions + "\n" +
 		walletInfo + accountsDisplay
 
 	return renderScrollableView(m.height, m.scrollOffset, fixedHeader, scrollContent, help)
@@ -204,6 +218,39 @@ func (m SettingsModel) renderConnectionSection() string {
 			styles.BoldText.Render("🔌 ") + backendType + ": " +
 				styles.HighlightText.Render(backendDetails),
 		)
+}
+
+// renderSettingsActions lists backup and label actions with dim helper
+// text in a fixed column to the right of each label.
+func (m SettingsModel) renderSettingsActions() string {
+	boxWidth := styles.ClampWidth(70, m.width)
+	rowWidth := boxWidth - 4 // box padding
+	rows := []string{
+		renderSettingsActionRow("l", "Import labels (BIP329)", "JSON Lines file", rowWidth),
+		renderSettingsActionRow("B", "Export backup (descriptors + labels)", "no private keys", rowWidth),
+	}
+	return styles.BoxStyle.
+		Width(boxWidth).
+		BorderForeground(styles.BitcoinGold).
+		Padding(0, 2).
+		Render(
+			styles.BoldText.Render("📤 Backup & Labels") + "\n" +
+				strings.Join(rows, "\n"),
+		)
+}
+
+func renderSettingsActionRow(key, label, helper string, width int) string {
+	const labelWidth = 36
+	helperWidth := lipgloss.Width(helper)
+	if room := width - 3 - labelWidth - 2; room < helperWidth {
+		helperWidth = room
+	}
+	if helperWidth < 0 {
+		helperWidth = 0
+	}
+	return styles.HelpKeyStyle.Render(key) + "  " +
+		styles.NormalText.Render(padCell(label, labelWidth)) + "  " +
+		styles.DimText.Render(padCell(helper, helperWidth))
 }
 
 // renderInfoRow creates a formatted info row with label and value
