@@ -211,7 +211,7 @@ func (m WalletSetupModel) viewMultisigImportDescriptor() string {
 
 	info := styles.DimText.Render(
 		"Paste output descriptor from Sparrow, Coldcard, or other wallets.\n" +
-			"Supports single-sig (wpkh, tr) and multisig (wsh(sortedmulti)).")
+			"Supports single-sig (wpkh, tr) and multisig (wsh(sortedmulti/multi)).")
 
 	help := styles.RenderHelp(styles.HK("enter", "import"), styles.HK("esc", "back"))
 
