@@ -39,6 +39,44 @@ func TestViews_FitIn80Columns(t *testing.T) {
 	}
 }
 
+// TestTxFlowEntryViewsFit renders the visualizer as opened from the send
+// review step, the PSBT inspector, and history at both supported sizes.
+func TestTxFlowEntryViewsFit(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(t *testing.T, width, height int) tea.Model
+	}{
+		{"send-review", func(t *testing.T, width, height int) tea.Model {
+			return txFlowTestUpdate(t, newSendReviewFlowModel(t, width, height), txFlowTestKey("v"))
+		}},
+		{"psbt-inspector", func(t *testing.T, width, height int) tea.Model {
+			return txFlowTestUpdate(t, newPSBTInspectorFlowModel(t, width, height), txFlowTestKey("v"))
+		}},
+		{"history", func(t *testing.T, width, height int) tea.Model {
+			return txFlowTestUpdate(t, newHistoryFlowModel(t, width, height), txFlowTestKey("v"))
+		}},
+	}
+	sizes := []struct {
+		name string
+		w, h int
+	}{
+		{"80x24", 80, 24},
+		{"120x40", 120, 40},
+	}
+	for _, test := range tests {
+		for _, size := range sizes {
+			t.Run(test.name+"/"+size.name, func(t *testing.T) {
+				m := test.build(t, size.w, size.h)
+				view := m.View()
+				if !strings.Contains(ansi.Strip(view), "Inputs") {
+					t.Fatalf("visualizer did not open:\n%s", ansi.Strip(view))
+				}
+				assertFits(t, view, size.w)
+			})
+		}
+	}
+}
+
 func assertFits(t *testing.T, view string, width int) {
 	t.Helper()
 	for i, line := range strings.Split(view, "\n") {

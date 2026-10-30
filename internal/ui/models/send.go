@@ -148,6 +148,9 @@ type SendModel struct {
 	psbtImported   bool                   // PSBT arrived from outside hax's send flow
 	bump           *feeBumpState          // Set when speeding up a pending transaction
 
+	// Transaction visualizer overlay for the review and PSBT signing steps.
+	txFlow *TxFlowView
+
 	// Hardware wallet / file-based PSBT support
 	psbtFilePath  string          // Path where PSBT was saved/loaded
 	psbtFileInput textinput.Model // Input for file path
@@ -807,6 +810,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// The visualizer owns every key while it is open.
+		if m.txFlow != nil {
+			return m.handleTxFlowKey(msg)
+		}
+
 		// Handle file browser if open
 		if m.showFileBrowser {
 			return m.handleFileBrowser(msg)

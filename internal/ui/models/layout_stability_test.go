@@ -142,6 +142,36 @@ func TestUnlockPasswordLayoutStable(t *testing.T) {
 	}
 }
 
+// Moving through every input and output of the visualizer must not change
+// the line count or move either header.
+func TestTxFlowLayoutStable(t *testing.T) {
+	v := TxFlowView{Flow: txFlowFixture(9, 4), Width: 80, Height: 24}
+	base := v.View()
+	wantLines := requireLineCount(t, base)
+	wantInputs := requireTextPosition(t, base, "Inputs")
+	wantOutputs := requireTextPosition(t, base, "Outputs")
+
+	for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
+		v.SwitchSide(side)
+		for i := 0; i < len(v.itemsFor(side)); i++ {
+			view := v.View()
+			if got := requireLineCount(t, view); got != wantLines {
+				t.Fatalf("%s cursor %d: %d lines, want %d", sideName(side), i, got, wantLines)
+			}
+			if got := requireTextPosition(t, view, "Inputs"); got != wantInputs {
+				t.Fatalf("%s cursor %d: Inputs header moved from %+v to %+v",
+					sideName(side), i, wantInputs, got)
+			}
+			if got := requireTextPosition(t, view, "Outputs"); got != wantOutputs {
+				t.Fatalf("%s cursor %d: Outputs header moved from %+v to %+v",
+					sideName(side), i, wantOutputs, got)
+			}
+
+			v.MoveDown()
+		}
+	}
+}
+
 func TestSendAmountLayoutStable(t *testing.T) {
 	cases := []struct {
 		name  string

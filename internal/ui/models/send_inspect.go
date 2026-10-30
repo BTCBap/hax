@@ -24,6 +24,23 @@ func (m *SendModel) refreshInspection() {
 	m.inspection = m.walletManager.InspectPSBT(m.psbtResult.Packet)
 }
 
+// openInspectionFlow opens the transaction visualizer for the current
+// PSBT inspection. It does nothing until there is something to show.
+func (m *SendModel) openInspectionFlow() {
+	if m.inspection == nil {
+		return
+	}
+	var labels func(string) string
+	if m.walletManager != nil {
+		labels = m.walletManager.GetAddressLabel
+	}
+	m.txFlow = &TxFlowView{
+		Flow:   TxFlowFromInspection(m.inspection, labels),
+		Width:  m.width,
+		Height: m.height,
+	}
+}
+
 // setPSBTResult replaces the current PSBT and its inspection.
 func (m *SendModel) setPSBTResult(r *wallet.PSBTResult) {
 	m.psbtResult = r

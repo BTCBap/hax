@@ -43,6 +43,9 @@ type TransactionHistoryModel struct {
 	err                  error
 	selectedRow          int // Track selected transaction via table cursor
 
+	// Transaction visualizer overlay for the selected row.
+	txFlow *TxFlowView
+
 	// Copy state
 	showCopied   bool
 	copiedTime   time.Time
@@ -348,6 +351,14 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// The visualizer owns every key while it is open.
+		if m.txFlow != nil {
+			if handleTxFlowKey(m.txFlow, msg.String()) {
+				m.txFlow = nil
+			}
+			return m, nil
+		}
+
 		if m.editMode {
 			switch msg.String() {
 			case "esc":
@@ -422,6 +433,12 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds = append(cmds, m.animateTick())
 					}
 				}
+			}
+
+		case "v":
+			if tx, ok := m.selectedTransaction(); ok {
+				m.openTransactionFlow(tx)
+				return m, nil
 			}
 
 		case "enter":
@@ -672,12 +689,9 @@ func (m *TransactionHistoryModel) updateTableData() {
 
 	// Get accounts to determine our addresses
 	accounts := m.walletManager.GetAccounts()
-	ourAddresses := make(map[string]bool)
+	ourAddresses, _ := historyAddressSets(accounts)
 	addrLabels := make(map[string]string)
 	if len(accounts) > 0 {
-		for _, addr := range accounts[0].Addresses {
-			ourAddresses[addr.Address] = true
-		}
 		for a, l := range accounts[0].Labels {
 			addrLabels[a] = strings.ToLower(l)
 		}
@@ -1014,6 +1028,65 @@ func (m *TransactionHistoryModel) sortTransactions(ourAddresses map[string]bool)
 	}
 }
 
+// historyAddressSets splits account 0's addresses into the wallet's own
+// addresses and the subset used for change. History already uses this
+// ownership view for IN/OUT, so the visualizer reports the same thing.
+func historyAddressSets(accounts []wallet.AccountData) (mine, change map[string]bool) {
+	mine = make(map[string]bool)
+	change = make(map[string]bool)
+	if len(accounts) == 0 {
+		return mine, change
+	}
+	for _, addr := range accounts[0].Addresses {
+		if addr.Address == "" {
+			continue
+		}
+		mine[addr.Address] = true
+		if addr.Change {
+			change[addr.Address] = true
+		}
+	}
+	return mine, change
+}
+
+// selectedTransaction returns the transaction under the table cursor. The
+// cursor starts unset (-1), so the first row counts as selected until the
+// user moves it.
+func (m *TransactionHistoryModel) selectedTransaction() (api.Transaction, bool) {
+	if len(m.filteredTransactions) == 0 {
+		return api.Transaction{}, false
+	}
+	row := m.selectedRow
+	if row < 0 {
+		row = 0
+	}
+	absoluteIndex := m.currentPage*m.itemsPerPage + row
+	if absoluteIndex < 0 || absoluteIndex >= len(m.filteredTransactions) {
+		return api.Transaction{}, false
+	}
+	return m.filteredTransactions[absoluteIndex], true
+}
+
+// openTransactionFlow shows the selected transaction as a flow diagram.
+// Ownership comes from the wallet's address list; no network calls.
+func (m *TransactionHistoryModel) openTransactionFlow(tx api.Transaction) {
+	var accounts []wallet.AccountData
+	var labels func(string) string
+	if m.walletManager != nil {
+		accounts = m.walletManager.GetAccounts()
+		labels = m.walletManager.GetAddressLabel
+	}
+	mine, change := historyAddressSets(accounts)
+	m.txFlow = &TxFlowView{
+		Flow: TxFlowFromTransaction(tx,
+			func(addr string) bool { return mine[addr] },
+			func(addr string) bool { return change[addr] },
+			labels),
+		Width:  m.width,
+		Height: m.height,
+	}
+}
+
 // analyzeTransaction analyzes a transaction to determine its type and net amount impact on the wallet
 func analyzeTransaction(tx api.Transaction, ourAddresses map[string]bool) TransactionAnalysis {
 	var inputsFromUs api.Satoshi = 0
@@ -1047,9 +1120,8 @@ func analyzeTransaction(tx api.Transaction, ourAddresses map[string]bool) Transa
 	}
 }
 
-func (m TransactionHistoryModel) View() string {
-	_ = m.width
-
+// historyHeaderBlock is the title, page, filter and copy-status frame.
+func (m TransactionHistoryModel) historyHeaderBlock() string {
 	header := styles.ScreenHeaderStyle.Render("📜 Transaction History")
 
 	copyStatus := ""
@@ -1110,7 +1182,21 @@ func (m TransactionHistoryModel) View() string {
 		headerLine = leftHeader + " " + copyStatus
 	}
 
-	headerBlock := headerLine + metaLine
+	return headerLine + metaLine
+}
+
+func (m TransactionHistoryModel) View() string {
+	headerBlock := m.historyHeaderBlock()
+
+	if m.txFlow != nil {
+		flow := *m.txFlow
+		flow.Width = m.width
+		flow.Height = m.height - lipgloss.Height(headerBlock) - 1
+		if flow.Height < 1 {
+			flow.Height = 1
+		}
+		return headerBlock + "\n" + flow.View()
+	}
 
 	var content string
 
@@ -1277,6 +1363,7 @@ func (m TransactionHistoryModel) renderAnimatedHelp() string {
 			styles.HK("c", "copy"),
 			styles.HK("e", "label"),
 			styles.HK("E", "export"),
+			styles.HK("v", "flow"),
 			styles.HK("/", "search"),
 		},
 		[]styles.HelpItem{

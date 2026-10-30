@@ -159,6 +159,14 @@ func renderScreens(w, h int) []renderedScreen {
 			Status: api.Status{Confirmed: true, BlockHeight: 98_410, BlockTime: 1760090000},
 		},
 	}
+	// Keep the spend transaction by identity: the history table sorts its
+	// slice in place, so its index changes.
+	var spendTx api.Transaction
+	for _, tx := range demoTxs {
+		if tx.TxID == txSpend {
+			spendTx = tx
+		}
+	}
 	demoUTXOs := []api.UTXO{
 		{TxID: txFaucet2, Vout: 0, Value: 700_000, Status: api.Status{Confirmed: true, BlockHeight: 98_300}},
 		{TxID: txSpend, Vout: 1, Value: 1_249_859, Status: api.Status{Confirmed: true, BlockHeight: 98_410}},
@@ -220,6 +228,21 @@ func renderScreens(w, h int) []renderedScreen {
 	}
 	screens = append(screens, renderedScreen{"send", sm.View()})
 
+	// The same review PSBT, shown as a flow diagram.
+	sm.inspection = &wallet.PSBTInspection{
+		Inputs: []wallet.InspectedInput{{
+			OutPoint: txSpend + ":0", Address: ourRecv2,
+			Value: 700_000, ValueKnown: true, Mine: true,
+		}},
+		Outputs: []wallet.InspectedOutput{
+			{Address: payee, Value: 100_000, Owner: wallet.OutputExternal},
+			{Address: ourChange, Value: 599_859, Owner: wallet.OutputChange},
+		},
+		Fee: 141, FeeKnown: true, FeeRate: 1, VSize: 141,
+	}
+	sm.openInspectionFlow()
+	screens = append(screens, renderedScreen{"txflow_send", sm.View()})
+
 	// One frozen coin, so the UTXO screen shows the marker.
 	_ = mock.SetUTXOFrozen(txFaucet2, 0, true)
 	um := sized(NewUTXOsModel(mock, nil), w, h)
@@ -245,6 +268,17 @@ func renderScreens(w, h int) []renderedScreen {
 	hi.transactions = demoTxs
 	hi.updateTableData()
 	screens = append(screens, renderedScreen{"history", hi.View()})
+
+	// The demo spend transaction opened as a flow diagram: a payee output and
+	// a change output back to the wallet.
+	hi.openTransactionFlow(spendTx)
+	screens = append(screens, renderedScreen{"txflow_history", hi.View()})
+
+	// A busy transaction so the diagram shows how many inputs and outputs
+	// are laid out together.
+	screens = append(screens, renderedScreen{"txflow_many", TxFlowView{
+		Flow: txFlowFixture(9, 4), Width: w, Height: h,
+	}.View()})
 
 	hp := sized(NewHelpModel(nil), w, h)
 	hp.fadeIn = 1.0

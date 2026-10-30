@@ -262,6 +262,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, styles.SectionSubheaderStyle.Render("  History"))
 	lines = append(lines, m.shortcut("esc/q", "Back"))
 	lines = append(lines, m.shortcut("enter", "Open selected transaction in browser"))
+	lines = append(lines, m.shortcut("v", "View transaction flow (history, review, PSBT)"))
 	lines = append(lines, m.shortcut("f/x", "Cycle type/status filters"))
 	lines = append(lines, m.shortcut("/", "Search transactions"))
 	lines = append(lines, m.shortcut("e", "Edit transaction label"))

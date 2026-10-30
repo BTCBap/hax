@@ -702,6 +702,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 	// Unified help - all wallet types go to Sign & Broadcast
 	help := styles.RenderHelp(
 		styles.HK("enter", "sign & broadcast"),
+		styles.HK("v", "flow"),
 		styles.HK("esc", "change fee"),
 	)
 
@@ -728,8 +729,29 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 }
 
 func (m SendModel) viewReview() string {
+	if m.txFlow != nil {
+		return m.viewReviewTxFlow()
+	}
 	fixedHeader, scrollContent, help := m.buildReviewScrollable()
 	return m.renderScrollableViewport(fixedHeader, scrollContent, help)
+}
+
+// viewReviewTxFlow replaces the review body with the visualizer while the
+// screen title and step header stay in place.
+func (m SendModel) viewReviewTxFlow() string {
+	header := m.sendTitle() + "\n" + m.stepHeader(6, "Review transaction")
+	return m.renderTxFlowUnder(header)
+}
+
+// renderTxFlowUnder draws the visualizer in the rows left below header.
+func (m SendModel) renderTxFlowUnder(header string) string {
+	flow := *m.txFlow
+	flow.Width = m.width
+	flow.Height = m.height - lipgloss.Height(header) - 1
+	if flow.Height < 1 {
+		flow.Height = 1
+	}
+	return header + "\n" + flow.View()
 }
 
 func (m SendModel) viewBroadcasting() string {

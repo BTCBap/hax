@@ -186,6 +186,27 @@ type TxFlowView struct {
 	Offset [2]int
 }
 
+// handleTxFlowKey applies a visualizer key and reports whether it asks to
+// leave the view. Up/down or k/j move the cursor, tab toggles the side,
+// left/right select a side directly, and esc/q close.
+func handleTxFlowKey(v *TxFlowView, key string) (back bool) {
+	switch key {
+	case "up", "k":
+		v.MoveUp()
+	case "down", "j":
+		v.MoveDown()
+	case "tab":
+		v.SwitchSide()
+	case "left":
+		v.SwitchSide(FlowInput)
+	case "right":
+		v.SwitchSide(FlowOutput)
+	case "esc", "q":
+		return true
+	}
+	return false
+}
+
 // MoveUp selects the previous item on the current side.
 func (v *TxFlowView) MoveUp() {
 	n := len(v.itemsFor(v.Side))
