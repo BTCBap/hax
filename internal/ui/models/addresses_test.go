@@ -7,8 +7,13 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -238,14 +243,58 @@ func TestAddresses_VerifyModeOuterHintRow(t *testing.T) {
 	}
 }
 
-func TestRenderAddressCell_ColorModes(t *testing.T) {
-	address := "tb1qexampleaddress0000000000000000000000"
+func TestAddressTableAddressFormatting(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
 
-	unused := renderAddressCell(AddrDisplayInfo{Used: false, Balance: 0}, address)
-	usedNoBalance := renderAddressCell(AddrDisplayInfo{Used: true, Balance: 0}, address)
-	usedWithBalance := renderAddressCell(AddrDisplayInfo{Used: true, Balance: api.Satoshi(1000)}, address)
+	const address = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"
+	m := NewAddressesModel(NewMockWalletManager(), nil)
+	m.width = 110
+	m.resizeColumnsForWidth()
+	addrs := []AddrDisplayInfo{{Address: address, Used: true, Balance: api.Satoshi(1000)}}
+	m.receiveAddresses = addrs
+	m.updateTable()
 
-	if !strings.Contains(unused, address) || !strings.Contains(usedNoBalance, address) || !strings.Contains(usedWithBalance, address) {
-		t.Fatal("expected rendered strings to contain original address text")
+	addrWidth := m.table.Columns()[1].Width
+	plain := ansi.Strip(ui.FormatAddress(address, addrWidth))
+	m.loading = false
+	m.updateTable()
+	view := m.View()
+	if !strings.Contains(ansi.Strip(view), plain) {
+		t.Fatalf("address table does not show the formatted address %q:\n%s", plain, ansi.Strip(view))
+	}
+	if !strings.Contains(view, ui.FormatAddress(address, addrWidth)) {
+		t.Fatalf("address table lost the address styling: %q", view)
+	}
+	for i, line := range strings.Split(view, "\n") {
+		if w := ansi.StringWidth(line); w > m.width {
+			t.Errorf("line %d is %d cells wide, max %d", i, w, m.width)
+		}
+	}
+
+	row := " 0     " + plain + "   USED"
+
+	got := m.colorizeAddressTable(row, addrs)
+	if stripped := ansi.Strip(got); stripped != row {
+		t.Fatalf("colorized table text = %q, want %q", stripped, row)
+	}
+	if !strings.Contains(got, ui.FormatAddress(address, addrWidth)) {
+		t.Fatalf("table row does not carry the formatted address: %q", got)
+	}
+	if gotW, wantW := ansi.StringWidth(got), ansi.StringWidth(row); gotW != wantW {
+		t.Fatalf("colorized row width = %d, want %d", gotW, wantW)
+	}
+
+	selected := styles.NewTableStyles().Selected.Render(row)
+	got = m.colorizeAddressTable(selected, addrs)
+	if stripped := ansi.Strip(got); stripped != row {
+		t.Fatalf("selected table text = %q, want %q", stripped, row)
+	}
+	if gotW, wantW := ansi.StringWidth(got), ansi.StringWidth(selected); gotW != wantW {
+		t.Fatalf("selected row width = %d, want %d", gotW, wantW)
+	}
+	if !strings.Contains(got, ui.FormatAddress(address, addrWidth)+sgrPrefix(styles.NewTableStyles().Selected)) {
+		t.Fatalf("selected row did not restore its highlight after the address: %q", got)
 	}
 }

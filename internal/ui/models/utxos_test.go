@@ -5,8 +5,11 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func freezeTestUTXOs() []api.UTXO {
@@ -62,6 +65,47 @@ func TestUTXOs_FreezeToggle(t *testing.T) {
 	if !strings.Contains(stripANSI(view), "frozen 0.00000000 (0)") {
 		t.Fatalf("summary dropped the frozen segment after unfreezing:\n%s", stripANSI(view))
 	}
+}
+
+func TestUTXOs_AddressUsesSharedFormat(t *testing.T) {
+	const (
+		addr = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"
+		txid = "aa"
+	)
+	mock := NewMockWalletManager()
+	mock.GetStateFn = func() wallet.WalletStateSnapshot {
+		return wallet.WalletStateSnapshot{
+			Transactions: []api.Transaction{{
+				TxID: txid,
+				Vout: []api.Vout{{ScriptpubkeyAddress: addr, Value: 90_000}},
+			}},
+			UTXOs: []api.UTXO{{
+				TxID: txid, Vout: 0, Value: 90_000,
+				Status: api.Status{Confirmed: true},
+			}},
+		}
+	}
+
+	m := NewUTXOsModel(mock, nil)
+	m.width, m.height = 80, 24
+	m.utxos = mock.GetState().UTXOs
+	m.sortAndUpdateTable()
+
+	cols := newUTXOColumns(m.contentWidth())
+	want := ansi.Strip(ui.FormatAddress(addr, cols.addr))
+	view := m.View()
+	if !strings.Contains(ansi.Strip(view), want) {
+		t.Fatalf("coins view does not show the formatted address %q:\n%s", want, ansi.Strip(view))
+	}
+
+	row := m.renderRow(0, m.page[0], cols, m.getDisplayUnit())
+	if !strings.Contains(ansi.Strip(row), want) {
+		t.Fatalf("row does not show the formatted address %q:\n%s", want, ansi.Strip(row))
+	}
+	if got, wantW := ansi.StringWidth(row), cols.total(); got != wantW {
+		t.Fatalf("row width = %d, want %d", got, wantW)
+	}
+	assertFits(t, view, 80)
 }
 
 // TestSend_SkipsFrozenCoins: send never lists, selects or counts a

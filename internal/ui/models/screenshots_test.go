@@ -28,6 +28,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -81,6 +82,108 @@ func TestScreenshots(t *testing.T) {
 			writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".ansi"), screen.view)
 			if multi {
 				writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".txt"), ansi.Strip(screen.view))
+			}
+		}
+	}
+}
+
+// addressScreenLayout pins the visible width of every line in the screens that
+// render bitcoin addresses. The widths are the ones the layout had before the
+// shared address format was applied, so a column shift or an added row fails
+// here even when the terminal size is unchanged.
+type addressExpectation struct {
+	address string
+	width   int
+}
+
+var addressScreenLayout = map[string]struct {
+	widths []int
+	addrs  []addressExpectation
+}{
+	"txflow": {
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 110, 63, 88, 0, 71, 38, 85, 32},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"txflow_many": {
+		widths: []int{110, 0, 48, 48, 48, 48, 110, 63, 110, 63, 110, 63, 110, 63, 88, 48, 48, 48, 48, 0, 69, 37, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{txFlowAddr(0), 25},
+			{txFlowAddr(0), ansi.StringWidth(txFlowAddr(0))},
+			{txFlowAddr(1), 25},
+		},
+	},
+	"txflow_send": {
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 88, 0, 71, 38, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"txflow_history": {
+		widths: []int{22, 110, 0, 110, 63, 110, 63, 88, 0, 51, 40, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 25},
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 42},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"psbt_inspect": {
+		widths: []int{23, 23, 23, 63, 32, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 77},
+		addrs: []addressExpectation{
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 0},
+			{"tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", 0},
+		},
+	},
+	"utxos": {
+		widths: []int{27, 0, 69, 0, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 0, 80},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 12},
+			{"tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", 12},
+		},
+	},
+	"addresses": {
+		widths: []int{17, 17, 29, 0, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 79},
+		addrs: []addressExpectation{
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 43},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 43},
+		},
+	},
+}
+
+func TestScreenshotAddressScreensKeepLayout(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+
+	rendered := make(map[string]renderedScreen)
+	for _, screen := range renderScreens(t, 110, 34) {
+		rendered[screen.name] = screen
+	}
+
+	for name, want := range addressScreenLayout {
+		screen, ok := rendered[name]
+		if !ok {
+			t.Fatalf("screen %q was not rendered", name)
+		}
+		lines := strings.Split(screen.view, "\n")
+		if len(lines) != len(want.widths) {
+			t.Fatalf("%s rendered %d lines, want %d", name, len(lines), len(want.widths))
+		}
+		for i, line := range lines {
+			if got := ansi.StringWidth(line); got != want.widths[i] {
+				t.Errorf("%s line %d is %d cells wide, want %d: %q",
+					name, i, got, want.widths[i], ansi.Strip(line))
+			}
+		}
+		plain := ansi.Strip(screen.view)
+		for _, addr := range want.addrs {
+			if got := ansi.Strip(ui.FormatAddress(addr.address, addr.width)); !strings.Contains(plain, got) {
+				t.Errorf("%s does not show formatted address %q:\n%s", name, got, plain)
 			}
 		}
 	}

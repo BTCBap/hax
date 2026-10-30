@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
@@ -153,17 +154,29 @@ func (m SendModel) renderInspection(boxWidth int) string {
 		}
 		addr := out.Address
 		if addr == "" {
-			addr = "(no address)"
+			rows = append(rows,
+				fmt.Sprintf("  #%-2d %s %s", i+1, who, formatBTCWithSats(out.Value)),
+				"      "+styles.NormalText.Render("(no address)"))
+			continue
 		}
 		// Full addresses: a shortened one is easy to spoof. Indent less
-		// when the longest (P2TR, P2WSH) wouldn't fit the box.
+		// when the longest (P2TR, P2WSH) wouldn't fit the box, then wrap by
+		// visible cells because the styled address carries ANSI.
+		contentWidth := boxWidth - 4
+		formatted := ui.FormatAddress(addr, 0)
 		indent := "      "
-		if len(indent)+len(addr) > boxWidth-4 {
+		if len(indent)+ui.AddressWidth(addr, 0) > contentWidth {
 			indent = "  "
 		}
+		wrapWidth := contentWidth - len(indent)
+		if wrapWidth < 1 {
+			wrapWidth = 1
+		}
 		rows = append(rows,
-			fmt.Sprintf("  #%-2d %s %s", i+1, who, formatBTCWithSats(out.Value)),
-			indent+styles.NormalText.Render(addr))
+			fmt.Sprintf("  #%-2d %s %s", i+1, who, formatBTCWithSats(out.Value)))
+		for _, line := range wrapAddressCells(styledAddressCells(formatted), wrapWidth) {
+			rows = append(rows, indent+line)
+		}
 	}
 
 	rows = append(rows, "")

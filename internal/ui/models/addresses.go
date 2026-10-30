@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -9,9 +10,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
@@ -42,12 +45,6 @@ func getAddressVisualState(addr AddrDisplayInfo) addressVisualState {
 		return addressVisualUsedWithBalance
 	}
 	return addressVisualUsedNoBalance
-}
-
-func renderAddressCell(addr AddrDisplayInfo, addressText string) string {
-	// Keep address column plain to avoid ANSI clipping artifacts in wide table cells.
-	_ = addr
-	return addressText
 }
 
 // AddressesModel displays wallet addresses like Sparrow's Addresses tab
@@ -509,18 +506,19 @@ func (m *AddressesModel) updateTable() {
 	}
 
 	displayUnit := m.getDisplayUnit()
+	addrWidth := 43
+	if cols := m.table.Columns(); len(cols) > 1 {
+		addrWidth = cols[1].Width
+	}
 
 	var rows []table.Row
 	for _, addr := range addrs {
 		// Index
 		indexStr := fmt.Sprintf("%d", addr.Index)
 
-		// Address (truncated to fit)
-		addrDisplay := addr.Address
-		if len(addrDisplay) > 43 {
-			addrDisplay = addrDisplay[:20] + "..." + addrDisplay[len(addrDisplay)-20:]
-		}
-		addrDisplay = renderAddressCell(addr, addrDisplay)
+		// The table cuts cells by rune count, so rows hold the plain text
+		// at the exact column width and View inserts the styled address.
+		addrDisplay := ansi.Strip(ui.FormatAddress(addr.Address, addrWidth))
 
 		// Status as plain text to avoid ANSI truncation artifacts in table cells.
 		status := "UNUSED"
@@ -551,6 +549,58 @@ func (m *AddressesModel) updateTable() {
 	if m.table.Cursor() >= len(rows) {
 		m.table.SetCursor(len(rows) - 1)
 	}
+}
+
+// colorizeAddressTable puts the shared address styling into the rendered
+// table. Rows carry plain text so the table's rune-count truncation cannot
+// cut an escape sequence; replacing after rendering keeps every line width.
+func (m AddressesModel) colorizeAddressTable(view string, addrs []AddrDisplayInfo) string {
+	addrWidth := 43
+	if cols := m.table.Columns(); len(cols) > 1 {
+		addrWidth = cols[1].Width
+	}
+
+	type replacement struct{ plain, styled string }
+	replacements := make([]replacement, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.Address == "" {
+			continue
+		}
+		styled := ui.FormatAddress(addr.Address, addrWidth)
+		plain := ansi.Strip(styled)
+		if plain == "" || plain == styled {
+			continue
+		}
+		replacements = append(replacements, replacement{plain: plain, styled: styled})
+	}
+	if len(replacements) == 0 {
+		return view
+	}
+	// Replace longer text first so a short address cannot cut into a longer
+	// one that happens to contain it.
+	sort.SliceStable(replacements, func(i, j int) bool {
+		return len(replacements[i].plain) > len(replacements[j].plain)
+	})
+
+	// The selected row is wrapped in this style by the table. Re-emit it
+	// after the address, whose own resets would otherwise end the highlight.
+	selectedPrefix := sgrPrefix(styles.NewTableStyles().Selected)
+	lines := strings.Split(view, "\n")
+	for i, line := range lines {
+		selected := selectedPrefix != "" && strings.HasPrefix(line, selectedPrefix)
+		for _, r := range replacements {
+			if !strings.Contains(line, r.plain) {
+				continue
+			}
+			styled := r.styled
+			if selected {
+				styled += selectedPrefix
+			}
+			line = strings.ReplaceAll(line, r.plain, styled)
+		}
+		lines[i] = line
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *AddressesModel) visibleRowsCount() int {
@@ -667,6 +717,7 @@ func (m AddressesModel) View() string {
 			}
 			tableView = strings.Join(append(headerLines, bodyLines...), "\n")
 		}
+		tableView = m.colorizeAddressTable(tableView, addrs)
 		content = styles.TableBorderStyle.Render(tableView)
 	}
 

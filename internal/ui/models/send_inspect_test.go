@@ -4,11 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/wire"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 const (
@@ -54,6 +57,52 @@ func TestSigningGate(t *testing.T) {
 	}
 }
 
+// TestRenderInspection_WrapsLongAddress: the inspector keeps the whole
+// address, so one that cannot fit the box wraps by visible cells with the
+// continuation indent and keeps each group's style.
+func TestRenderInspection_WrapsLongAddress(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+
+	const boxWidth = 40
+	m := NewSendModel(NewMockWalletManager(), 0, nil)
+	m.inspection = &wallet.PSBTInspection{
+		Outputs: []wallet.InspectedOutput{{
+			Address: inspectTestDest, Value: 40_000, Owner: wallet.OutputExternal,
+		}},
+		Fee: 300, FeeKnown: true, FeeRate: 1.95, VSize: 154,
+	}
+
+	section := m.renderInspection(boxWidth)
+	plain := ansi.Strip(section)
+	formatted := ui.FormatAddress(inspectTestDest, 0)
+
+	indent := "  "
+	wrapWidth := boxWidth - 4 - len(indent)
+	wrapped := wrapAddressCells(styledAddressCells(formatted), wrapWidth)
+	if len(wrapped) < 2 {
+		t.Fatalf("long address did not wrap: %q", wrapped)
+	}
+	var rebuilt strings.Builder
+	for _, line := range wrapped {
+		if w := ansi.StringWidth(line); w > wrapWidth {
+			t.Errorf("wrapped line is %d cells wide, max %d: %q", w, wrapWidth, ansi.Strip(line))
+		}
+		if !strings.Contains(line, "\x1b[") {
+			t.Errorf("wrapped line lost its address style: %q", line)
+		}
+		if !strings.Contains(plain, indent+ansi.Strip(line)) {
+			t.Errorf("inspection box is missing wrapped line %q:\n%s", ansi.Strip(line), plain)
+		}
+		rebuilt.WriteString(ansi.Strip(line))
+	}
+	if got, want := rebuilt.String(), ansi.Strip(formatted); got != want {
+		t.Fatalf("wrapped address = %q, want %q", got, want)
+	}
+	assertFits(t, section, boxWidth+2)
+}
+
 // TestSignScreen_ShowsInspection: the sign screen shows what the PSBT
 // does, for a hax-built PSBT and for an imported one, with full
 // addresses and the inspector's warnings, inside 80 columns.
@@ -96,7 +145,8 @@ func TestSignScreen_ShowsInspection(t *testing.T) {
 			_, content, _ := m.buildPSBTExportScrollable()
 			plain := ansi.Strip(content)
 			for _, want := range []string{"What you're signing", "yours", "payment",
-				inspectTestDest, "change ✓", "300 sats · 2 sat/vB", "Replaceable:    yes",
+				ansi.Strip(ui.FormatAddress(inspectTestDest, 0)), "change ✓",
+				"300 sats · 2 sat/vB", "Replaceable:    yes",
 				"Check before signing", "claims to be this wallet's", "hw warning"} {
 				if !strings.Contains(plain, want) {
 					t.Errorf("missing %q:\n%s", want, plain)
