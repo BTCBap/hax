@@ -38,6 +38,17 @@ type renderedScreen struct {
 	view string
 }
 
+// docsScreens are the extra renders used by the README images. The multi-size
+// harness skips them: their sizes are fixed for the docs layout.
+var docsScreens = map[string]bool{"txflow": true, "verify": true}
+
+// docsTxFlowHeight is the smallest terminal height at which the batch send
+// keeps the spacer rows between all four rows on each side: the send header
+// takes five rows and the flow needs seven diagram rows (2*4-1) plus its own
+// header, detail block, and hint. Smaller heights drop the gaps and the bus
+// reads as a boxed ladder in the README image.
+const docsTxFlowHeight = 20
+
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("HAX_SCREENSHOT_DIR")
 	if dir == "" {
@@ -56,6 +67,9 @@ func TestScreenshots(t *testing.T) {
 			suffix = fmt.Sprintf("_%dx%d", size.w, size.h)
 		}
 		for _, screen := range renderScreens(size.w, size.h) {
+			if multi && docsScreens[screen.name] {
+				continue
+			}
 			writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".ansi"), screen.view)
 			if multi {
 				writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".txt"), ansi.Strip(screen.view))
@@ -294,6 +308,49 @@ func renderScreens(w, h int) []renderedScreen {
 	sm.openInspectionFlow()
 	screens = append(screens, renderedScreen{"txflow_send", sm.View()})
 
+	// Compact copy for the README: a batch send spending two of our coins to
+	// two external payees with change back. Both sides have four rows (two
+	// inputs, two payees + change + fee), so docsTxFlowHeight leaves the
+	// visualizer exactly enough rows for the spacer lines between them.
+	batch := sized(NewSendModel(mock, balance, demoUTXOs), w, docsTxFlowHeight)
+	batch.feeEstimates = fees
+	batch.recipients = []Recipient{
+		{Address: payee, Amount: 150_000},
+		{Address: faucet, Amount: 75_000},
+	}
+	batch.feeLevel = FeeLevelMedium
+	batch.estimatedSize = 302
+	batch.estimatedFee = 302
+	batch.step = SendStepReview
+	batch.psbtResult = &wallet.PSBTResult{
+		Fee: 302, IntendedFee: 302, Change: 1_724_557, HasChange: true,
+		ChangeAddress: ourChange, VSize: 302,
+		SelectedUTXOs: []wallet.UTXOWithPath{
+			{UTXO: demoUTXOs[0], Address: ourRecv2, Path: "m/84'/1'/0'/0/1"},
+			{UTXO: demoUTXOs[1], Address: ourChange, Path: "m/84'/1'/0'/1/0"},
+		},
+	}
+	batch.inspection = &wallet.PSBTInspection{
+		Inputs: []wallet.InspectedInput{
+			{
+				OutPoint: txFaucet2 + ":0", Address: ourRecv2,
+				Value: 700_000, ValueKnown: true, Mine: true,
+			},
+			{
+				OutPoint: txSpend + ":1", Address: ourChange,
+				Value: 1_249_859, ValueKnown: true, Mine: true,
+			},
+		},
+		Outputs: []wallet.InspectedOutput{
+			{Address: payee, Value: 150_000, Owner: wallet.OutputExternal},
+			{Address: faucet, Value: 75_000, Owner: wallet.OutputExternal},
+			{Address: ourChange, Value: 1_724_557, Owner: wallet.OutputChange},
+		},
+		Fee: 302, FeeKnown: true, FeeRate: 1, VSize: 302,
+	}
+	batch.openInspectionFlow()
+	screens = append(screens, renderedScreen{"txflow", batch.View()})
+
 	// One frozen coin, so the UTXO screen shows the marker.
 	_ = mock.SetUTXOFrozen(txFaucet2, 0, true)
 	um := sized(NewUTXOsModel(mock, nil), w, h)
@@ -345,6 +402,9 @@ func renderScreens(w, h int) []renderedScreen {
 			})
 		}
 		screens = append(screens, renderedScreen{verify.name, hm.View()})
+		if verify.state == AddressVerifyMatch {
+			screens = append(screens, renderedScreen{"verify", hm.View()})
+		}
 	}
 
 	hi := sized(NewTransactionHistoryModel(mock), w, h)

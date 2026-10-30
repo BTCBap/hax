@@ -19,7 +19,7 @@
 > **hax has not been independently audited.** Try it on testnet4 first.
 
 <p align="center">
-  <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
+  <img src="docs/images/hax-tour.gif" alt="Animated tour: dashboard, receive, device verification, send review, transaction flow, fees, history, speed-up tray, UTXOs, stealth mode, label import, backup export, and help" width="820">
 </p>
 
 ## Features
@@ -38,11 +38,13 @@
 
 | Dashboard | Receive |
 |---|---|
-| ![Dashboard](docs/images/dashboard.png) | ![Receive](docs/images/receive.png) |
+| ![Dashboard with balance, recent activity, fees and menu](docs/images/dashboard.png) | ![Receive with address, QR code and derivation path](docs/images/receive.png) |
 | **Send review** | **UTXOs** |
-| ![Send review](docs/images/send.png) | ![UTXOs](docs/images/utxos.png) |
+| ![Send review with recipient, amount, fee and change output](docs/images/send.png) | ![UTXOs with amounts, confirmations and a frozen coin](docs/images/utxos.png) |
 | **History** | **Help** |
-| ![History](docs/images/history.png) | ![Help](docs/images/help.png) |
+| ![History with confirmed transactions and labels](docs/images/history.png) | ![Help with keyboard shortcuts](docs/images/help.png) |
+| **Transaction flow** | **Verify on device** |
+| ![Transaction flow visualizer showing inputs, fee and outputs](docs/images/txflow.png) | ![Hardware wallet address verification matching the device](docs/images/verify.png) |
 
 ## Install
 
