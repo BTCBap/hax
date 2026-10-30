@@ -55,6 +55,7 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			return a
 		},
 		"utxos": func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },
+		"fees":  func(w *MockWalletManager) tea.Model { return NewFeesModel(w, nil) },
 		"utxos_stealth": func(*MockWalletManager) tea.Model {
 			m := stealthUTXOs()
 			m.stealth = true

@@ -243,6 +243,7 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("h", "Transaction history"))
 	lines = append(lines, m.shortcut("a", "Addresses"))
 	lines = append(lines, m.shortcut("u", "UTXOs"))
+	lines = append(lines, m.shortcut("F", "Fee estimates from the current server"))
 	lines = append(lines, m.shortcut("t", "Settings"))
 	lines = append(lines, m.shortcut("z", "hide amounts (stealth mode)"))
 	lines = append(lines, m.shortcut("T", "Re-trust a changed server key (when shown)"))

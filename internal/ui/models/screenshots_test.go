@@ -217,6 +217,14 @@ func renderScreens(w, h int) []renderedScreen {
 	dStealth.stealth = true
 	screens = append(screens, renderedScreen{"dashboard_stealth", dStealth.View()})
 
+	fm := sized(NewFeesModel(mock, nil), w, h)
+	fm.serverName = "mempool.space"
+	fm.estimates = fees
+	fm.refreshing = false
+	fm.err = nil
+	fm.updatedAt = time.Now().Add(-12 * time.Second)
+	screens = append(screens, renderedScreen{"fees", fm.View()})
+
 	mock.HasPassphraseFn = func() bool { return true }
 	dPassphrase := d
 	screens = append(screens, renderedScreen{"dashboard_passphrase", dPassphrase.View()})

@@ -42,6 +42,7 @@ const (
 	StateTransactionHistory
 	StateAddresses
 	StateUTXOs
+	StateFees
 	StateSettings
 	StateHelp
 )
@@ -94,6 +95,7 @@ type RootModel struct {
 	transactionHistoryModel tea.Model
 	addressesModel          tea.Model
 	utxosModel              tea.Model
+	feesModel               tea.Model
 	settingsModel           tea.Model
 	helpModel               tea.Model
 
@@ -138,7 +140,7 @@ const (
 // usesRootViewport reports whether the active screen should use root-level overflow scrolling.
 func (m RootModel) usesRootViewport() bool {
 	switch m.state {
-	case StateAddresses, StateSend, StateSettings, StateWalletSetup, StateHelp, StateUTXOs, StateTransactionHistory:
+	case StateAddresses, StateSend, StateSettings, StateWalletSetup, StateHelp, StateUTXOs, StateFees, StateTransactionHistory:
 		return false
 	default:
 		return true
@@ -398,6 +400,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			isNewModel = true
 		case StateUTXOs:
 			m.utxosModel = NewUTXOsModel(m.walletManager, m.configManager)
+			isNewModel = true
+		case StateFees:
+			m.feesModel = NewFeesModel(m.walletManager, m.configManager)
 			isNewModel = true
 		case StateSettings:
 			if m.settingsModel == nil {
@@ -758,6 +763,8 @@ func (m RootModel) getActiveModel() tea.Model {
 		return m.addressesModel
 	case StateUTXOs:
 		return m.utxosModel
+	case StateFees:
+		return m.feesModel
 	case StateSettings:
 		return m.settingsModel
 	case StateHelp:
@@ -792,6 +799,8 @@ func (m *RootModel) setActiveModel(state AppState, model tea.Model) {
 		m.addressesModel = model
 	case StateUTXOs:
 		m.utxosModel = model
+	case StateFees:
+		m.feesModel = model
 	case StateSettings:
 		m.settingsModel = model
 	case StateHelp:
@@ -812,6 +821,7 @@ func (m RootModel) View() string {
 		StateTransactionHistory: "History",
 		StateAddresses:          "Addresses",
 		StateUTXOs:              "UTXOs",
+		StateFees:               "Fees",
 		StateSettings:           "Settings",
 		StateHelp:               "Help",
 	}

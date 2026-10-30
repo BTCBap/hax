@@ -19,6 +19,8 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
+const dashboardMenuItems = 9
+
 type MainDashboardModel struct {
 	width  int
 	height int
@@ -256,7 +258,7 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursorVel = 0
 			}
 		case "down", "j":
-			if m.cursor < 7 { // 8 menu items (0-7)
+			if m.cursor < dashboardMenuItems-1 {
 				m.cursor++
 				// Snap highlight immediately to avoid perceived input lag.
 				m.cursorY = float64(m.cursor)
@@ -276,11 +278,13 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, Navigate(StateAddresses)
 			case 4: // UTXOs
 				return m, Navigate(StateUTXOs)
-			case 5: // Settings
+			case 5: // Fees
+				return m, Navigate(StateFees)
+			case 6: // Settings
 				return m, Navigate(StateSettings)
-			case 6: // Help
+			case 7: // Help
 				return m, Navigate(StateHelp)
-			case 7: // Quit
+			case 8: // Quit
 				return m, tea.Quit
 			}
 
@@ -295,6 +299,8 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, Navigate(StateAddresses)
 		case "u":
 			return m, Navigate(StateUTXOs)
+		case "F":
+			return m, Navigate(StateFees)
 		case "t":
 			return m, Navigate(StateSettings)
 		case "?":
@@ -474,6 +480,7 @@ func (m MainDashboardModel) viewGrid() string {
 		{"h", "History"},
 		{"a", "Addresses"},
 		{"u", "UTXOs"},
+		{"F", "Fees"},
 		{"t", "Settings"},
 		{"?", "Help"},
 		{"q", "Quit"},
