@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate the README screenshots and the tour GIF from mock data (no network,
 # no real keys). Requires: go, freeze (github.com/charmbracelet/freeze),
-# google-chrome, ffmpeg.
+# google-chrome, ffmpeg, python3.
 # The screenshot test renders each screen as true-color ANSI at 110x34; every
 # PNG is then produced from the screen named after its file, so the README
 # captions can't drift out of sync the way recorded tapes could.
@@ -11,13 +11,15 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 HAX_SCREENSHOT_DIR="$tmp" go test ./internal/ui/models -tags screenshots -run TestScreenshots -count=1
 
-# render_png <screen> <dir>: freeze the screen's .ansi render to SVG, then
-# screenshot that with headless Chrome at 2x scale. The README images and the
-# tour-only frames share these settings, so they look identical.
+# render_png <screen> <dir>: freeze the screen's .ansi render to SVG, snap the
+# text to the terminal cell grid (grid-svg.py), then screenshot that with
+# headless Chrome at 2x scale. The README images and the tour-only frames share
+# these settings, so they look identical.
 render_png() {
   local name=$1 outdir=$2 W H
   freeze --language ansi --window=false --theme catppuccin-mocha --padding 24 \
     --font.size 15 --output "$tmp/$name.svg" "$tmp/$name.ansi" </dev/null >/dev/null
+  python3 docs/images/grid-svg.py "$tmp/$name.svg"
   read -r W H < <(head -c 400 "$tmp/$name.svg" | grep -oE 'width="[0-9.]+" height="[0-9.]+"' | head -1 | tr -dc '0-9. ' | awk '{print int($1)+1, int($2)+1}')
   printf '<html><body style="margin:0;background:#1e1e2e"><img src="%s.svg"></body></html>' "$name" >"$tmp/$name.html"
   google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
