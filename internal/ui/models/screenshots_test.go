@@ -237,6 +237,16 @@ func renderScreens(w, h int) []renderedScreen {
 	}
 	screens = append(screens, renderedScreen{"send", sm.View()})
 
+	// Fee priority step: helpers line up in the column to the right of each
+	// target, like the inline speed-up tray.
+	fee := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	fee.feeEstimates = fees
+	fee.step = SendStepFee
+	fee.cursor = cursorFromFeeLevel(FeeLevelMedium)
+	fee.estimatedSize = 141
+	fee.estimatedFee = 141
+	screens = append(screens, renderedScreen{"send_fee", fee.View()})
+
 	// The same review PSBT, shown as a flow diagram.
 	sm.inspection = &wallet.PSBTInspection{
 		Inputs: []wallet.InspectedInput{{

@@ -870,6 +870,12 @@ func formatWithCommas(n api.Satoshi) string {
 	return result.String()
 }
 
+// FormatSats formats a satoshi amount with thousands separators, for places
+// that show a plain "sats" value.
+func FormatSats(satoshis api.Satoshi) string {
+	return formatWithCommas(satoshis)
+}
+
 // FormatAmount formats a satoshi amount according to the specified display unit (BIP-177)
 func FormatAmount(satoshis api.Satoshi, unit DisplayUnit) string {
 	switch unit {

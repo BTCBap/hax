@@ -23,18 +23,6 @@ func truncateRunes(s string, max int, ellipsis string) string {
 	return string(r[:keep]) + ellipsis
 }
 
-// prefixRunes returns at most the first n runes of s.
-func prefixRunes(s string, n int) string {
-	r := []rune(s)
-	if n < 0 {
-		n = 0
-	}
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
-}
-
 // sanitizeLine drops control characters (newlines, terminal escapes) so
 // imported or user-entered text renders on one line and can't restyle
 // the terminal.

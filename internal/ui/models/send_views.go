@@ -335,23 +335,39 @@ func (m SendModel) viewFeeSelection() string {
 	}
 
 	feeOptions := []struct {
-		name         string
-		level        FeeLevel
-		desc         string
-		timeEstimate string
+		name  string
+		level FeeLevel
+		eta   string
 	}{
-		{"🚀 High Priority", FeeLevelHigh, "Next block", "~10 minutes"},
-		{"⚡ Medium Priority", FeeLevelMedium, "Within 30 min", "~30 minutes"},
-		{"🐢 Low Priority", FeeLevelLow, "Within 1 hour", "~60 minutes"},
+		{"🚀 High Priority", FeeLevelHigh, "~10 min"},
+		{"⚡ Medium Priority", FeeLevelMedium, "~30 min"},
+		{"🐢 Low Priority", FeeLevelLow, "~1 hour"},
 	}
 
-	menu := "\n"
-	for i, opt := range feeOptions {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "▶ "
+	const customLabel = "✏️  Custom Fee"
+	labelWidth := lipgloss.Width(customLabel)
+	for _, opt := range feeOptions {
+		if w := lipgloss.Width(opt.name); w > labelWidth {
+			labelWidth = w
 		}
+	}
 
+	optionLine := func(index int, label, helper string) string {
+		marker := "  "
+		markerStyle := styles.DimText
+		labelStyle := styles.UnselectedItemStyle
+		if index == m.cursor {
+			marker = "▶ "
+			markerStyle = styles.HighlightText
+			labelStyle = styles.SelectedItemStyle
+		}
+		return markerStyle.Render(marker) +
+			labelStyle.Render(padCell(label, labelWidth)) +
+			"  " + styles.DimText.Render(helper)
+	}
+
+	menuLines := make([]string, 0, 4)
+	for i, opt := range feeOptions {
 		var feeRate float64
 		if m.feeEstimates != nil {
 			switch opt.level {
@@ -364,58 +380,44 @@ func (m SendModel) viewFeeSelection() string {
 			}
 		}
 
-		var optionText string
-		if feeRate <= 0 {
-			optionText = fmt.Sprintf("%s%s\n    %s • unavailable",
-				cursor, opt.name, opt.desc)
-		} else if m.bump != nil && m.bumpReady() && feeRate < m.bumpMinRate() {
-			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • below the minimum",
-				cursor, opt.name, opt.desc, formatFeeRate(feeRate))
-		} else {
-			estimatedFee := m.optionFee(feeRate)
-			optionText = fmt.Sprintf("%s%s\n    %s • %s sat/vB • ~%d sats total",
-				cursor, opt.name, opt.desc, formatFeeRate(feeRate), estimatedFee)
+		var helper string
+		switch {
+		case feeRate <= 0:
+			helper = opt.eta + " · unavailable"
+		case m.bump != nil && m.bumpReady() && feeRate < m.bumpMinRate():
+			helper = fmt.Sprintf("%s · %s sat/vB · below minimum",
+				opt.eta, formatFeeRate(feeRate))
+		default:
+			helper = fmt.Sprintf("%s · %s sat/vB · ~%d sats",
+				opt.eta, formatFeeRate(feeRate), m.optionFee(feeRate))
 		}
-
-		if i == m.cursor {
-			menu += styles.SelectedItemStyle.Render(optionText) + "\n\n"
-		} else {
-			menu += styles.UnselectedItemStyle.Render(optionText) + "\n\n"
-		}
+		menuLines = append(menuLines, optionLine(i, opt.name, helper))
 	}
 
-	// Custom fee option
-	customCursor := "  "
-	if m.cursor == 3 {
-		customCursor = "▶ "
+	customHelper := "enter a rate"
+	customDetail := ""
+	switch {
+	case m.highFeePending > 0:
+		customHelper = "unusually high"
+		customDetail = styles.WarningText.Render(fmt.Sprintf(
+			"    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
+			formatFeeRate(m.highFeePending), m.optionFee(m.highFeePending),
+			highFeeConfirmWord, m.highFeeInput.View()))
+	case m.editingCustom:
+		customHelper = "enter a rate"
+		customDetail = styles.DimText.Render(fmt.Sprintf("    Enter rate: %s sat/vB",
+			m.customFeeInput.View()))
+	case m.customFeeRate > 0:
+		customHelper = fmt.Sprintf("%s sat/vB · ~%d sats",
+			formatFeeRate(m.customFeeRate), m.optionFee(m.customFeeRate))
 	}
+	customLine := optionLine(3, customLabel, customHelper)
+	if customDetail != "" {
+		customLine += "\n" + customDetail
+	}
+	menuLines = append(menuLines, customLine)
 
-	var customOptionText string
-	if m.highFeePending > 0 {
-		estimatedFee := m.optionFee(m.highFeePending)
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB is unusually high (~%d sats).\n    Type %q to confirm: %s",
-			customCursor, formatFeeRate(m.highFeePending), estimatedFee, highFeeConfirmWord, m.highFeeInput.View())
-	} else if m.editingCustom {
-		// Show input field when editing
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Enter rate: %s sat/vB\n",
-			customCursor, m.customFeeInput.View())
-	} else if m.customFeeRate > 0 {
-		// Show set custom rate (format nicely for fractional rates)
-		estimatedFee := m.optionFee(m.customFeeRate)
-		rateStr := formatFeeRate(m.customFeeRate)
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    %s sat/vB • ~%d sats total\n",
-			customCursor, rateStr, estimatedFee)
-	} else {
-		// Show placeholder
-		customOptionText = fmt.Sprintf("%s✏️  Custom Fee\n    Press 'c' to set custom rate\n",
-			customCursor)
-	}
-
-	if m.cursor == 3 {
-		menu += styles.SelectedItemStyle.Render(customOptionText) + "\n\n"
-	} else {
-		menu += styles.UnselectedItemStyle.Render(customOptionText) + "\n\n"
-	}
+	menu := "\n" + strings.Join(menuLines, "\n\n") + "\n"
 
 	var help string
 	if m.highFeePending > 0 {

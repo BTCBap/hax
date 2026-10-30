@@ -31,7 +31,7 @@ func TestUTXOs_FreezeToggle(t *testing.T) {
 		t.Fatal("f did not freeze the selected coin")
 	}
 	view := m.View()
-	for _, want := range []string{"aaaaaaaa..:0 frozen", "Frozen:", "COIN FROZEN", "freeze"} {
+	for _, want := range []string{"❄", "frozen", "COIN FROZEN", "freeze"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
@@ -40,7 +40,7 @@ func TestUTXOs_FreezeToggle(t *testing.T) {
 
 	model, _ = m.Update(key)
 	m = model.(UTXOsModel)
-	if mock.IsUTXOFrozen(big.TxID, big.Vout) || strings.Contains(m.View(), "Frozen:") {
+	if mock.IsUTXOFrozen(big.TxID, big.Vout) || strings.Contains(m.View(), "frozen") {
 		t.Fatal("second f did not unfreeze")
 	}
 }

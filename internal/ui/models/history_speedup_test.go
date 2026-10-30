@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -297,4 +298,41 @@ func newSpeedUpHistoryLayout(mock *MockWalletManager, confirm bool) TransactionH
 		m = model.(TransactionHistoryModel)
 	}
 	return m
+}
+
+func TestHistory_SpeedUpTrayMatchesTableWidth(t *testing.T) {
+	for _, width := range []int{80, 120} {
+		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
+			m, _ := speedUpTestModel(t, &api.FeeEstimates{FastestFee: 12, HalfHourFee: 8, HourFee: 3})
+			m.width, m.height = width, 40
+			m.updateTableData()
+
+			model, _ := m.Update(historyRune('b'))
+			open := model.(TransactionHistoryModel)
+			if open.speedUp == nil {
+				t.Fatal("b did not open the tray")
+			}
+
+			tableLine := strings.Split(stripANSI(open.renderTransactionTable()), "\n")[0]
+			trayLine := strings.Split(stripANSI(open.speedUp.tray.View()), "\n")[0]
+			if got, want := lipgloss.Width(trayLine), lipgloss.Width(tableLine); got != want {
+				t.Fatalf("tray is %d cells wide, table frame is %d", got, want)
+			}
+			assertFits(t, open.View(), width)
+		})
+	}
+}
+
+func TestSpeedUpSummaryUsesThousandsSeparators(t *testing.T) {
+	tx := speedUpTransactions()[0] // 1 sat/vB at 200 vB
+	rows := speedUpSummary(tx, 12) // 12 sat/vB -> +2,200 sats
+	for _, row := range rows {
+		if row.Label == "Extra fee" {
+			if row.Value != "+2,200 sats" {
+				t.Fatalf("extra fee = %q, want %q", row.Value, "+2,200 sats")
+			}
+			return
+		}
+	}
+	t.Fatalf("summary has no extra-fee row: %+v", rows)
 }

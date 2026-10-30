@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func testTray() Tray {
@@ -17,7 +18,7 @@ func testTray() Tray {
 	summary := []TraySummaryRow{
 		{Label: "Current rate", Value: "2 sat/vB"},
 		{Label: "New rate", Value: "12 sat/vB"},
-		{Label: "Extra fee", Value: "+1400 sats"},
+		{Label: "Extra fee", Value: "+1,400 sats"},
 	}
 	return NewTray("⚡ Speed Up Transaction", options, summary, 80)
 }
@@ -128,4 +129,20 @@ func TestTrayConfirmReturnsSelectedIndex(t *testing.T) {
 func TestTrayFitsNarrowWidth(t *testing.T) {
 	tray := NewTray("⚡ Speed Up Transaction", testTray().options, testTray().summary, 40)
 	assertFits(t, tray.View(), 40)
+}
+
+func TestTrayOptionMarkersKeepColumnsAligned(t *testing.T) {
+	tray := testTray()
+	selected := tray.renderOptionRow(0, tray.options[0])
+	unselected := tray.renderOptionRow(1, tray.options[1])
+
+	if !strings.HasPrefix(stripANSI(selected), "› ") {
+		t.Fatalf("selected row lacks the accent marker: %q", stripANSI(selected))
+	}
+	if !strings.HasPrefix(stripANSI(unselected), "  ") {
+		t.Fatalf("unselected row should start with two spaces: %q", stripANSI(unselected))
+	}
+	if got, want := lipgloss.Width(selected), lipgloss.Width(unselected); got != want {
+		t.Fatalf("selected row is %d cells, unselected is %d", got, want)
+	}
 }

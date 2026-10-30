@@ -129,7 +129,7 @@ func (t Tray) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.BitcoinOrange).
 		Padding(0, 1).
-		Width(t.contentWidth).
+		Width(t.contentWidth + 2).
 		Render(strings.Join(inner, "\n"))
 }
 
@@ -169,9 +169,6 @@ func (t Tray) Update(msg tea.KeyMsg) (Tray, TrayResult) {
 func (t *Tray) recalculate() {
 	outer := t.width
 	if outer <= 0 {
-		outer = 80
-	}
-	if outer > 80 {
 		outer = 80
 	}
 	if outer < 12 {

@@ -1206,15 +1206,34 @@ func speedUpSummary(tx api.Transaction, rate float64) []TraySummaryRow {
 			Label: "New rate",
 			Value: fmt.Sprintf("%s sat/vB", formatFeeRate(roundRate(rate))),
 		},
-		TraySummaryRow{Label: "Extra fee", Value: fmt.Sprintf("+%d sats", extra)},
+		TraySummaryRow{Label: "Extra fee", Value: fmt.Sprintf("+%s sats", wallet.FormatSats(api.Satoshi(extra)))},
 	)
 }
 
+// trayWidth matches the history table's outer width, including its border
+// and column padding, so the tray sits flush with the frame above it.
 func (m TransactionHistoryModel) trayWidth() int {
-	if m.width <= 0 || m.width > 80 {
+	if m.width <= 0 {
 		return 80
 	}
-	return m.width
+	widths := m.effectiveColumnWidths()
+	total, columns := 4, 0 // border plus one cell of padding each side
+	for _, w := range widths {
+		if w <= 0 {
+			continue
+		}
+		total += w
+		columns++
+	}
+	if action := m.actionColumnWidth(); action > 0 {
+		total += action
+		columns++
+	}
+	total += 2 * columns // one cell of padding each side of every column
+	if total < 12 {
+		total = 12
+	}
+	return total
 }
 
 // openSpeedUpTray opens the inline panel and loads fee estimates when the

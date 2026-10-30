@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 type viewPosition struct {
@@ -263,5 +267,198 @@ func TestCreateFlowProgressHasNoZeroStep(t *testing.T) {
 		if strings.Contains(view, "Step 0/0") {
 			t.Fatalf("step %d renders Step 0/0:\n%s", step, view)
 		}
+	}
+}
+
+// utxoLayoutModel builds a coins screen with three distinguishable rows:
+// a confirmed change coin, an unconfirmed coin, and a dust coin. Addresses
+// come from the cached transactions, exactly as the screen reads them.
+func utxoLayoutModel(t *testing.T, width, height int) UTXOsModel {
+	t.Helper()
+	changeAddr := "tb1qchange000000000000000000000000000000000"
+	receiveAddr := "tb1qreceive00000000000000000000000000000000"
+	now := time.Now().Unix()
+	txA := strings.Repeat("aa", 32)
+	txB := strings.Repeat("bb", 32)
+	txC := strings.Repeat("cc", 32)
+
+	txs := []api.Transaction{
+		{
+			TxID:   txA,
+			Vout:   []api.Vout{{ScriptpubkeyAddress: changeAddr, Value: 50_000}},
+			Status: api.Status{Confirmed: true, BlockHeight: 90, BlockTime: now - 7200},
+		},
+		{
+			TxID:   txB,
+			Vout:   []api.Vout{{ScriptpubkeyAddress: changeAddr, Value: 300}},
+			Status: api.Status{Confirmed: true, BlockHeight: 91, BlockTime: now - 10800},
+		},
+		{
+			TxID:   txC,
+			Vout:   []api.Vout{{ScriptpubkeyAddress: receiveAddr, Value: 30_000}},
+			Status: api.Status{Confirmed: false},
+		},
+	}
+	utxos := []api.UTXO{
+		{TxID: txA, Vout: 0, Value: 50_000, Status: api.Status{Confirmed: true, BlockHeight: 90}},
+		{TxID: txB, Vout: 0, Value: 300, Status: api.Status{Confirmed: true, BlockHeight: 91}},
+		{TxID: txC, Vout: 0, Value: 30_000, Status: api.Status{Confirmed: false}},
+	}
+	labels := map[string]string{txA: "coin-alpha", txB: "coin-beta", txC: "coin-gamma"}
+	mock := NewMockWalletManager()
+	mock.GetStateFn = func() wallet.WalletStateSnapshot {
+		return wallet.WalletStateSnapshot{BlockHeight: 100, Transactions: txs, UTXOs: utxos}
+	}
+	mock.GetAccountsFn = func() []wallet.AccountData {
+		return []wallet.AccountData{{Addresses: []wallet.AddressData{
+			{Address: receiveAddr},
+			{Address: changeAddr, Change: true},
+		}}}
+	}
+	mock.GetTransactionLabelFn = func(txid string) string { return labels[txid] }
+
+	m := NewUTXOsModel(mock, nil)
+	m.width, m.height = width, height
+	m.itemsPerPage = m.rowsPerPage()
+	m.utxos = utxos
+	m.sortAndUpdateTable()
+	return m
+}
+
+func TestUTXOsLayoutStableAcrossCursor(t *testing.T) {
+	m := utxoLayoutModel(t, 80, 24)
+	base := m.View()
+	wantLines := requireLineCount(t, base)
+	wantSummary := requireTextPosition(t, base, "coins · total")
+	wantMarker := requireTextPosition(t, base, "●")
+
+	// Sorted by value: alpha, gamma, beta.
+	rows := []struct {
+		label  string
+		helper string
+	}{
+		{"coin-alpha", "change"},
+		{"coin-gamma", "unconfirmed"},
+		{"coin-beta", "dust"},
+	}
+	wantLabels := make([]viewPosition, len(rows))
+	for i, row := range rows {
+		wantLabels[i] = requireTextPosition(t, base, row.label)
+	}
+	wantHelper := requireTextPosition(t, base, rows[0].helper)
+
+	for i, row := range rows {
+		m.selectedIdx = i
+		view := m.View()
+		if got := requireLineCount(t, view); got != wantLines {
+			t.Fatalf("row %d: %d lines, want %d", i, got, wantLines)
+		}
+		if got := requireTextPosition(t, view, "coins · total"); got != wantSummary {
+			t.Fatalf("row %d: summary moved from %+v to %+v", i, wantSummary, got)
+		}
+		if got := requireTextPosition(t, view, "●"); got.col != wantMarker.col {
+			t.Fatalf("row %d: marker moved from x=%d to x=%d", i, wantMarker.col, got.col)
+		}
+		for j, other := range rows {
+			if got := requireTextPosition(t, view, other.label); got != wantLabels[j] {
+				t.Fatalf("row %d: %q moved from %+v to %+v", i, other.label, wantLabels[j], got)
+			}
+		}
+		if got := requireTextPosition(t, view, row.helper); got.col != wantHelper.col {
+			t.Fatalf("row %d: helper moved from x=%d to x=%d", i, wantHelper.col, got.col)
+		}
+	}
+}
+
+func TestUTXOsSortKeysChangeHeader(t *testing.T) {
+	m := utxoLayoutModel(t, 80, 24)
+	view := m.View()
+	valueHeader := requireTextPosition(t, view, "Value ↓")
+	wantLines := requireLineCount(t, view)
+
+	m.setSort(utxoSortAge)
+	m.sortAndUpdateTable()
+	view = m.View()
+	if got := requireLineCount(t, view); got != wantLines {
+		t.Fatalf("age sort changed line count from %d to %d", wantLines, got)
+	}
+	if got := requireTextPosition(t, view, "Age ↓"); got.line != valueHeader.line {
+		t.Fatalf("age header on line %d, want the header row at line %d", got.line, valueHeader.line)
+	}
+	if strings.Contains(stripANSI(view), "Value ↓") {
+		t.Fatalf("value header still marked after age sort:\n%s", stripANSI(view))
+	}
+
+	m.setSort(utxoSortAge)
+	m.sortAndUpdateTable()
+	if !strings.Contains(stripANSI(m.View()), "Age ↑") {
+		t.Fatalf("second age sort did not flip the indicator:\n%s", stripANSI(m.View()))
+	}
+}
+
+func TestUTXOsAndSendFeeFitAtSupportedSizes(t *testing.T) {
+	sizes := []struct {
+		name string
+		w, h int
+	}{{"80x24", 80, 24}, {"120x40", 120, 40}}
+	for _, size := range sizes {
+		t.Run(size.name, func(t *testing.T) {
+			um := utxoLayoutModel(t, size.w, size.h)
+			uview := um.View()
+			assertFits(t, uview, size.w)
+			if got := requireLineCount(t, uview); got > size.h {
+				t.Fatalf("utxos view has %d lines, terminal is %d high", got, size.h)
+			}
+
+			sm := newTestSend(t)
+			advanceToFee(&sm)
+			sm.width, sm.height = size.w, size.h
+			sm.feeEstimates = testFeeEstimates()
+			sm.estimatedSize = 141
+			sview := sm.View()
+			assertFits(t, sview, size.w)
+			if got := requireLineCount(t, sview); got > size.h {
+				t.Fatalf("send fee view has %d lines, terminal is %d high", got, size.h)
+			}
+		})
+	}
+}
+
+func TestSendFeeHelperColumnStartsAtSameX(t *testing.T) {
+	for _, size := range []struct {
+		name string
+		w, h int
+	}{{"80x24", 80, 24}, {"120x40", 120, 40}} {
+		t.Run(size.name, func(t *testing.T) {
+			m := newTestSend(t)
+			advanceToFee(&m)
+			m.width, m.height = size.w, size.h
+			m.feeEstimates = testFeeEstimates()
+			m.estimatedSize = 141
+
+			helpers := []string{"~10 min", "~30 min", "~1 hour", "enter a rate"}
+			view := m.View()
+			want := requireTextPosition(t, view, helpers[0])
+			wantLines := requireLineCount(t, view)
+			for _, helper := range helpers[1:] {
+				if got := requireTextPosition(t, view, helper); got.col != want.col {
+					t.Fatalf("%q helper starts at x=%d, want %d:\n%s",
+						helper, got.col, want.col, stripANSI(view))
+				}
+			}
+			for cursor := 0; cursor < 4; cursor++ {
+				m.cursor = cursor
+				view = m.View()
+				if got := requireLineCount(t, view); got != wantLines {
+					t.Fatalf("cursor %d: %d lines, want %d", cursor, got, wantLines)
+				}
+				for _, helper := range helpers {
+					if got := requireTextPosition(t, view, helper); got.col != want.col {
+						t.Fatalf("cursor %d: %q helper moved to x=%d, want %d",
+							cursor, helper, got.col, want.col)
+					}
+				}
+			}
+		})
 	}
 }
