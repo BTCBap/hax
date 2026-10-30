@@ -77,6 +77,7 @@ const (
 	tagScriptWSH         = 401 // wsh(...)
 	tagScriptPKH         = 403 // pkh(...)
 	tagScriptWPKH        = 404 // wpkh(...)
+	tagScriptMulti       = 406 // multi(...)
 	tagScriptSortedMulti = 407 // sortedmulti(...)
 	tagScriptTR          = 409 // tr(...)
 )
@@ -85,7 +86,8 @@ const (
 type DescriptorInfo struct {
 	ScriptType string // "wpkh", "wsh", "sh-wsh", "sh", "pkh", "tr"
 	IsMultisig bool
-	Threshold  int // M in M-of-N (only for multisig)
+	Unsorted   bool // multi(...) instead of sortedmulti(...); keys stay in order
+	Threshold  int  // M in M-of-N (only for multisig)
 	Keys       []KeyInfo
 	Network    int // 0=mainnet, 1=testnet
 }
@@ -138,21 +140,26 @@ func encodeMultisigOutput(buf *cborBuf, info DescriptorInfo) ([]byte, error) {
 	// Determine outer script wrapper
 	switch info.ScriptType {
 	case "wsh":
-		// wsh(sortedmulti(...))
+		// wsh(multi(...)) or wsh(sortedmulti(...))
 		buf.writeTag(tagScriptWSH)
 	case "sh-wsh":
-		// sh(wsh(sortedmulti(...)))
+		// sh(wsh(multi(...))) or sh(wsh(sortedmulti(...)))
 		buf.writeTag(tagScriptSH)
 		buf.writeTag(tagScriptWSH)
 	case "sh":
-		// sh(sortedmulti(...))
+		// sh(multi(...)) or sh(sortedmulti(...))
 		buf.writeTag(tagScriptSH)
 	default:
 		buf.writeTag(tagScriptWSH)
 	}
 
-	// sortedmulti tag wraps the multikey structure
-	buf.writeTag(tagScriptSortedMulti)
+	// The multi tag wraps the multikey structure. 406 keeps the key order
+	// given below; 407 implies BIP67 sorting of those keys.
+	if info.Unsorted {
+		buf.writeTag(tagScriptMulti)
+	} else {
+		buf.writeTag(tagScriptSortedMulti)
+	}
 
 	// Multikey: CBOR map {1: threshold, 2: [keys]}
 	buf.writeMapHeader(2)
@@ -161,7 +168,7 @@ func encodeMultisigOutput(buf *cborBuf, info DescriptorInfo) ([]byte, error) {
 	buf.writeUint(1)
 	buf.writeUint(uint64(info.Threshold)) // #nosec G115 -- threshold is a validated small positive M
 
-	// Key 2: array of crypto-hdkeys
+	// Key 2: array of crypto-hdkeys, in the given order
 	buf.writeUint(2)
 	buf.writeArrayHeader(len(info.Keys))
 	for _, key := range info.Keys {

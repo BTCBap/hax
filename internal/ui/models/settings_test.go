@@ -1,6 +1,8 @@
 package models
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 // ─── Constructor ────────────────────────────────────────────────────────────
@@ -332,6 +335,65 @@ func TestSettings_View_MnemonicDisplay(t *testing.T) {
 // Note: CosignerSeedInput, CosignerEdit, and SingleSigSeedInput views
 // call walletManager methods (GetMultisigConfig, etc.) and cannot be tested
 // with nil walletManager. These require integration tests with a real wallet.
+
+// ─── Multisig Export Fallbacks ──────────────────────────────────────────────
+
+func TestSettings_ExportUnsortedMultisigFallsBackToDescriptor(t *testing.T) {
+	home := t.TempDir()
+	// os.UserHomeDir reads HOME on Unix and USERPROFILE on Windows.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	mock := NewMockWalletManager()
+	mock.IsMultisigFn = func() bool { return true }
+	mock.ExportMultisigConfigFn = func() ([]byte, error) {
+		return nil, wallet.ErrUnsortedMultisigFormat
+	}
+	mock.GetAccountsFn = func() []wallet.AccountData {
+		return []wallet.AccountData{{Index: 7}}
+	}
+	mock.ExportDescriptorFn = func(accountIndex uint32) (string, error) {
+		if accountIndex != 7 {
+			t.Errorf("ExportDescriptor account index = %d, want 7", accountIndex)
+		}
+		return "wsh(multi(2,[fp/48h/1h/0h/2h]tpub...))#checksum", nil
+	}
+
+	m := NewSettingsModel(mock, nil)
+	m.showDescriptorMenu = true
+
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	updated := model.(SettingsModel)
+
+	path := filepath.Join(home, ".hax", "test-wallet_descriptor.txt")
+	data, err := os.ReadFile(path) // #nosec G304 -- test reads a file it just wrote under t.TempDir()
+	if err != nil {
+		t.Fatalf("reading exported descriptor: %v", err)
+	}
+	if string(data) != "wsh(multi(2,[fp/48h/1h/0h/2h]tpub...))#checksum" {
+		t.Errorf("descriptor file = %q", data)
+	}
+	if !strings.HasPrefix(updated.copyMessage, "SAVED: ") {
+		t.Errorf("copyMessage = %q, want SAVED: prefix", updated.copyMessage)
+	}
+}
+
+func TestSettings_ColdcardUnsortedMultisigShowsDescriptorHint(t *testing.T) {
+	mock := NewMockWalletManager()
+	mock.IsMultisigFn = func() bool { return true }
+	mock.ExportColdcardFn = func() (string, error) {
+		return "", wallet.ErrUnsortedMultisigFormat
+	}
+
+	m := NewSettingsModel(mock, nil)
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	updated := model.(SettingsModel)
+
+	want := "Coldcard file needs sortedmulti; use descriptor export"
+	if updated.copyMessage != want {
+		t.Errorf("copyMessage = %q, want %q", updated.copyMessage, want)
+	}
+}
 
 // ─── AnimateTick ────────────────────────────────────────────────────────────
 

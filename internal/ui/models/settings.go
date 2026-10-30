@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -371,6 +372,42 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.walletManager.IsMultisig() {
 					// Multisig: export config JSON (Sparrow-compatible)
 					data, err := m.walletManager.ExportMultisigConfig()
+					if errors.Is(err, wallet.ErrUnsortedMultisigFormat) {
+						// multi() key order cannot be represented in a sortedmulti
+						// config, so export the descriptor instead.
+						accounts := m.walletManager.GetAccounts()
+						if len(accounts) == 0 {
+							m.showCopied = true
+							m.copyMessage = "Export failed: no accounts"
+							m.copiedTime = time.Now()
+							return m, m.animateTick()
+						}
+						descriptor, descErr := m.walletManager.ExportDescriptor(accounts[0].Index)
+						if descErr != nil {
+							m.showCopied = true
+							m.copyMessage = "Export failed: " + descErr.Error()
+							m.copiedTime = time.Now()
+							return m, m.animateTick()
+						}
+						if descriptor == "" {
+							m.showCopied = true
+							m.copyMessage = "Export failed: no descriptor"
+							m.copiedTime = time.Now()
+							return m, m.animateTick()
+						}
+						filename, err := writePrivateExport(filepath.Join(homeDir, ".hax"),
+							m.walletManager.GetWalletName()+"_descriptor.txt", []byte(descriptor))
+						if err != nil {
+							m.showCopied = true
+							m.copyMessage = "Failed to write file"
+							m.copiedTime = time.Now()
+							return m, m.animateTick()
+						}
+						m.showCopied = true
+						m.copyMessage = "SAVED: " + filename
+						m.copiedTime = time.Now()
+						return m, m.animateTick()
+					}
 					if err != nil {
 						m.showCopied = true
 						m.copyMessage = "Export failed: " + err.Error()
@@ -642,7 +679,11 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				configData, err := m.walletManager.ExportColdcardMultisig()
 				if err != nil {
 					m.showCopied = true
-					m.copyMessage = "Export failed: " + err.Error()
+					if errors.Is(err, wallet.ErrUnsortedMultisigFormat) {
+						m.copyMessage = "Coldcard file needs sortedmulti; use descriptor export"
+					} else {
+						m.copyMessage = "Export failed: " + err.Error()
+					}
 					m.copiedTime = time.Now()
 					return m, m.animateTick()
 				}

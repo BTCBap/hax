@@ -229,15 +229,22 @@ func (m *WalletManager) GetMultisigDescriptor() (string, error) {
 
 	config := m.data.Multisig
 
+	// multi(...) keeps the stored cosigner order; sortedmulti(...) implies
+	// BIP67 sorting. The wallet config must round-trip through the descriptor.
+	multiFunc := "sortedmulti"
+	if config.Unsorted {
+		multiFunc = "multi"
+	}
+
 	// Build descriptor based on script type
 	var template string
 	switch MultisigScriptType(config.ScriptType) {
 	case MultisigLegacy:
-		template = "sh(sortedmulti(%d,%s))"
+		template = "sh(" + multiFunc + "(%d,%s))"
 	case MultisigNestedSegwit:
-		template = "sh(wsh(sortedmulti(%d,%s)))"
+		template = "sh(wsh(" + multiFunc + "(%d,%s)))"
 	case MultisigNativeSegwit:
-		template = "wsh(sortedmulti(%d,%s))"
+		template = "wsh(" + multiFunc + "(%d,%s))"
 	default:
 		return "", fmt.Errorf("unknown script type: %d", config.ScriptType)
 	}
@@ -281,6 +288,10 @@ func (m *WalletManager) ExportColdcardMultisig() (string, error) {
 	}
 
 	config := m.data.Multisig
+	if config.Unsorted {
+		return "", ErrUnsortedMultisigFormat
+	}
+
 	coinType := uint32(1) // testnet
 	if m.data.Network == NetworkMainnet {
 		coinType = 0
