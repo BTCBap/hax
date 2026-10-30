@@ -256,6 +256,29 @@ func renderScreens(w, h int) []renderedScreen {
 	fee.estimatedFee = 141
 	screens = append(screens, renderedScreen{"send_fee", fee.View()})
 
+	// Hardware wallet picker: an unlocked Coldcard, a selected Trezor that
+	// needs a PIN, and a Ledger whose multi-line error is truncated to the
+	// status column.
+	hw := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	hw.showPSBTExport = true
+	hw.showHWIDevices = true
+	hw.loading = false
+	hw.hwiDevices = []wallet.HardwareDevice{
+		{Type: wallet.HWTypeColdcard, Model: "Coldcard Mk4", Fingerprint: "cafebabe", Path: "usb:1-1"},
+		{Type: wallet.HWTypeTrezor, Model: "Trezor One", Fingerprint: "abcd1234", Path: "udp:127.0.0.1:21324", NeedsPin: true},
+		{
+			Type:        wallet.HWTypeLedger,
+			Model:       "Ledger Nano X",
+			Fingerprint: "deadbeef",
+			Path:        "usb:1-2",
+			Error: "Could not connect to device:\n" +
+				"the user did not confirm the request on the device screen\n" +
+				"before the transport closed unexpectedly",
+		},
+	}
+	hw.selectedHWDevice = 1
+	screens = append(screens, renderedScreen{"send_hw_devices", hw.View()})
+
 	// The same review PSBT, shown as a flow diagram.
 	sm.inspection = &wallet.PSBTInspection{
 		Inputs: []wallet.InspectedInput{{
