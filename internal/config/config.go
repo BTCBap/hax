@@ -3,12 +3,18 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/fsutil"
 )
+
+// maxConfigSize bounds config.json so a corrupt or hostile file cannot
+// exhaust memory. Configs are a few KiB at most.
+const maxConfigSize = 1 << 20
 
 // DisplayUnit represents the unit for displaying Bitcoin amounts (BIP-177)
 type DisplayUnit string
@@ -72,9 +78,9 @@ func NewConfigManager(walletDir string) (*ConfigManager, error) {
 	}, nil
 }
 
-// Load reads the configuration from disk
+// Load reads the configuration from disk.
 func (cm *ConfigManager) Load() (*AppConfig, error) {
-	data, err := os.ReadFile(cm.configPath)
+	f, err := os.Open(cm.configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// No config exists - return nil to indicate first run
@@ -82,21 +88,53 @@ func (cm *ConfigManager) Load() (*AppConfig, error) {
 		}
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
+	defer func() { _ = f.Close() }()
+
+	if info, err := f.Stat(); err == nil {
+		_ = fsutil.TightenFile(cm.configPath, 0o600)
+		if info.Size() > maxConfigSize {
+			return nil, fmt.Errorf("config file is too large (%d bytes)", info.Size())
+		}
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxConfigSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+	if len(data) > maxConfigSize {
+		return nil, fmt.Errorf("config file is too large")
+	}
 
 	var config AppConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Normalize network aliases and files written before the version field
+	// existed (H3-32/H3-33). Old files must keep loading.
+	if config.Version == 0 {
+		config.Version = 1
+	}
+	if config.Backend != nil {
+		config.Backend.Network = backend.NormalizeNetwork(config.Backend.Network)
+	}
+
+	if result := cm.Validate(&config); !result.Valid {
+		return nil, fmt.Errorf("invalid config: %s", result.Errors[0].Message)
+	}
+
 	cm.config = &config
 	return &config, nil
 }
 
-// Save writes the configuration to disk
+// Save writes the configuration to disk.
 func (cm *ConfigManager) Save(config *AppConfig) error {
-	// Ensure directory exists
+	if result := cm.Validate(config); !result.Valid {
+		return fmt.Errorf("invalid config: %s", result.Errors[0].Message)
+	}
+
 	dir := filepath.Dir(cm.configPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := fsutil.EnsurePrivateDir(dir, 0o700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -105,8 +143,8 @@ func (cm *ConfigManager) Save(config *AppConfig) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Write with secure permissions (owner read/write only)
-	if err := os.WriteFile(cm.configPath, data, 0600); err != nil {
+	// Write atomically with owner-only permissions (H3-16/H3-17).
+	if err := fsutil.WriteFileAtomic(cm.configPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
@@ -145,11 +183,8 @@ func (cm *ConfigManager) Validate(config *AppConfig) *ValidationResult {
 	}
 
 	if config.Backend == nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Field:   "backend",
-			Message: "Backend configuration is required",
-		})
+		// A first-run config is written before the user picks a server.
+		// It is valid, just incomplete; the backend is validated once set.
 		return result
 	}
 
@@ -174,7 +209,7 @@ func (cm *ConfigManager) validateBackend(bc *backend.BackendConfig, result *Vali
 		})
 	}
 
-	if bc.Network != "mainnet" && bc.Network != "testnet" {
+	if net := backend.NormalizeNetwork(bc.Network); net != "mainnet" && net != "testnet" {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "backend.network",
@@ -205,6 +240,12 @@ func (cm *ConfigManager) validateElectrumConfig(ec *backend.ElectrumConfig, resu
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "backend.electrum.host",
 			Message: "Electrum server host is required",
+		})
+	} else if err := backend.ValidateHost(ec.Host); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "backend.electrum.host",
+			Message: fmt.Sprintf("Invalid Electrum server host: %v", err),
 		})
 	}
 
@@ -250,6 +291,12 @@ func (cm *ConfigManager) validateRPCConfig(rc *backend.RPCConfig, result *Valida
 			Field:   "backend.rpc.host",
 			Message: "RPC host is required",
 		})
+	} else if err := backend.ValidateHost(rc.Host); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "backend.rpc.host",
+			Message: fmt.Sprintf("Invalid RPC host: %v", err),
+		})
 	}
 
 	if rc.Port <= 0 || rc.Port > 65535 {
@@ -285,13 +332,4 @@ func (cm *ConfigManager) GetConfig() *AppConfig {
 // ConfigPath returns the path to the config file
 func (cm *ConfigManager) ConfigPath() string {
 	return cm.configPath
-}
-
-// RawConfigJSON returns the raw JSON content of the config file for display
-func (cm *ConfigManager) RawConfigJSON() (string, error) {
-	data, err := os.ReadFile(cm.configPath)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
 }
