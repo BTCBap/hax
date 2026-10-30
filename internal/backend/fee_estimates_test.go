@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +21,9 @@ func TestBtcPerKBToSatPerVB(t *testing.T) {
 		{name: "10 sat/vB", btcPerKB: 0.0001, want: 10, ok: true},
 		{name: "1 sat/vB", btcPerKB: 0.00001, want: 1, ok: true},
 		{name: "sub-min floors to 0.1", btcPerKB: 0.0000005, want: 0.1, ok: true},
+		{name: "absurd rate is unavailable", btcPerKB: 1, ok: false},
+		{name: "NaN is unavailable", btcPerKB: math.NaN(), ok: false},
+		{name: "Inf is unavailable", btcPerKB: math.Inf(1), ok: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

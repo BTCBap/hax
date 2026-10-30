@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -350,7 +349,7 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "c", "C":
 				// Copy descriptor to clipboard
 				if m.descriptorText != "" {
-					err := clipboard.WriteAll(m.descriptorText)
+					err := copyToClipboard(m.descriptorText)
 					if err == nil {
 						m.showCopied = true
 						m.copyMessage = "DESCRIPTOR COPIED!"
@@ -378,8 +377,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.copiedTime = time.Now()
 						return m, m.animateTick()
 					}
-					filename := fmt.Sprintf("%s/.hax/%s_multisig.json", homeDir, m.walletManager.GetWalletName())
-					if err := os.WriteFile(filename, data, 0600); err != nil {
+					filename, err := writePrivateExport(filepath.Join(homeDir, ".hax"),
+						m.walletManager.GetWalletName()+"_multisig.json", data)
+					if err != nil {
 						m.showCopied = true
 						m.copyMessage = "Failed to write file"
 						m.copiedTime = time.Now()
@@ -393,8 +393,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Single-sig: export raw descriptor .txt
 				if m.descriptorText != "" {
-					filename := fmt.Sprintf("%s/.hax/%s_descriptor.txt", homeDir, m.walletManager.GetWalletName())
-					if err := os.WriteFile(filename, []byte(m.descriptorText), 0600); err != nil {
+					filename, err := writePrivateExport(filepath.Join(homeDir, ".hax"),
+						m.walletManager.GetWalletName()+"_descriptor.txt", []byte(m.descriptorText))
+					if err != nil {
 						m.showCopied = true
 						m.copyMessage = "Failed to write file"
 						m.copiedTime = time.Now()
@@ -550,7 +551,7 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if xpub != "" {
-					err := clipboard.WriteAll(xpub)
+					err := copyToClipboard(xpub)
 					if err == nil {
 						m.showCopied = true
 						m.copyMessage = "COPIED!"
@@ -646,8 +647,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.animateTick()
 				}
 				homedir, _ := os.UserHomeDir()
-				configPath := filepath.Join(homedir, "coldcard-multisig.txt")
-				if err := os.WriteFile(configPath, []byte(configData), 0600); err != nil {
+				configPath, err := writePrivateExport(filepath.Join(homedir, ".hax"),
+					"coldcard-multisig.txt", []byte(configData))
+				if err != nil {
 					m.showCopied = true
 					m.copyMessage = "Save failed: " + err.Error()
 					m.copiedTime = time.Now()

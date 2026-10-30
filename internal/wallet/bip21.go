@@ -105,11 +105,12 @@ func isUpper(s string) bool {
 	return hasLetter
 }
 
-// sanitizeURIText drops control characters (terminal escapes included)
-// from labels and messages and caps their length.
+// sanitizeURIText drops control and Unicode format characters (terminal
+// escapes, bidirectional overrides and isolates) from labels and messages
+// and caps their length.
 func sanitizeURIText(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r

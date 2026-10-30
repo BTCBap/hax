@@ -6,30 +6,42 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/fsutil"
+	"github.com/BTCBap/hax/internal/logsafe"
 	"github.com/BTCBap/hax/internal/ui/models"
 	"github.com/BTCBap/hax/internal/version"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func main() {
+	var walletDir string
+	var walletManager *wallet.WalletManager
+	// A panic must restore the terminal and must not leave a stack trace
+	// with wallet state on screen. Diagnostic detail goes to a 0600 file.
+	defer func() {
+		if r := recover(); r != nil {
+			if walletManager != nil {
+				walletManager.LockWallet()
+			}
+			if walletDir != "" {
+				_ = writeCrashLog(walletDir, r)
+			}
+			// Leave the alternate screen and show the cursor again.
+			_, _ = fmt.Fprint(os.Stderr, "\x1b[?1049l\x1b[?25h")
+			_, _ = fmt.Fprintln(os.Stderr, "hax: unexpected error; the wallet was locked and closed.")
+			os.Exit(70)
+		}
+	}()
+
 	if done, code := handleArgs(os.Args[1:], os.Stdout, os.Stderr); done {
 		os.Exit(code)
-	}
-
-	if len(os.Getenv("DEBUG")) > 0 {
-		f, err := tea.LogToFile("debug.log", "debug")
-		if err != nil {
-			fmt.Println("fatal:", err)
-			os.Exit(1)
-		}
-		defer func() { _ = f.Close() }()
-	} else {
-		log.SetOutput(io.Discard)
 	}
 
 	homeDir, err := os.UserHomeDir()
@@ -37,10 +49,21 @@ func main() {
 		fmt.Printf("Error getting home directory: %v\n", err)
 		os.Exit(1)
 	}
-	walletDir, err := resolveWalletDir(homeDir)
+	walletDir, err = resolveWalletDir(homeDir)
 	if err != nil {
 		fmt.Printf("Error preparing wallet directory: %v\n", err)
 		os.Exit(1)
+	}
+
+	if len(os.Getenv("DEBUG")) > 0 {
+		f, err := setupDebugLog(walletDir)
+		if err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
+		}
+		defer func() { _ = f.Close() }()
+	} else {
+		log.SetOutput(io.Discard)
 	}
 
 	configManager, err := config.NewConfigManager(walletDir)
@@ -62,7 +85,7 @@ func main() {
 		}
 	}
 
-	walletManager, err := wallet.NewWalletManager(walletDir, b)
+	walletManager, err = wallet.NewWalletManager(walletDir, b)
 	if err != nil {
 		fmt.Printf("Error creating wallet manager: %v\n", err)
 		os.Exit(1)
@@ -99,6 +122,41 @@ func main() {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// maxDebugLogSize caps debug.log; older content is rotated to debug.log.1.
+const maxDebugLogSize = 5 << 20
+
+// writeCrashLog records a panic diagnostic under the private wallet
+// directory without secrets or an on-screen stack trace.
+func writeCrashLog(walletDir string, recovered any) error {
+	if err := fsutil.EnsurePrivateDir(walletDir, 0o700); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("hax crash at %s\npanic: %v\n\n%s\n",
+		time.Now().Format(time.RFC3339), recovered, debug.Stack())
+	return fsutil.WriteFileAtomic(filepath.Join(walletDir, "crash.log"),
+		[]byte(logsafe.Redact(body)), 0o600)
+}
+
+// setupDebugLog opens a 0600 debug log under the private wallet directory.
+func setupDebugLog(walletDir string) (*os.File, error) {
+	if err := fsutil.EnsurePrivateDir(walletDir, 0o700); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(walletDir, "debug.log")
+	if info, err := os.Stat(path); err == nil && info.Size() > maxDebugLogSize {
+		_ = os.Remove(path + ".1")
+		if err := os.Rename(path, path+".1"); err != nil {
+			_ = os.Remove(path)
+		}
+	}
+	f, err := tea.LogToFile(path, "debug")
+	if err != nil {
+		return nil, err
+	}
+	_ = os.Chmod(path, 0o600)
+	return f, nil
 }
 
 func resolveWalletDir(homeDir string) (string, error) {

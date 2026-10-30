@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -431,6 +432,27 @@ func (m *WalletManager) GetMultisigSigningStatus() (local, hardware, external in
 	return
 }
 
+// SameUnsignedTransaction reports whether two PSBTs carry the same unsigned
+// transaction. A hardware signer must not be allowed to substitute a
+// different transaction for the one the user reviewed (H3-52).
+func SameUnsignedTransaction(a, b *psbt.Packet) bool {
+	if a == nil || b == nil || a.UnsignedTx == nil || b.UnsignedTx == nil {
+		return false
+	}
+	if len(a.UnsignedTx.TxIn) != len(b.UnsignedTx.TxIn) ||
+		len(a.UnsignedTx.TxOut) != len(b.UnsignedTx.TxOut) {
+		return false
+	}
+	var ab, bb bytes.Buffer
+	if err := a.UnsignedTx.Serialize(&ab); err != nil {
+		return false
+	}
+	if err := b.UnsignedTx.Serialize(&bb); err != nil {
+		return false
+	}
+	return bytes.Equal(ab.Bytes(), bb.Bytes())
+}
+
 // ExportPSBTBase64 exports a PSBT to base64 string (BIP174 standard format)
 // This can be shared with other wallets, hardware devices, or multisig coordinators
 func (m *WalletManager) ExportPSBTBase64(result *PSBTResult) (string, error) {
@@ -451,18 +473,18 @@ func (m *WalletManager) ImportPSBTFromBase64(base64Data string) (*PSBTResult, er
 		return nil, err
 	}
 
-	// Calculate fee from PSBT: fee = total_inputs - total_outputs
-	// Input values come from WitnessUtxo (for SegWit/Taproot) or NonWitnessUtxo (for legacy)
+	// Calculate fee from PSBT: fee = total_inputs - total_outputs.
+	// Amounts come from verified previous outputs; a legacy input without
+	// its previous transaction leaves the fee unknown (H3-04).
 	var totalInput int64
-	for i, input := range packet.Inputs {
-		if input.WitnessUtxo != nil {
-			totalInput += input.WitnessUtxo.Value
-		} else if input.NonWitnessUtxo != nil && i < len(packet.UnsignedTx.TxIn) {
-			prevOutIndex := packet.UnsignedTx.TxIn[i].PreviousOutPoint.Index
-			if int(prevOutIndex) < len(input.NonWitnessUtxo.TxOut) {
-				totalInput += input.NonWitnessUtxo.TxOut[prevOutIndex].Value
-			}
+	var unverified []string
+	for i := range packet.Inputs {
+		prevOut, err := verifiedInputPrevOut(packet, i)
+		if err != nil {
+			unverified = append(unverified, err.Error())
+			continue
 		}
+		totalInput += prevOut.Value
 	}
 
 	var totalOutput int64
@@ -472,14 +494,22 @@ func (m *WalletManager) ImportPSBTFromBase64(base64Data string) (*PSBTResult, er
 
 	fee := totalInput - totalOutput
 	if fee < 0 {
-		fee = 0 // Sanity check - fee shouldn't be negative
+		// Outputs that exceed inputs cannot be signed: report the
+		// discrepancy instead of showing a fake zero fee (H3-35).
+		return nil, newSigningError(ErrSigningFailed, -1,
+			fmt.Sprintf("PSBT is invalid: outputs are worth more than its verified inputs (%d sats more)", -fee))
 	}
 
-	return &PSBTResult{
+	result := &PSBTResult{
 		Packet: packet,
 		Fee:    api.Satoshi(fee),
 		VSize:  GetPSBTVSize(packet),
-	}, nil
+	}
+	if len(unverified) > 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"Some inputs could not be verified, so the fee is unknown: %s", unverified[0]))
+	}
+	return result, nil
 }
 
 // validatePSBTOwnership checks if the PSBT belongs to the current wallet.

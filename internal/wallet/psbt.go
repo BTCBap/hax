@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/logsafe"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -27,10 +28,15 @@ import (
 // psbtDebugEnabled is set once at startup based on DEBUG env var
 var psbtDebugEnabled = len(os.Getenv("DEBUG")) > 0
 
+// maxConstructFeeRateSatPerVB is the absolute ceiling for transaction
+// construction. Backend estimates are capped lower; this also catches a
+// hostile/overflowed rate passed by another caller.
+const maxConstructFeeRateSatPerVB = 10000.0
+
 // psbtDebugLog logs only when DEBUG env var is set
 func psbtDebugLog(format string, args ...interface{}) {
 	if psbtDebugEnabled {
-		log.Printf(format, args...)
+		log.Print(logsafe.Redact(fmt.Sprintf(format, args...)))
 	}
 }
 
@@ -344,6 +350,12 @@ func CreatePSBT(
 	if len(outputs) == 0 {
 		return nil, fmt.Errorf("no outputs provided")
 	}
+	if math.IsNaN(feeRate) || math.IsInf(feeRate, 0) || feeRate <= 0 {
+		return nil, fmt.Errorf("invalid fee rate")
+	}
+	if feeRate > maxConstructFeeRateSatPerVB {
+		return nil, fmt.Errorf("fee rate too high (maximum %.0f sat/vB)", maxConstructFeeRateSatPerVB)
+	}
 
 	// Calculate totals
 	var totalInput api.Satoshi
@@ -362,6 +374,12 @@ func CreatePSBT(
 	vSize := EstimateVSize(len(utxos), numOutputs, inputScriptType, inputScriptType, multisigM, multisigN)
 	fee := api.Satoshi(math.Ceil(float64(vSize) * feeRate))
 	intendedFee := fee // Track the original calculated fee
+	if fee < 0 || totalInput <= 0 {
+		return nil, fmt.Errorf("invalid fee calculation")
+	}
+	if fee > totalInput {
+		return nil, fmt.Errorf("fee exceeds the input value")
+	}
 
 	// Get dust limit based on change address type
 	dustLimit := GetDustLimit(changeAddr)
@@ -538,14 +556,21 @@ func SignPSBT(packet *psbt.Packet, wallet *HDWallet, utxos []UTXOWithPath, netwo
 		}
 
 		pubKey := privKey.PubKey().SerializeCompressed()
-		witnessUtxo := inputPrevOut(packet, i)
-		if witnessUtxo == nil {
-			return newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data for input")
+		witnessUtxo, verr := verifiedInputPrevOut(packet, i)
+		if verr != nil {
+			return newSigningError(ErrMissingWitnessUtxo, i, verr.Error())
 		}
 
 		isBIP44 := path.Purpose == 44 // P2PKH
 		isBIP49 := path.Purpose == 49 // P2SH-P2WPKH
 		isBIP86 := path.Purpose == 86 // P2TR
+
+		// A legacy signature does not commit to the amount, so its
+		// previous transaction is required (H3-04).
+		if isBIP44 && packet.Inputs[i].NonWitnessUtxo == nil {
+			return newSigningError(ErrMissingWitnessUtxo, i,
+				fmt.Sprintf("input %d is a legacy input without its previous transaction", i+1))
+		}
 
 		psbtDebugLog("[DEBUG SignPSBT] Input %d: path=%s, purpose=%d, isBIP86=%v",
 			i, utxo.Path, path.Purpose, isBIP86)
@@ -683,9 +708,9 @@ func SignPSBTFromDerivation(packet *psbt.Packet, wallet *HDWallet, network *chai
 			continue
 		}
 
-		witnessUtxo := inputPrevOut(packet, i)
-		if witnessUtxo == nil {
-			return newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data available (neither WitnessUtxo nor NonWitnessUtxo)")
+		witnessUtxo, verr := verifiedInputPrevOut(packet, i)
+		if verr != nil {
+			return newSigningError(ErrMissingWitnessUtxo, i, verr.Error())
 		}
 
 		// Try Taproot first (TaprootBip32Derivation)
@@ -809,6 +834,10 @@ func SignPSBTFromDerivation(packet *psbt.Packet, wallet *HDWallet, network *chai
 				case 86:
 					err = signTaprootInput(packet, i, privKey, witnessUtxo)
 				case 44:
+					if input.NonWitnessUtxo == nil {
+						return newSigningError(ErrMissingWitnessUtxo, i,
+							fmt.Sprintf("input %d is a legacy input without its previous transaction", i+1))
+					}
 					err = signLegacyInput(packet, i, privKey, ourPubKey, witnessUtxo, network)
 				default:
 					err = signSegWitInput(packet, i, privKey, ourPubKey, witnessUtxo, purpose == 49)
@@ -964,10 +993,16 @@ func SignMultisigPSBTFromDerivation(
 				continue
 			}
 
-			witnessUtxo := inputPrevOut(packet, i)
-			if witnessUtxo == nil {
-				psbtDebugLog("[DEBUG] Input %d: no witness UTXO", i)
-				continue
+			witnessUtxo, verr := verifiedInputPrevOut(packet, i)
+			if verr != nil {
+				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i, verr.Error())
+			}
+			if scriptType == MultisigLegacy && packet.Inputs[i].NonWitnessUtxo == nil {
+				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i,
+					fmt.Sprintf("input %d is a legacy multisig input without its previous transaction", i+1))
+			}
+			if verr := verifyMultisigScript(multisigScript, scriptType, witnessUtxo); verr != nil {
+				return sigsAdded, newSigningError(ErrSigningFailed, i, verr.Error())
 			}
 
 			// Match by fingerprint, try multiple byte orderings for tool compatibility
@@ -1320,9 +1355,16 @@ func SignMultisigPSBT(
 				return sigsAdded, newSigningError(ErrMissingWitnessScript, i, "no multisig script (neither WitnessScript nor RedeemScript)")
 			}
 
-			witnessUtxo := inputPrevOut(packet, i)
-			if witnessUtxo == nil {
-				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i, "no UTXO data for input")
+			witnessUtxo, verr := verifiedInputPrevOut(packet, i)
+			if verr != nil {
+				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i, verr.Error())
+			}
+			if scriptType == MultisigLegacy && packet.Inputs[i].NonWitnessUtxo == nil {
+				return sigsAdded, newSigningError(ErrMissingWitnessUtxo, i,
+					fmt.Sprintf("input %d is a legacy multisig input without its previous transaction", i+1))
+			}
+			if verr := verifyMultisigScript(multisigScript, scriptType, witnessUtxo); verr != nil {
+				return sigsAdded, newSigningError(ErrSigningFailed, i, verr.Error())
 			}
 
 			pubKey := privKey.PubKey().SerializeCompressed()
@@ -1794,8 +1836,15 @@ func ExportPSBT(packet *psbt.Packet) (string, error) {
 	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
+// maxPSBTEncodedSize bounds a base64 PSBT accepted by ImportPSBT. The UI
+// applies a stricter limit; this is the library-level backstop (H3-38).
+const maxPSBTEncodedSize = 16 << 20
+
 // ImportPSBT imports a PSBT from base64 string
 func ImportPSBT(data string) (*psbt.Packet, error) {
+	if len(data) > maxPSBTEncodedSize {
+		return nil, fmt.Errorf("PSBT is too large (%d bytes)", len(data))
+	}
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base64: %w", err)

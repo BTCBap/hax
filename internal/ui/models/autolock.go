@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/BTCBap/hax/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -26,11 +27,13 @@ func (m RootModel) autoLockAfter() time.Duration {
 		return m.autoLockOverride
 	}
 	if m.configManager == nil {
-		return 0
+		return config.DefaultAutoLockMinutes * time.Minute
 	}
 	cfg, err := m.configManager.Load()
 	if err != nil {
-		return 0
+		// Fail safe: an unreadable config must not disable auto-lock.
+		debugLog("[AUTOLOCK] config load failed, using default timeout: %v", err)
+		return config.DefaultAutoLockMinutes * time.Minute
 	}
 	return cfg.AutoLockAfter()
 }
@@ -44,7 +47,7 @@ func (m RootModel) shouldAutoLock(now time.Time) bool {
 		return false
 	}
 	switch m.state {
-	case StateSplash, StateConnectionSetup, StateWalletSetup, StateUnlock:
+	case StateSplash, StateWalletSetup, StateUnlock:
 		return false
 	case StateSend:
 		if sm, ok := m.sendModel.(SendModel); ok && sm.step == SendStepBroadcasting {
@@ -60,6 +63,7 @@ func (m RootModel) autoLock() (RootModel, tea.Cmd) {
 	name := m.walletManager.GetWalletName()
 	minutes := int(m.autoLockAfter().Round(time.Minute) / time.Minute)
 	m.walletManager.LockWallet()
+	clearClipboard()
 
 	m.mainDashboardModel = nil
 	m.receiveModel = nil
@@ -69,6 +73,10 @@ func (m RootModel) autoLock() (RootModel, tea.Cmd) {
 	m.utxosModel = nil
 	m.settingsModel = nil
 	m.helpModel = nil
+	// These screens can hold a seed phrase, BIP39 passphrase, or RPC
+	// credentials, so drop them rather than keeping them resident.
+	m.walletSetupModel = nil
+	m.connectionSetupModel = nil
 
 	um := NewUnlockModel(m.walletManager)
 	um.preferredWallet = name

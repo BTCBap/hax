@@ -12,16 +12,34 @@ import (
 	"path/filepath"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/fsutil"
 
+	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
-	// PBKDF2 parameters
-	saltSize   = 32
-	keySize    = 32
-	pbkdf2Iter = 100000
-	nonceSize  = 12
+	saltSize  = 32
+	keySize   = 32
+	nonceSize = 12
+
+	// Current wallet file format. Version 1 used PBKDF2-HMAC-SHA256 with
+	// 100,000 iterations and no associated data. Version 2 uses Argon2id
+	// and authenticates the KDF metadata as AEAD associated data.
+	walletFormatVersion   = 2
+	legacyFormatVersion   = 1
+	kdfArgon2id           = "argon2id"
+	argon2Time            = 3
+	argon2MemoryKiB       = 64 * 1024
+	argon2Threads         = 4
+	legacyPBKDF2Iter      = 100000
+	minArgon2MemoryKiB    = 8 * 1024
+	maxArgon2MemoryKiB    = 512 * 1024
+	maxArgon2Time         = 10
+	maxArgon2Threads      = 16
+	walletAssociatedData  = "hax-wallet"
+	walletDataFormatVers  = 1
+	walletEncryptedSuffix = ".wallet"
 )
 
 // WalletData represents the data stored in a wallet file
@@ -51,9 +69,10 @@ type WalletData struct {
 
 // MultisigWalletConfig stores multisig wallet configuration
 type MultisigWalletConfig struct {
-	M          int                      `json:"m"`           // Required signatures
-	N          int                      `json:"n"`           // Total cosigners
-	ScriptType int                      `json:"script_type"` // 0=Legacy, 1=Nested, 2=Native
+	M          int                      `json:"m"`                  // Required signatures
+	N          int                      `json:"n"`                  // Total cosigners
+	ScriptType int                      `json:"script_type"`        // 0=Legacy, 1=Nested, 2=Native
+	Unsorted   bool                     `json:"unsorted,omitempty"` // multi(...) keeps descriptor key order
 	Cosigners  []MultisigCosignerConfig `json:"cosigners"`
 }
 
@@ -145,12 +164,52 @@ type AddressData struct {
 	Used    bool   `json:"used"`
 }
 
-// EncryptedWalletFile represents the encrypted wallet file format
+// EncryptedWalletFile represents the encrypted wallet file format.
+//
+// Version 1 files (PBKDF2, no KDF fields) are still accepted. New files use
+// Version 2 with Argon2id parameters stored alongside the ciphertext.
 type EncryptedWalletFile struct {
-	Version int    `json:"version"`
-	Salt    []byte `json:"salt"`
-	Nonce   []byte `json:"nonce"`
-	Data    []byte `json:"data"` // Encrypted WalletData
+	Version        int    `json:"version"`
+	KDF            string `json:"kdf,omitempty"`
+	KDFTime        uint32 `json:"kdf_time,omitempty"`
+	KDFMemory      uint32 `json:"kdf_memory,omitempty"`      // KiB
+	KDFParallelism uint8  `json:"kdf_parallelism,omitempty"` // threads
+	Salt           []byte `json:"salt"`
+	Nonce          []byte `json:"nonce"`
+	Data           []byte `json:"data"` // Encrypted WalletData
+}
+
+// WalletKey is a derived wallet encryption key plus the exact KDF metadata
+// needed to re-save the file without changing its format.
+type WalletKey struct {
+	Salt        []byte
+	Key         []byte
+	Version     int
+	KDF         string
+	Time        uint32
+	Memory      uint32 // KiB
+	Parallelism uint8
+}
+
+func defaultWalletKey(salt, key []byte) *WalletKey {
+	return &WalletKey{
+		Salt:        salt,
+		Key:         key,
+		Version:     walletFormatVersion,
+		KDF:         kdfArgon2id,
+		Time:        argon2Time,
+		Memory:      argon2MemoryKiB,
+		Parallelism: argon2Threads,
+	}
+}
+
+// Wipe overwrites the key material.
+func (k *WalletKey) Wipe() {
+	if k == nil {
+		return
+	}
+	Wipe(k.Key)
+	Wipe(k.Salt)
 }
 
 // WalletStorage handles secure wallet persistence
@@ -160,8 +219,9 @@ type WalletStorage struct {
 
 // NewWalletStorage creates a new wallet storage handler
 func NewWalletStorage(walletDir string) (*WalletStorage, error) {
-	// Create wallet directory if it doesn't exist
-	if err := os.MkdirAll(walletDir, 0700); err != nil {
+	// Create the wallet directory owner-only and tighten it if it already
+	// existed with looser permissions (H3-17).
+	if err := fsutil.EnsurePrivateDir(walletDir, 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create wallet directory: %w", err)
 	}
 
@@ -170,30 +230,47 @@ func NewWalletStorage(walletDir string) (*WalletStorage, error) {
 	}, nil
 }
 
-// SaveWallet encrypts and saves a wallet to disk under a fresh salt derived
-// from password. Used when creating a wallet.
+// SaveWallet encrypts and saves a wallet to disk under a fresh Argon2id salt
+// derived from password. Used when creating a wallet.
 func (s *WalletStorage) SaveWallet(walletName string, data *WalletData, password string) error {
+	pw := []byte(password)
+	defer Wipe(pw)
+	return s.saveWalletBytes(walletName, data, pw)
+}
+
+func (s *WalletStorage) saveWalletBytes(walletName string, data *WalletData, password []byte) error {
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
 		return fmt.Errorf("failed to generate salt: %w", err)
 	}
-	pw := []byte(password)
-	key := deriveKey(pw, salt)
+	key := deriveKey(password, salt, kdfArgon2id, argon2Time, argon2MemoryKiB, argon2Threads)
 	defer Wipe(key)
-	defer Wipe(pw)
-	return s.SaveWalletWithKey(walletName, data, salt, key)
+	return s.SaveWalletWithKeyInfo(walletName, data, defaultWalletKey(salt, key))
 }
 
 // SaveWalletWithKey encrypts and saves a wallet with an already-derived key
 // and its salt. A fresh random nonce is used on every save. This lets an
 // unlocked session re-persist without retaining the password.
+//
+// The key is assumed to use the current Argon2id parameters. Unlocked
+// sessions are transparently migrated to those parameters, so this holds
+// for every key obtained through LoadWalletKey.
 func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, salt, key []byte) error {
+	return s.SaveWalletWithKeyInfo(walletName, data, defaultWalletKey(salt, key))
+}
+
+// SaveWalletWithKeyInfo is SaveWalletWithKey with explicit KDF metadata, so
+// a wallet that could not be migrated keeps its original parameters.
+func (s *WalletStorage) SaveWalletWithKeyInfo(walletName string, data *WalletData, wk *WalletKey) error {
 	walletPath, err := s.walletPath(walletName)
 	if err != nil {
 		return err
 	}
-	if len(key) != keySize || len(salt) == 0 {
+	if wk == nil || len(wk.Key) != keySize || len(wk.Salt) == 0 {
 		return fmt.Errorf("wallet encryption key not available (wallet locked?)")
+	}
+	if data.Version == 0 {
+		data.Version = walletDataFormatVers
 	}
 
 	plaintext, err := json.Marshal(data)
@@ -202,28 +279,29 @@ func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, s
 	}
 	defer Wipe(plaintext)
 
-	ciphertext, nonce, err := encrypt(plaintext, key)
+	enc := EncryptedWalletFile{
+		Version:        wk.Version,
+		KDF:            wk.KDF,
+		KDFTime:        wk.Time,
+		KDFMemory:      wk.Memory,
+		KDFParallelism: wk.Parallelism,
+		Salt:           wk.Salt,
+	}
+	ciphertext, nonce, err := encrypt(plaintext, wk.Key, walletAAD(&enc))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt wallet: %w", err)
 	}
+	enc.Nonce = nonce
+	enc.Data = ciphertext
 
-	fileData, err := json.MarshalIndent(EncryptedWalletFile{
-		Version: 1,
-		Salt:    salt,
-		Nonce:   nonce,
-		Data:    ciphertext,
-	}, "", "  ")
+	fileData, err := json.MarshalIndent(enc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal encrypted wallet: %w", err)
 	}
 
-	// Write atomically with restricted permissions.
-	tmp := walletPath + ".tmp"
-	if err := os.WriteFile(tmp, fileData, 0600); err != nil {
-		return fmt.Errorf("failed to write wallet file: %w", err)
-	}
-	if err := os.Rename(tmp, walletPath); err != nil {
-		_ = os.Remove(tmp)
+	// Write atomically with restricted permissions: temp file in the same
+	// directory, fsync, rename, fsync the directory (H3-16).
+	if err := fsutil.WriteFileAtomic(walletPath, fileData, 0o600); err != nil {
 		return fmt.Errorf("failed to write wallet file: %w", err)
 	}
 	return nil
@@ -231,12 +309,11 @@ func (s *WalletStorage) SaveWalletWithKey(walletName string, data *WalletData, s
 
 // LoadWallet decrypts and loads a wallet from disk.
 func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletData, error) {
-	data, salt, key, err := s.LoadWalletKey(walletName, []byte(password))
+	data, wk, err := s.LoadWalletKeyInfo(walletName, []byte(password))
 	if err != nil {
 		return nil, err
 	}
-	Wipe(key)
-	Wipe(salt)
+	wk.Wipe()
 	return data, nil
 }
 
@@ -244,41 +321,170 @@ func (s *WalletStorage) LoadWallet(walletName string, password string) (*WalletD
 // the caller can re-save without keeping the password. The caller owns key and
 // must Wipe it when done. password is not retained.
 func (s *WalletStorage) LoadWalletKey(walletName string, password []byte) (*WalletData, []byte, []byte, error) {
-	walletPath, err := s.walletPath(walletName)
+	data, wk, err := s.LoadWalletKeyInfo(walletName, password)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	return data, wk.Salt, wk.Key, nil
+}
+
+// LoadWalletKeyInfo decrypts a wallet, validates the file format, and
+// transparently re-encrypts old-format files with the current Argon2id
+// parameters after a successful unlock. If re-encryption fails the wallet
+// still opens with its original parameters.
+func (s *WalletStorage) LoadWalletKeyInfo(walletName string, password []byte) (*WalletData, *WalletKey, error) {
+	walletPath, err := s.walletPath(walletName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Tighten a wallet file left group/world-readable by an older version,
+	// a restore, or a permissive umask (H3-17).
+	if err := fsutil.TightenFile(walletPath, 0o600); err != nil {
+		return nil, nil, fmt.Errorf("failed to secure wallet file: %w", err)
 	}
 
 	fileData, err := os.ReadFile(walletPath) // #nosec G304 -- path built from a validated wallet name inside the wallet dir
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read wallet file: %w", err)
+		return nil, nil, fmt.Errorf("failed to read wallet file: %w", err)
 	}
 
 	var encryptedWallet EncryptedWalletFile
 	if err := json.Unmarshal(fileData, &encryptedWallet); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse wallet file: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse wallet file: %w", err)
 	}
 
-	key := deriveKey(password, encryptedWallet.Salt)
-
-	plaintext, err := decrypt(encryptedWallet.Data, encryptedWallet.Nonce, key)
+	wk, err := validateEncryptedWallet(&encryptedWallet)
 	if err != nil {
-		Wipe(key)
-		return nil, nil, nil, fmt.Errorf("failed to decrypt wallet (incorrect password?): %w", err)
+		return nil, nil, err
+	}
+	wk.Key = deriveKey(password, encryptedWallet.Salt, wk.KDF, wk.Time, wk.Memory, wk.Parallelism)
+
+	plaintext, err := decrypt(encryptedWallet.Data, encryptedWallet.Nonce, wk.Key, walletAAD(&encryptedWallet))
+	if err != nil {
+		wk.Wipe()
+		return nil, nil, fmt.Errorf("failed to decrypt wallet (incorrect password?): %w", err)
 	}
 	defer Wipe(plaintext)
 
 	var walletData WalletData
 	if err := json.Unmarshal(plaintext, &walletData); err != nil {
-		Wipe(key)
-		return nil, nil, nil, fmt.Errorf("failed to parse wallet data: %w", err)
+		wk.Wipe()
+		return nil, nil, fmt.Errorf("failed to parse wallet data: %w", err)
+	}
+	// Files written before the field was populated decode as zero; treat
+	// that as the current data version so old wallets keep opening.
+	if walletData.Version == 0 {
+		walletData.Version = walletDataFormatVers
+	}
+	if walletData.Version != walletDataFormatVers {
+		wk.Wipe()
+		return nil, nil, fmt.Errorf("unsupported wallet data version %d", walletData.Version)
 	}
 
-	return &walletData, encryptedWallet.Salt, key, nil
+	// Old files open normally and are re-encrypted with the stronger KDF.
+	if needsKDFUpgrade(&encryptedWallet) {
+		if upgraded, upgradeErr := s.reencrypt(walletName, &walletData, password); upgradeErr == nil {
+			wk.Wipe()
+			wk = upgraded
+		}
+	}
+
+	return &walletData, wk, nil
 }
 
-func deriveKey(password, salt []byte) []byte {
-	return pbkdf2.Key(password, salt, pbkdf2Iter, keySize, sha256.New)
+// validateEncryptedWallet checks the format, version, KDF parameters and
+// nonce/salt lengths before any key derivation (H3-43).
+func validateEncryptedWallet(enc *EncryptedWalletFile) (*WalletKey, error) {
+	if enc == nil {
+		return nil, fmt.Errorf("invalid wallet file")
+	}
+	switch enc.Version {
+	case legacyFormatVersion:
+		if len(enc.Salt) != saltSize {
+			return nil, fmt.Errorf("invalid wallet salt length %d", len(enc.Salt))
+		}
+		if len(enc.Nonce) != nonceSize {
+			return nil, fmt.Errorf("invalid wallet nonce length %d", len(enc.Nonce))
+		}
+		return &WalletKey{
+			Salt:    enc.Salt,
+			Version: legacyFormatVersion,
+		}, nil
+	case walletFormatVersion:
+		if enc.KDF != kdfArgon2id {
+			return nil, fmt.Errorf("unsupported wallet KDF %q", enc.KDF)
+		}
+		if len(enc.Salt) != saltSize {
+			return nil, fmt.Errorf("invalid wallet salt length %d", len(enc.Salt))
+		}
+		if len(enc.Nonce) != nonceSize {
+			return nil, fmt.Errorf("invalid wallet nonce length %d", len(enc.Nonce))
+		}
+		if enc.KDFTime < 1 || enc.KDFTime > maxArgon2Time {
+			return nil, fmt.Errorf("unsupported wallet KDF time %d", enc.KDFTime)
+		}
+		if enc.KDFMemory < minArgon2MemoryKiB || enc.KDFMemory > maxArgon2MemoryKiB {
+			return nil, fmt.Errorf("unsupported wallet KDF memory %d KiB", enc.KDFMemory)
+		}
+		if enc.KDFParallelism < 1 || enc.KDFParallelism > maxArgon2Threads {
+			return nil, fmt.Errorf("unsupported wallet KDF parallelism %d", enc.KDFParallelism)
+		}
+		return &WalletKey{
+			Salt:        enc.Salt,
+			Version:     walletFormatVersion,
+			KDF:         enc.KDF,
+			Time:        enc.KDFTime,
+			Memory:      enc.KDFMemory,
+			Parallelism: enc.KDFParallelism,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported wallet file version %d", enc.Version)
+	}
+}
+
+func needsKDFUpgrade(enc *EncryptedWalletFile) bool {
+	return enc.Version != walletFormatVersion ||
+		enc.KDF != kdfArgon2id ||
+		enc.KDFTime < argon2Time ||
+		enc.KDFMemory < argon2MemoryKiB ||
+		enc.KDFParallelism != argon2Threads
+}
+
+// reencrypt writes data with fresh Argon2id parameters and returns the new key.
+func (s *WalletStorage) reencrypt(walletName string, data *WalletData, password []byte) (*WalletKey, error) {
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, err
+	}
+	key := deriveKey(password, salt, kdfArgon2id, argon2Time, argon2MemoryKiB, argon2Threads)
+	wk := defaultWalletKey(salt, key)
+	if err := s.SaveWalletWithKeyInfo(walletName, data, wk); err != nil {
+		wk.Wipe()
+		return nil, err
+	}
+	return wk, nil
+}
+
+// walletAAD binds the format version and KDF metadata to the ciphertext
+// (H3-44). Legacy version 1 files were sealed without associated data.
+func walletAAD(enc *EncryptedWalletFile) []byte {
+	if enc == nil || enc.Version == legacyFormatVersion {
+		return nil
+	}
+	return []byte(fmt.Sprintf("%s|version=%d|kdf=%s|time=%d|memory=%d|parallelism=%d|salt=%x",
+		walletAssociatedData, enc.Version, enc.KDF, enc.KDFTime, enc.KDFMemory,
+		enc.KDFParallelism, enc.Salt))
+}
+
+// deriveKey derives a 32-byte encryption key with the given KDF. Unknown
+// KDFs fall back to the legacy PBKDF2 parameters only for version 1 files,
+// which validateEncryptedWallet enforces.
+func deriveKey(password, salt []byte, kdf string, t, m uint32, p uint8) []byte {
+	if kdf == kdfArgon2id {
+		return argon2.IDKey(password, salt, t, m, p, keySize)
+	}
+	return pbkdf2.Key(password, salt, legacyPBKDF2Iter, keySize, sha256.New)
 }
 
 // WalletExists checks if a wallet file exists
@@ -335,8 +541,8 @@ func (s *WalletStorage) walletPath(walletName string) (string, error) {
 	return p, nil
 }
 
-// encrypt encrypts data using AES-GCM
-func encrypt(plaintext []byte, key []byte) (ciphertext []byte, nonce []byte, err error) {
+// encrypt encrypts data using AES-GCM with optional associated data.
+func encrypt(plaintext []byte, key []byte, aad []byte) (ciphertext []byte, nonce []byte, err error) {
 	// Create AES cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -356,12 +562,12 @@ func encrypt(plaintext []byte, key []byte) (ciphertext []byte, nonce []byte, err
 	}
 
 	// Encrypt
-	ciphertext = gcm.Seal(nil, nonce, plaintext, nil)
+	ciphertext = gcm.Seal(nil, nonce, plaintext, aad)
 	return ciphertext, nonce, nil
 }
 
-// decrypt decrypts data using AES-GCM
-func decrypt(ciphertext []byte, nonce []byte, key []byte) (plaintext []byte, err error) {
+// decrypt decrypts data using AES-GCM with optional associated data.
+func decrypt(ciphertext []byte, nonce []byte, key []byte, aad []byte) (plaintext []byte, err error) {
 	// Create AES cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -375,7 +581,7 @@ func decrypt(ciphertext []byte, nonce []byte, key []byte) (plaintext []byte, err
 	}
 
 	// Decrypt
-	plaintext, err = gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err = gcm.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return nil, fmt.Errorf("decryption failed: %w", err)
 	}

@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"sync"
 
@@ -15,6 +16,9 @@ import (
 
 // inputPrevOut returns the output spent by input i, from the witness UTXO
 // or, for non-witness inputs, from the full previous transaction.
+//
+// Signing paths must use verifiedInputPrevOut instead: this helper is for
+// metadata and display where any available amount is acceptable.
 func inputPrevOut(packet *psbt.Packet, i int) *wire.TxOut {
 	if packet == nil || i < 0 || i >= len(packet.Inputs) {
 		return nil
@@ -33,6 +37,66 @@ func inputPrevOut(packet *psbt.Packet, i int) *wire.TxOut {
 	return in.NonWitnessUtxo.TxOut[idx]
 }
 
+// verifiedInputPrevOut returns the previous output for input i after
+// checking it against the outpoint. A non-witness (legacy) input must carry
+// NonWitnessUtxo: its signature does not commit to the amount, so the
+// witness UTXO alone would let a counterparty understate the real input and
+// hide the fee (H3-04). When both forms are present they must agree.
+func verifiedInputPrevOut(packet *psbt.Packet, i int) (*wire.TxOut, error) {
+	if packet == nil || packet.UnsignedTx == nil || i < 0 || i >= len(packet.Inputs) ||
+		i >= len(packet.UnsignedTx.TxIn) {
+		return nil, fmt.Errorf("input %d is missing", i)
+	}
+	in := &packet.Inputs[i]
+	op := packet.UnsignedTx.TxIn[i].PreviousOutPoint
+
+	var fromPrev *wire.TxOut
+	if in.NonWitnessUtxo != nil {
+		if in.NonWitnessUtxo.TxHash() != op.Hash {
+			return nil, fmt.Errorf("input %d: previous transaction does not match the outpoint", i+1)
+		}
+		if int(op.Index) >= len(in.NonWitnessUtxo.TxOut) {
+			return nil, fmt.Errorf("input %d: outpoint is past the previous transaction's outputs", i+1)
+		}
+		fromPrev = in.NonWitnessUtxo.TxOut[op.Index]
+		if in.WitnessUtxo != nil &&
+			(in.WitnessUtxo.Value != fromPrev.Value || !bytes.Equal(in.WitnessUtxo.PkScript, fromPrev.PkScript)) {
+			return nil, fmt.Errorf("input %d: witness UTXO and previous transaction disagree", i+1)
+		}
+	}
+
+	if in.WitnessUtxo == nil && fromPrev == nil {
+		return nil, fmt.Errorf("input %d has no UTXO data", i+1)
+	}
+
+	// The script determines whether the signature commits to the amount.
+	script := in.WitnessUtxo
+	if fromPrev != nil {
+		script = fromPrev
+	}
+	witness := txscript.IsWitnessProgram(script.PkScript)
+	if !witness && txscript.IsPayToScriptHash(script.PkScript) {
+		witness = txscript.IsWitnessProgram(in.RedeemScript) || len(in.WitnessScript) > 0
+	}
+
+	if witness {
+		if in.WitnessUtxo != nil {
+			return in.WitnessUtxo, nil
+		}
+		return fromPrev, nil
+	}
+	if fromPrev == nil {
+		// A P2SH output may be nested segwit (BIP49), whose redeem script
+		// is not always present before signing. Accept the witness UTXO
+		// here; legacy signing paths separately require NonWitnessUtxo.
+		if txscript.IsPayToScriptHash(script.PkScript) && in.WitnessUtxo != nil {
+			return in.WitnessUtxo, nil
+		}
+		return nil, fmt.Errorf("input %d is a legacy input without its previous transaction", i+1)
+	}
+	return fromPrev, nil
+}
+
 // isWitnessInput reports whether an input spends a segwit output, judged
 // from its scriptPubKey and, for P2SH, its redeem script.
 func isWitnessInput(in *psbt.PInput, prevOut *wire.TxOut) bool {
@@ -44,6 +108,40 @@ func isWitnessInput(in *psbt.PInput, prevOut *wire.TxOut) bool {
 			txscript.IsWitnessProgram(in.RedeemScript)
 	}
 	return false
+}
+
+// verifyMultisigScript checks that script is the one committed by prevOut.
+// A PSBT can otherwise supply a different script containing the same keys
+// (for example a lower threshold) and collect signatures over it (H3-21).
+func verifyMultisigScript(script []byte, scriptType MultisigScriptType, prevOut *wire.TxOut) error {
+	if len(script) == 0 || prevOut == nil {
+		return fmt.Errorf("missing multisig script or previous output")
+	}
+	switch scriptType {
+	case MultisigNativeSegwit:
+		sum := sha256.Sum256(script)
+		if !bytes.Equal(prevOut.PkScript, append([]byte{0x00, 0x20}, sum[:]...)) {
+			return fmt.Errorf("multisig script does not match the spent output")
+		}
+	case MultisigNestedSegwit:
+		sum := sha256.Sum256(script)
+		witnessProgram := append([]byte{0x00, 0x20}, sum[:]...)
+		if !p2shPkScriptMatches(prevOut.PkScript, btcutil.Hash160(witnessProgram)) {
+			return fmt.Errorf("multisig script does not match the spent output")
+		}
+	case MultisigLegacy:
+		if !p2shPkScriptMatches(prevOut.PkScript, btcutil.Hash160(script)) {
+			return fmt.Errorf("multisig script does not match the spent output")
+		}
+	default:
+		return fmt.Errorf("unknown multisig script type %d", scriptType)
+	}
+	return nil
+}
+
+func p2shPkScriptMatches(pkScript, scriptHash []byte) bool {
+	return len(pkScript) == 23 && pkScript[0] == txscript.OP_HASH160 &&
+		pkScript[1] == 0x14 && bytes.Equal(pkScript[2:22], scriptHash)
 }
 
 // prevTxCache holds full previous transactions by txid. A txid commits
@@ -75,10 +173,8 @@ func (c *prevTxCache) put(txid string, tx *wire.MsgTx) {
 // about input amounts across two signing sessions. Taproot signatures
 // commit to every input amount, so P2TR inputs keep only the witness UTXO.
 //
-// Non-witness inputs drop the witness UTXO, which BIP174 reserves for
-// segwit. A fetch failure is an error for non-witness inputs (no valid
-// PSBT exists without the transaction) and a warning for segwit v0 inputs
-// (software signing still works; external signers will refuse it).
+// The previous transaction is fetched and checked for every input: a
+// failure is fatal, so no PSBT is built from unverified values (H3-06).
 func (m *WalletManager) attachPrevTxs(result *PSBTResult) error {
 	packet := result.Packet
 	for i, utxo := range result.SelectedUTXOs {
@@ -90,9 +186,6 @@ func (m *WalletManager) attachPrevTxs(result *PSBTResult) error {
 		if prevOut == nil {
 			return fmt.Errorf("input %d has no UTXO data", i)
 		}
-		if txscript.IsPayToTaproot(prevOut.PkScript) {
-			continue
-		}
 		witness := isWitnessInput(in, prevOut)
 
 		tx, err := m.fetchPrevTx(utxo.TxID, utxo.Status.BlockHeight)
@@ -100,13 +193,9 @@ func (m *WalletManager) attachPrevTxs(result *PSBTResult) error {
 			err = checkPrevTx(tx, utxo.Vout, prevOut)
 		}
 		if err != nil {
-			if !witness {
-				return fmt.Errorf("input %s:%d: %w", utxo.TxID, utxo.Vout, err)
-			}
-			result.Warnings = append(result.Warnings, fmt.Sprintf(
-				"Input %s:%d has no previous transaction attached (%v). "+
-					"Hardware signers will refuse this PSBT.",
-				shortTxID(utxo.TxID), utxo.Vout, err))
+			return fmt.Errorf("input %s:%d: %w", utxo.TxID, utxo.Vout, err)
+		}
+		if txscript.IsPayToTaproot(prevOut.PkScript) {
 			continue
 		}
 		in.NonWitnessUtxo = tx

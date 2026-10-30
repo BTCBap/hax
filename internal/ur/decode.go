@@ -5,6 +5,13 @@ import (
 	"hash/crc32"
 )
 
+// MaxURPayloadSize bounds decoded UR payloads. PSBTs are capped at 16 MiB
+// elsewhere; this keeps the decoder from allocating beyond that.
+const MaxURPayloadSize = 16 << 20
+
+// maxMinimalEncodedSize bounds bytewords before decoding.
+const maxMinimalEncodedSize = MaxURPayloadSize * 2
+
 // bytewordsReverse maps 2-char minimal encoding back to byte value.
 var bytewordsReverse map[string]byte
 
@@ -18,6 +25,9 @@ func init() {
 
 // DecodeMinimal decodes minimal bytewords (first+last letter pairs) back to bytes.
 func DecodeMinimal(encoded string) ([]byte, error) {
+	if len(encoded) > maxMinimalEncodedSize {
+		return nil, fmt.Errorf("UR payload is too large (%d characters)", len(encoded))
+	}
 	if len(encoded)%2 != 0 {
 		return nil, fmt.Errorf("minimal bytewords must have even length, got %d", len(encoded))
 	}
@@ -111,6 +121,9 @@ func decodeCBORByteString(data []byte) ([]byte, error) {
 
 	if uint64(len(data)-headerLen) < length { // #nosec G115 -- headerLen <= len(data) checked above
 		return nil, fmt.Errorf("CBOR byte string length %d exceeds available data %d", length, len(data)-headerLen)
+	}
+	if length > MaxURPayloadSize {
+		return nil, fmt.Errorf("CBOR byte string is too large (%d bytes)", length)
 	}
 
 	return data[headerLen : headerLen+int(length)], nil

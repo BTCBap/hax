@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,6 +55,9 @@ type RPCBackend struct {
 
 // defaultRPCPollInterval is how often the RPC backend checks for a new block.
 const defaultRPCPollInterval = 15 * time.Second
+
+// maxRPCResponseSize bounds a Bitcoin Core JSON-RPC response.
+const maxRPCResponseSize = 32 << 20
 
 // rpcRequest is a JSON-RPC 2.0 request
 type rpcRequest struct {
@@ -137,9 +141,17 @@ func (b *RPCBackend) callRPC(method string, params interface{}) (json.RawMessage
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Bound the response so a hostile endpoint cannot exhaust memory
+	// (H3-15). 32 MiB covers the largest legitimate RPC responses hax uses.
+	if resp.ContentLength > maxRPCResponseSize {
+		return nil, fmt.Errorf("RPC response too large (%d bytes)", resp.ContentLength)
+	}
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRPCResponseSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(respBody) > maxRPCResponseSize {
+		return nil, fmt.Errorf("RPC response too large")
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -161,6 +173,15 @@ func (b *RPCBackend) callRPC(method string, params interface{}) (json.RawMessage
 	return rpcResp.Result, nil
 }
 
+// checkRPCTransport refuses plain HTTP to hosts that are not on the local
+// network or behind Tor. allowPlaintext is the config escape hatch.
+func checkRPCTransport(host string, useSSL, allowPlaintext bool) error {
+	if useSSL || allowPlaintext || HostIsPrivate(host) || HostIsOnion(host) {
+		return nil
+	}
+	return fmt.Errorf("plain HTTP to public host %s requires SSL", host)
+}
+
 // Connect establishes connection to the Bitcoin Core RPC server
 func (b *RPCBackend) Connect() error {
 	b.mu.Lock()
@@ -173,7 +194,19 @@ func (b *RPCBackend) Connect() error {
 	if b.config.RPC.UseSSL {
 		scheme = "https"
 	}
-	b.baseURL = fmt.Sprintf("%s://%s:%d", scheme, b.config.RPC.Host, b.config.RPC.Port)
+	// Credentials must not cross the public network in cleartext. A
+	// local-network or onion node may use HTTP, and AllowPlaintext is the
+	// config escape hatch for anything else.
+	if err := checkRPCTransport(b.config.RPC.Host, b.config.RPC.UseSSL, b.config.RPC.AllowPlaintext); err != nil {
+		b.mu.Unlock()
+		return err
+	}
+	baseURL, err := RPCBaseURL(scheme, b.config.RPC.Host, b.config.RPC.Port)
+	if err != nil {
+		b.mu.Unlock()
+		return err
+	}
+	b.baseURL = baseURL
 
 	transport := &http.Transport{
 		MaxIdleConns:        10,
@@ -447,7 +480,10 @@ func (b *RPCBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
 
 		// Convert BTC/kvB to sat/vB: BTC/kvB * 1e8 / 1000 = sat/vB
 		satPerVB := estimate.FeeRate * 1e8 / 1000
-		if satPerVB <= 0 {
+		if math.IsNaN(satPerVB) || math.IsInf(satPerVB, 0) || satPerVB <= 0 {
+			continue
+		}
+		if satPerVB > MaxFeeRateSatPerVB {
 			continue
 		}
 		if satPerVB < 0.1 {
@@ -477,8 +513,7 @@ func (b *RPCBackend) BroadcastTransaction(rawTxHex string) (string, error) {
 	if err := json.Unmarshal(result, &txid); err != nil {
 		return "", fmt.Errorf("failed to parse txid: %w", err)
 	}
-
-	return txid, nil
+	return verifyBroadcastTxID(rawTxHex, txid)
 }
 
 // GetTransaction retrieves detailed transaction information.
@@ -496,7 +531,14 @@ func (b *RPCBackend) GetTransaction(txid string) (*api.Transaction, error) {
 		return nil, fmt.Errorf("failed to get transaction %s: %w", txid, err)
 	}
 
-	return b.parseVerboseTransaction(result)
+	tx, err := b.parseVerboseTransaction(result)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(tx.TxID, txid) {
+		return nil, fmt.Errorf("server returned transaction %s for %s", tx.TxID, txid)
+	}
+	return tx, nil
 }
 
 // GetRawTransaction fetches a full transaction. Without -txindex, Core
@@ -574,6 +616,13 @@ func (b *RPCBackend) parseVerboseTransaction(data json.RawMessage) (*api.Transac
 
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse transaction: %w", err)
+	}
+
+	// Check the reported id against the actual serialized transaction.
+	if raw.TxID != "" && raw.Hex != "" {
+		if _, err := decodeRawTx(raw.TxID, raw.Hex); err != nil {
+			return nil, err
+		}
 	}
 
 	tx := &api.Transaction{

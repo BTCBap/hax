@@ -6,7 +6,9 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 func TestBIP44AddressGeneration(t *testing.T) {
@@ -79,12 +81,16 @@ func TestBIP44PSBTSigningRoundTrip(t *testing.T) {
 		t.Fatalf("Failed to get address: %v", err)
 	}
 
-	// Create a fake UTXO
-	fakeTxHash := "0000000000000000000000000000000000000000000000000000000000000001"
+	// Build the previous transaction that funds the legacy input.
+	fundingAddr, _ := btcutil.DecodeAddress(addr, network)
+	fundingScript, _ := txscript.PayToAddrScript(fundingAddr)
+	prevTx := wire.NewMsgTx(2)
+	prevTx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(&chainhash.Hash{}, 0), nil, nil))
+	prevTx.AddTxOut(wire.NewTxOut(50000, fundingScript))
 	utxos := []UTXOWithPath{
 		{
 			UTXO: api.UTXO{
-				TxID:  fakeTxHash,
+				TxID:  prevTx.TxHash().String(),
 				Vout:  0,
 				Value: 50000,
 			},
@@ -102,6 +108,11 @@ func TestBIP44PSBTSigningRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create PSBT: %v", err)
 	}
+
+	// A legacy signature does not commit to the amount, so signing
+	// requires the full previous transaction.
+	psbtResult.Packet.Inputs[0].NonWitnessUtxo = prevTx
+	psbtResult.Packet.Inputs[0].WitnessUtxo = nil
 
 	// Sign PSBT
 	err = SignPSBT(psbtResult.Packet, wallet, utxos, network)
@@ -210,12 +221,16 @@ func TestLegacyP2SHMultisigSigningRoundTrip(t *testing.T) {
 		t.Errorf("Expected P2SH address starting with '2', got: %s", addr)
 	}
 
-	// Create a fake UTXO
-	fakeTxHash := "0000000000000000000000000000000000000000000000000000000000000001"
+	// Build the previous transaction that funds the legacy P2SH input.
+	fundingAddr, _ := btcutil.DecodeAddress(addr, network)
+	fundingScript, _ := txscript.PayToAddrScript(fundingAddr)
+	prevTx := wire.NewMsgTx(2)
+	prevTx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(&chainhash.Hash{}, 0), nil, nil))
+	prevTx.AddTxOut(wire.NewTxOut(100000, fundingScript))
 	utxos := []UTXOWithPath{
 		{
 			UTXO: api.UTXO{
-				TxID:  fakeTxHash,
+				TxID:  prevTx.TxHash().String(),
 				Vout:  0,
 				Value: 100000,
 			},
@@ -242,6 +257,9 @@ func TestLegacyP2SHMultisigSigningRoundTrip(t *testing.T) {
 	if len(input.WitnessScript) > 0 {
 		t.Errorf("Expected WitnessScript to be empty for Legacy P2SH")
 	}
+
+	psbtResult.Packet.Inputs[0].NonWitnessUtxo = prevTx
+	psbtResult.Packet.Inputs[0].WitnessUtxo = nil
 
 	// Sign with first two cosigners (2-of-3)
 	sigsAdded, err := SignMultisigPSBT(psbtResult.Packet, cosigners, utxos, network, MultisigLegacy)

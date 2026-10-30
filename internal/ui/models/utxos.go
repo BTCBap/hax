@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -187,7 +186,7 @@ func (m UTXOsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if idx >= 0 && idx < len(m.utxos) {
 				utxo := m.utxos[idx]
 				outpoint := fmt.Sprintf("%s:%d", utxo.TxID, utxo.Vout)
-				if err := clipboard.WriteAll(outpoint); err == nil {
+				if err := copyToClipboard(outpoint); err == nil {
 					m.showCopied = true
 					m.copyMsg = "OUTPOINT COPIED!"
 					m.copiedTime = time.Now()

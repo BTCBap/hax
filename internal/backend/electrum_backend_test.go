@@ -149,7 +149,7 @@ func TestHandleNotification_WrongLength65(t *testing.T) {
 func TestHandleNotification_HeaderValid(t *testing.T) {
 	b := newTestBackend()
 	params, _ := json.Marshal([]map[string]interface{}{
-		{"height": 12345, "hex": "deadbeef"},
+		{"height": 12345, "hex": strings.Repeat("ab", 80)},
 	})
 
 	b.handleNotification("blockchain.headers.subscribe", params)

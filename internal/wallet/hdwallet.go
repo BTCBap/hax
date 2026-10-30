@@ -449,6 +449,16 @@ func NewHDWallet(seed []byte, testnet bool) (*HDWallet, error) {
 	}, nil
 }
 
+// Destroy wipes the extended private key material. The wallet must not be
+// used after this call.
+func (w *HDWallet) Destroy() {
+	if w == nil || w.masterKey == nil {
+		return
+	}
+	w.masterKey.Zero()
+	w.masterKey = nil
+}
+
 // DeriveKey derives a key at the specified BIP44 path
 func (w *HDWallet) DeriveKey(path BIP44Path) (*hdkeychain.ExtendedKey, error) {
 	key := w.masterKey
@@ -723,7 +733,19 @@ type MultisigConfig struct {
 	M          int                // Required signatures
 	N          int                // Total cosigners
 	ScriptType MultisigScriptType // 0=Legacy, 1=Nested, 2=Native
+	Unsorted   bool               // multi(...) keeps the supplied key order
 	Cosigners  []Cosigner
+}
+
+// orderedPublicKeys returns pubKeys in BIP67 order unless the descriptor
+// used multi(...), whose key order is significant (H3-05).
+func orderedPublicKeys(pubKeys [][]byte, sorted bool) [][]byte {
+	if sorted {
+		return SortPublicKeys(pubKeys)
+	}
+	out := make([][]byte, len(pubKeys))
+	copy(out, pubKeys)
+	return out
 }
 
 // SortPublicKeys sorts public keys lexicographically per BIP67
@@ -761,8 +783,12 @@ func BuildMultisigScript(m int, sortedPubKeys [][]byte) ([]byte, error) {
 
 // GenerateP2SHMultisigAddress creates a P2SH multisig address (Legacy)
 func GenerateP2SHMultisigAddress(m int, pubKeys [][]byte, network *chaincfg.Params) (string, []byte, error) {
-	sorted := SortPublicKeys(pubKeys)
-	redeemScript, err := BuildMultisigScript(m, sorted)
+	return generateP2SHMultisigAddress(m, pubKeys, true, network)
+}
+
+func generateP2SHMultisigAddress(m int, pubKeys [][]byte, sorted bool, network *chaincfg.Params) (string, []byte, error) {
+	ordered := orderedPublicKeys(pubKeys, sorted)
+	redeemScript, err := BuildMultisigScript(m, ordered)
 	if err != nil {
 		return "", nil, err
 	}
@@ -779,8 +805,12 @@ func GenerateP2SHMultisigAddress(m int, pubKeys [][]byte, network *chaincfg.Para
 
 // GenerateP2SHWitnessMultisigAddress creates a P2SH-P2WSH multisig address (Nested SegWit)
 func GenerateP2SHWitnessMultisigAddress(m int, pubKeys [][]byte, network *chaincfg.Params) (string, []byte, error) {
-	sorted := SortPublicKeys(pubKeys)
-	witnessScript, err := BuildMultisigScript(m, sorted)
+	return generateP2SHWitnessMultisigAddress(m, pubKeys, true, network)
+}
+
+func generateP2SHWitnessMultisigAddress(m int, pubKeys [][]byte, sorted bool, network *chaincfg.Params) (string, []byte, error) {
+	ordered := orderedPublicKeys(pubKeys, sorted)
+	witnessScript, err := BuildMultisigScript(m, ordered)
 	if err != nil {
 		return "", nil, err
 	}
@@ -812,8 +842,12 @@ func GenerateP2SHWitnessMultisigAddress(m int, pubKeys [][]byte, network *chainc
 
 // GenerateP2WSHMultisigAddress creates a P2WSH multisig address (Native SegWit)
 func GenerateP2WSHMultisigAddress(m int, pubKeys [][]byte, network *chaincfg.Params) (string, []byte, error) {
-	sorted := SortPublicKeys(pubKeys)
-	witnessScript, err := BuildMultisigScript(m, sorted)
+	return generateP2WSHMultisigAddress(m, pubKeys, true, network)
+}
+
+func generateP2WSHMultisigAddress(m int, pubKeys [][]byte, sorted bool, network *chaincfg.Params) (string, []byte, error) {
+	ordered := orderedPublicKeys(pubKeys, sorted)
+	witnessScript, err := BuildMultisigScript(m, ordered)
 	if err != nil {
 		return "", nil, err
 	}
@@ -829,15 +863,17 @@ func GenerateP2WSHMultisigAddress(m int, pubKeys [][]byte, network *chaincfg.Par
 	return addr.EncodeAddress(), witnessScript, nil
 }
 
-// GenerateMultisigAddress generates a multisig address based on script type
+// GenerateMultisigAddress generates a multisig address based on script type.
+// sorted=false keeps the supplied key order, as multi(...) requires.
 func GenerateMultisigAddress(config *MultisigConfig, pubKeys [][]byte, network *chaincfg.Params) (string, []byte, error) {
+	sorted := !config.Unsorted
 	switch config.ScriptType {
 	case MultisigLegacy:
-		return GenerateP2SHMultisigAddress(config.M, pubKeys, network)
+		return generateP2SHMultisigAddress(config.M, pubKeys, sorted, network)
 	case MultisigNestedSegwit:
-		return GenerateP2SHWitnessMultisigAddress(config.M, pubKeys, network)
+		return generateP2SHWitnessMultisigAddress(config.M, pubKeys, sorted, network)
 	case MultisigNativeSegwit:
-		return GenerateP2WSHMultisigAddress(config.M, pubKeys, network)
+		return generateP2WSHMultisigAddress(config.M, pubKeys, sorted, network)
 	default:
 		return "", nil, fmt.Errorf("unsupported multisig script type: %d", config.ScriptType)
 	}

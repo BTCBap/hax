@@ -30,9 +30,6 @@ func TestNewRootModel_InitialState(t *testing.T) {
 	if m.splashModel == nil {
 		t.Error("expected splashModel to be initialized")
 	}
-	if !m.testnet {
-		t.Error("expected testnet=true")
-	}
 	if m.walletLoaded {
 		t.Error("expected walletLoaded=false")
 	}

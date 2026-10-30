@@ -2,7 +2,6 @@ package backend
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/logsafe"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -33,8 +34,22 @@ var debugEnabled = len(os.Getenv("DEBUG")) > 0
 // debugLog logs only when DEBUG env var is set
 func debugLog(format string, args ...interface{}) {
 	if debugEnabled {
-		log.Printf(format, args...)
+		log.Print(logsafe.Redact(fmt.Sprintf(format, args...)))
 	}
+}
+
+// isHexTxID reports whether s is a 64-character hexadecimal transaction id.
+func isHexTxID(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		isHexChar := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !isHexChar {
+			return false
+		}
+	}
+	return true
 }
 
 // ScripthashNotification is sent when a subscribed scripthash's history changes
@@ -140,6 +155,15 @@ func (b *ElectrumBackend) HeaderNotifications() <-chan HeaderNotification {
 	return b.headerChan
 }
 
+// checkElectrumTransport refuses plain TCP to hosts that are not on the
+// local network or behind Tor.
+func checkElectrumTransport(host string, useSSL bool) error {
+	if useSSL || HostIsPrivate(host) || HostIsOnion(host) {
+		return nil
+	}
+	return fmt.Errorf("plain TCP to public host %s requires SSL", host)
+}
+
 // Connect establishes connection to the Electrum server
 func (b *ElectrumBackend) Connect() error {
 	b.mu.Lock()
@@ -161,6 +185,13 @@ func (b *ElectrumBackend) Connect() error {
 	}
 
 	addr := net.JoinHostPort(b.config.Electrum.Host, strconv.Itoa(b.config.Electrum.Port))
+
+	// Plain TCP exposes every query and response to the network. It is
+	// allowed for local-network and Tor onion servers; public hosts need TLS.
+	if err := checkElectrumTransport(b.config.Electrum.Host, b.config.Electrum.UseSSL); err != nil {
+		b.mu.Unlock()
+		return err
+	}
 
 	var conn net.Conn
 	var err error
@@ -189,6 +220,7 @@ func (b *ElectrumBackend) Connect() error {
 		if b.config.Electrum.UseSSL {
 			tlsConn := tls.Client(conn, &tls.Config{
 				ServerName:       b.config.Electrum.Host,
+				MinVersion:       tls.VersionTLS12,
 				VerifyConnection: verifyConnection(addr),
 			})
 			if err := tlsConn.Handshake(); err != nil {
@@ -203,6 +235,7 @@ func (b *ElectrumBackend) Connect() error {
 		// Direct TLS connection
 		tlsConfig := &tls.Config{
 			ServerName:       b.config.Electrum.Host,
+			MinVersion:       tls.VersionTLS12,
 			VerifyConnection: verifyConnection(addr),
 		}
 		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
@@ -382,6 +415,27 @@ func (b *ElectrumBackend) handleDrop(conn net.Conn, err error) {
 	}
 }
 
+// maxElectrumLineSize bounds one JSON-RPC line. A server that sends a
+// longer line (or dribbles bytes to grow a partial line) is disconnected
+// instead of exhausting memory.
+const maxElectrumLineSize = 1 << 20
+
+// maxPlausibleBlockHeight bounds heights from untrusted header notifications.
+const maxPlausibleBlockHeight = 10_000_000
+
+// isHex reports whether s is non-empty lowercase or uppercase hex.
+func isHex(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
 // readLoop runs in background reading all server messages. It owns the
 // connection that was current when it started. After a quiet period it
 // pings the server; a failed ping closes the connection, which ends the
@@ -417,7 +471,7 @@ func (b *ElectrumBackend) readLoop() {
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(idle))
 
-		line, err := reader.ReadBytes('\n')
+		frag, err := reader.ReadSlice('\n')
 		if err != nil {
 			select {
 			case <-done:
@@ -427,7 +481,11 @@ func (b *ElectrumBackend) readLoop() {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
 				// Quiet, not necessarily dead: keep what we have and ping.
-				partial = append(partial, line...)
+				if len(partial)+len(frag) > maxElectrumLineSize {
+					dropErr = fmt.Errorf("server response exceeds %d bytes", maxElectrumLineSize)
+					return
+				}
+				partial = append(partial, frag...)
 				if b.pinging.CompareAndSwap(false, true) {
 					go func() {
 						defer b.pinging.Store(false)
@@ -436,11 +494,24 @@ func (b *ElectrumBackend) readLoop() {
 				}
 				continue
 			}
+			if errors.Is(err, bufio.ErrBufferFull) {
+				if len(partial)+len(frag) > maxElectrumLineSize {
+					dropErr = fmt.Errorf("server response exceeds %d bytes", maxElectrumLineSize)
+					return
+				}
+				partial = append(partial, frag...)
+				continue
+			}
 			dropErr = err
 			return
 		}
+		if len(partial)+len(frag) > maxElectrumLineSize {
+			dropErr = fmt.Errorf("server response exceeds %d bytes", maxElectrumLineSize)
+			return
+		}
+		line := frag
 		if len(partial) > 0 {
-			line = append(partial, line...)
+			line = append(partial, frag...)
 			partial = nil
 		}
 
@@ -482,13 +553,13 @@ func (b *ElectrumBackend) handleNotification(method string, params json.RawMessa
 	case "blockchain.scripthash.subscribe":
 		// Params: [scripthash, status]
 		var p []interface{}
-		if err := json.Unmarshal(params, &p); err != nil || len(p) < 2 {
+		if err := json.Unmarshal(params, &p); err != nil || len(p) != 2 {
 			return
 		}
 		scripthash, _ := p[0].(string)
 		status, _ := p[1].(string)
-		if len(scripthash) != 64 {
-			debugLog("[ELECTRUM] Invalid scripthash notification (len=%d), skipping", len(scripthash))
+		if len(scripthash) != 64 || !isHex(scripthash) || len(status) > 128 {
+			debugLog("[ELECTRUM] Invalid scripthash notification, skipping")
 			return
 		}
 		debugLog("[ELECTRUM] Scripthash notification: %s", scripthash[:16])
@@ -506,7 +577,12 @@ func (b *ElectrumBackend) handleNotification(method string, params json.RawMessa
 			Height int64  `json:"height"`
 			Hex    string `json:"hex"`
 		}
-		if err := json.Unmarshal(params, &p); err != nil || len(p) < 1 {
+		if err := json.Unmarshal(params, &p); err != nil || len(p) != 1 {
+			return
+		}
+		if p[0].Height <= 0 || p[0].Height > maxPlausibleBlockHeight ||
+			(p[0].Hex != "" && (len(p[0].Hex) != 160 || !isHex(p[0].Hex))) {
+			debugLog("[ELECTRUM] Invalid header notification, skipping")
 			return
 		}
 		debugLog("[ELECTRUM] Header notification: block %d", p[0].Height)
@@ -974,6 +1050,9 @@ func (b *ElectrumBackend) GetAddressUTXOs(address string) ([]api.UTXO, error) {
 	// Convert to api.UTXO format
 	utxos := make([]api.UTXO, len(electrumUTXOs))
 	for i, u := range electrumUTXOs {
+		if !isHexTxID(u.TxHash) {
+			return nil, fmt.Errorf("server returned an invalid transaction id")
+		}
 		utxos[i] = api.UTXO{
 			TxID:  u.TxHash,
 			Vout:  u.TxPos,
@@ -1019,6 +1098,9 @@ func (b *ElectrumBackend) GetAddressTransactions(address string) ([]api.Transact
 	// Fetch full transaction details for each
 	transactions := make([]api.Transaction, 0, len(history))
 	for _, h := range history {
+		if !isHexTxID(h.TxHash) {
+			continue
+		}
 		tx, err := b.GetTransaction(h.TxHash)
 		if err != nil {
 			// Skip transactions we can't fetch
@@ -1084,6 +1166,13 @@ func (b *ElectrumBackend) getBlockTimestamp(height int64) (int64, error) {
 		int64(headerBytes[70])<<16 |
 		int64(headerBytes[71])<<24
 
+	// Header time is server-supplied until the header chain is verified.
+	// Reject values outside Bitcoin's plausible range (H3-25).
+	const bitcoinGenesisTime = 1231006505 // 2009-01-03
+	if timestamp < bitcoinGenesisTime || timestamp > time.Now().Add(2*time.Hour).Unix() {
+		return 0, fmt.Errorf("implausible block timestamp %d", timestamp)
+	}
+
 	return timestamp, nil
 }
 
@@ -1106,14 +1195,13 @@ func (b *ElectrumBackend) GetTransaction(txid string) (*api.Transaction, error) 
 		return nil, fmt.Errorf("failed to parse transaction hex: %w", err)
 	}
 
+	msgTx, err := decodeRawTx(txid, rawHex)
+	if err != nil {
+		return nil, err
+	}
 	rawBytes, err := hex.DecodeString(rawHex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode transaction hex: %w", err)
-	}
-
-	var msgTx wire.MsgTx
-	if err := msgTx.Deserialize(bytes.NewReader(rawBytes)); err != nil {
-		return nil, fmt.Errorf("failed to deserialize transaction: %w", err)
 	}
 
 	var params *chaincfg.Params
@@ -1123,9 +1211,10 @@ func (b *ElectrumBackend) GetTransaction(txid string) (*api.Transaction, error) 
 		params = &chaincfg.MainNetParams
 	}
 
-	// Convert to api.Transaction format
+	// Convert to api.Transaction format. The TxID is the locally computed
+	// hash, never the string the server echoed back.
 	tx := &api.Transaction{
-		TxID:     txid,
+		TxID:     msgTx.TxHash().String(),
 		Version:  int(msgTx.Version),
 		Locktime: int64(msgTx.LockTime),
 		Size:     len(rawBytes),
@@ -1290,7 +1379,7 @@ func (b *ElectrumBackend) BroadcastTransaction(rawTxHex string) (string, error) 
 		return "", fmt.Errorf("failed to parse txid: %w", err)
 	}
 
-	return txid, nil
+	return verifyBroadcastTxID(rawTxHex, txid)
 }
 
 // GetFeeEstimates retrieves fee rate estimates via Electrum blockchain.estimatefee
@@ -1304,11 +1393,16 @@ func (b *ElectrumBackend) GetFeeEstimates() (*api.FeeEstimates, error) {
 // to sat/vB. ok is false when the server reported no estimate (negative) or a
 // non-positive rate — callers must not invent a fallback rate.
 func btcPerKBToSatPerVB(btcPerKB float64) (satPerVB float64, ok bool) {
-	if btcPerKB < 0 {
+	if math.IsNaN(btcPerKB) || math.IsInf(btcPerKB, 0) || btcPerKB < 0 {
 		return 0, false
 	}
 	satPerVB = btcPerKB * 100000 // BTC/kB * 1e8 / 1000
-	if satPerVB <= 0 {
+	if math.IsNaN(satPerVB) || math.IsInf(satPerVB, 0) || satPerVB <= 0 {
+		return 0, false
+	}
+	// A hostile server can report an absurd rate. Treat anything above the
+	// hard cap as unavailable instead of building a fee-draining transaction.
+	if satPerVB > MaxFeeRateSatPerVB {
 		return 0, false
 	}
 	// Floor extremely small positive estimates at the common min-relay rate.

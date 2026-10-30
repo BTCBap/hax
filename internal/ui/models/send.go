@@ -144,6 +144,8 @@ type SendModel struct {
 	psbtSigsTotal  int                    // Total signatures needed (M for multisig)
 	psbtResult     *wallet.PSBTResult     // The actual PSBT for further signing
 	inspection     *wallet.PSBTInspection // What psbtResult does, for review before signing
+	signConfirmed  bool                   // dangerous PSBT inspection acknowledged once
+	psbtImported   bool                   // PSBT arrived from outside hax's send flow
 	bump           *feeBumpState          // Set when speeding up a pending transaction
 
 	// Hardware wallet / file-based PSBT support
@@ -636,6 +638,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.setPSBTResult(msg.Result)
+			m.psbtImported = false
 			if m.bump != nil {
 				m.recipients = m.bumpRecipients()
 			}
@@ -703,6 +706,7 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.psbtFilePath = msg.FilePath
 			m.psbtBase64 = msg.Base64
 			m.setPSBTResult(msg.Result)
+			m.psbtImported = true
 			m.psbtSigsAdded = msg.SigsAdded
 			m.psbtExportErr = nil
 			m.showCopied = true
@@ -1062,6 +1066,10 @@ func (m SendModel) getFeeRateForLevel(level FeeLevel) float64 {
 
 	// Missing/unavailable target (left as 0 by the backend).
 	if feeRate <= 0 {
+		return 0
+	}
+	// Never construct a transaction from a non-finite or absurd rate.
+	if math.IsNaN(feeRate) || math.IsInf(feeRate, 0) || feeRate > feeHardCap {
 		return 0
 	}
 	// Floor extremely small positive estimates at the common min-relay rate.

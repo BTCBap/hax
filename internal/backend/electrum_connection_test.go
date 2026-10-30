@@ -42,6 +42,7 @@ func newPipedBackend(t *testing.T) (*ElectrumBackend, net.Conn) {
 		connected:        true,
 		scripthashChan:   make(chan ScripthashNotification, 100),
 		headerChan:       make(chan HeaderNotification, 10),
+		drops:            make(chan error, 10),
 		pendingResponses: make(map[uint64]chan electrumResponse),
 		subscriptions:    make(map[string]bool),
 		readerDone:       make(chan struct{}),
@@ -99,6 +100,29 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition not met within timeout")
+}
+
+func TestReadLoop_DropsOversizedLine(t *testing.T) {
+	b, serverConn := newPipedBackend(t)
+	go b.readLoop()
+
+	// One byte past the cap must end the connection instead of growing the
+	// buffer without bound (H3-07).
+	payload := strings.Repeat("a", maxElectrumLineSize+1) + "\n"
+	go func() {
+		_ = serverConn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		_, _ = serverConn.Write([]byte(payload))
+	}()
+	waitFor(t, 2*time.Second, func() bool { return !b.IsConnected() })
+
+	select {
+	case err := <-b.Drops():
+		if !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("drop error = %v, want an oversized-response error", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no drop reported for an oversized line")
+	}
 }
 
 // ─── Constructor Tests ────────────────────────────────────────────────────────
@@ -320,7 +344,7 @@ func TestReadLoop_SkipsMalformedJSON(t *testing.T) {
 	// Now send a valid header notification — proves the loop continued.
 	writeJSONLine(t, serverConn, map[string]interface{}{
 		"method": "blockchain.headers.subscribe",
-		"params": []interface{}{map[string]interface{}{"height": 99999, "hex": "aabbcc"}},
+		"params": []interface{}{map[string]interface{}{"height": 99999, "hex": strings.Repeat("ab", 80)}},
 	})
 
 	select {
@@ -531,6 +555,35 @@ func TestRequest_NotConnectedReconnectFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not connected and reconnect failed") {
 		t.Fatalf("expected 'not connected and reconnect failed' in error, got: %v", err)
+	}
+}
+
+func TestCheckElectrumTransport(t *testing.T) {
+	tests := []struct {
+		name    string
+		host    string
+		useSSL  bool
+		wantErr bool
+	}{
+		{"TLS to public host", "electrum.blockstream.info", true, false},
+		{"plain TCP to loopback", "127.0.0.1", false, false},
+		{"plain TCP to LAN IP", "192.168.1.10", false, false},
+		{"plain TCP to mDNS name", "umbrel.local", false, false},
+		{"plain TCP to single-label name", "umbrel", false, false},
+		{"plain TCP to onion", "abc.onion", false, false},
+		{"plain TCP to public host", "electrum.blockstream.info", false, true},
+		{"plain TCP to public IP", "8.8.8.8", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkElectrumTransport(tt.host, tt.useSSL)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("checkElectrumTransport(%q, %v) = %v, wantErr %v", tt.host, tt.useSSL, err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "requires SSL") {
+				t.Fatalf("error should tell the user to enable SSL, got: %v", err)
+			}
+		})
 	}
 }
 

@@ -386,9 +386,9 @@ func TestCreatePSBT_SignerData(t *testing.T) {
 	}
 }
 
-// TestCreatePSBT_PrevTxChecks covers the previous-transaction rules: a
-// legacy input cannot be built without it, a segwit input gets a warning,
-// and a substituted transaction is rejected.
+// TestCreatePSBT_PrevTxChecks covers the previous-transaction rules: an
+// input cannot be built without its previous transaction, and a substituted
+// transaction is rejected.
 func TestCreatePSBT_PrevTxChecks(t *testing.T) {
 	t.Run("legacy without prev tx fails", func(t *testing.T) {
 		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeLegacy, 44, false)
@@ -398,16 +398,12 @@ func TestCreatePSBT_PrevTxChecks(t *testing.T) {
 			t.Fatal("expected an error without the previous transaction")
 		}
 	})
-	t.Run("segwit without prev tx warns", func(t *testing.T) {
+	t.Run("segwit without prev tx fails", func(t *testing.T) {
 		m, b := newSignerTestManager(t, NetworkTestnet, AddressTypeSegWitNative, 84, false)
 		b.rawTxs = map[string]*wire.MsgTx{}
 		dest, _, _ := m.GetAddressByIndex(0, 5)
-		res, err := m.CreatePSBTBatchTransaction(0, []TxRecipient{{Address: dest, Amount: 40_000}}, 2, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(res.Warnings) != 1 || res.Packet.Inputs[0].NonWitnessUtxo != nil {
-			t.Fatalf("warnings=%v", res.Warnings)
+		if _, err := m.CreatePSBTBatchTransaction(0, []TxRecipient{{Address: dest, Amount: 40_000}}, 2, nil); err == nil {
+			t.Fatal("expected an error without the previous transaction")
 		}
 	})
 	t.Run("mismatched prev tx is rejected", func(t *testing.T) {
@@ -418,12 +414,8 @@ func TestCreatePSBT_PrevTxChecks(t *testing.T) {
 			b.rawTxs[txid] = forged
 		}
 		dest, _, _ := m.GetAddressByIndex(0, 5)
-		res, err := m.CreatePSBTBatchTransaction(0, []TxRecipient{{Address: dest, Amount: 40_000}}, 2, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.Packet.Inputs[0].NonWitnessUtxo != nil || len(res.Warnings) != 1 {
-			t.Fatal("a previous transaction that does not hash to the txid must not be attached")
+		if _, err := m.CreatePSBTBatchTransaction(0, []TxRecipient{{Address: dest, Amount: 40_000}}, 2, nil); err == nil {
+			t.Fatal("expected an error when the previous transaction does not match its txid")
 		}
 	})
 }

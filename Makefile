@@ -2,7 +2,7 @@
 # Provides build targets with version injection
 
 # Version information
-VERSION := 1.2.0
+VERSION := 1.3.0
 PRERELEASE :=
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -45,7 +45,8 @@ build-all: clean
 	GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 $(CMD_PATH)
 	GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe $(CMD_PATH)
 
-# Generate SHA256 checksums for local release artifacts
+# Generate SHA256 checksums for local development artifacts.
+# These are unsigned and are not the release checksums.
 checksums: build-all
 	@cd $(BUILD_DIR) && { \
 		if command -v sha256sum >/dev/null 2>&1; then \

@@ -44,12 +44,11 @@ func TestParseMultisigDescriptor(t *testing.T) {
 	}{
 		{
 			name:           "Native SegWit 2-of-3 with checksum",
-			descriptor:     fmt.Sprintf("wsh(sortedmulti(2,[73c5da0a/48h/1h/0h/2h]%s,[a1b2c3d4/48h/1h/0h/2h]%s,[deadbeef/48h/1h/0h/2h]%s))#abcd1234", validXpub, validXpub, validXpub),
+			descriptor:     withDescriptorChecksum(fmt.Sprintf("wsh(sortedmulti(2,[73c5da0a/48h/1h/0h/2h]%s,[a1b2c3d4/48h/1h/0h/2h]%s,[deadbeef/48h/1h/0h/2h]%s))", validXpub, validXpub, validXpub)),
 			wantM:          2,
 			wantN:          3,
 			wantScriptType: MultisigNativeSegwit,
 			wantErr:        false,
-			wantWarnings:   true, // checksum won't match
 		},
 		{
 			name:           "Native SegWit 2-of-2 bare xpubs",
@@ -193,7 +192,7 @@ func TestParseSingleSigDescriptor(t *testing.T) {
 	}{
 		{
 			name:         "Taproot descriptor",
-			descriptor:   fmt.Sprintf("tr([04120286/86h/1h/0h]%s/<0;1>/*)#abcd1234", validXpub),
+			descriptor:   withDescriptorChecksum(fmt.Sprintf("tr([04120286/86h/1h/0h]%s/<0;1>/*)", validXpub)),
 			wantAddrType: AddressTypeTaproot,
 			wantErr:      false,
 		},
@@ -291,5 +290,31 @@ func TestStripDerivationSuffix(t *testing.T) {
 				t.Errorf("stripDerivationSuffix() = %q, want %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+// withDescriptorChecksum appends the correct BIP380 checksum to a descriptor body.
+func withDescriptorChecksum(body string) string {
+	return body + "#" + DescriptorChecksum(body)
+}
+
+func TestParseDescriptor_RejectsBadChecksum(t *testing.T) {
+	body := fmt.Sprintf("wpkh(%s/0/*)", deriveTestXpub(t))
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"mismatch", body + "#abcd1234"},
+		{"empty", body + "#"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseDescriptor(tc.in); err == nil {
+				t.Fatal("expected checksum error")
+			}
+		})
+	}
+	if _, err := ParseDescriptor(withDescriptorChecksum(body)); err != nil {
+		t.Fatalf("valid checksum rejected: %v", err)
 	}
 }

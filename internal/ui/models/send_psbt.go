@@ -11,6 +11,7 @@ import (
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/bbqr"
+	"github.com/BTCBap/hax/internal/fsutil"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/ur"
@@ -224,7 +225,7 @@ func (m SendModel) savePSBTToFile(path string) tea.Cmd {
 
 		// Write PSBT binary to file with restricted permissions
 		// 0600 = owner read/write only (secure for sensitive data)
-		if err := os.WriteFile(expandedPath, psbtBinary, 0600); err != nil {
+		if err := fsutil.WriteFileAtomic(expandedPath, psbtBinary, 0o600); err != nil {
 			return PSBTFileMsg{Operation: "export", Err: fmt.Errorf("failed to write file: %w", err)}
 		}
 

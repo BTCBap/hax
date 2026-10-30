@@ -11,6 +11,7 @@ import (
 	"github.com/BTCBap/hax/internal/backend"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"github.com/btcsuite/btcd/chaincfg"
 )
 
 type WalletManager struct {
@@ -24,14 +25,13 @@ type WalletManager struct {
 	data     *WalletData
 	unlocked bool
 
-	// encKey/encSalt are the AES key derived from the wallet password at
-	// unlock, kept so the session can re-persist. The password itself is
-	// never retained. Both are wiped on lock. Guarded by keyMu.
-	encKey []byte
+	// enc is the AES key derived from the wallet password at unlock, kept
+	// so the session can re-persist. The password itself is never
+	// retained. It is wiped on lock. Guarded by keyMu.
+	enc *WalletKey
 
 	netMu       sync.Mutex
 	netVerified bool // backend genesis matched wallet network
-	encSalt     []byte
 	keyMu       sync.RWMutex
 
 	// dataMu protects m.data and m.data.Accounts.
@@ -88,28 +88,27 @@ func (m *WalletManager) saveWalletTracked(name string, data *WalletData) error {
 	defer m.persistWg.Done()
 	m.keyMu.RLock()
 	defer m.keyMu.RUnlock()
-	return m.storage.SaveWalletWithKey(name, data, m.encSalt, m.encKey)
+	return m.storage.SaveWalletWithKeyInfo(name, data, m.enc)
 }
 
 // hasKey reports whether the session holds an encryption key (i.e. is unlocked).
 func (m *WalletManager) hasKey() bool {
 	m.keyMu.RLock()
 	defer m.keyMu.RUnlock()
-	return len(m.encKey) > 0
+	return m.enc != nil && len(m.enc.Key) > 0
 }
 
-func (m *WalletManager) setKey(salt, key []byte) {
+func (m *WalletManager) setKey(wk *WalletKey) {
 	m.keyMu.Lock()
-	Wipe(m.encKey)
-	m.encSalt, m.encKey = salt, key
+	m.enc.Wipe()
+	m.enc = wk
 	m.keyMu.Unlock()
 }
 
 func (m *WalletManager) wipeKey() {
 	m.keyMu.Lock()
-	Wipe(m.encKey)
-	Wipe(m.encSalt)
-	m.encKey, m.encSalt = nil, nil
+	m.enc.Wipe()
+	m.enc = nil
 	m.keyMu.Unlock()
 }
 
@@ -568,7 +567,11 @@ func (m *WalletManager) ImportSeedToWatchOnlyWallet(mnemonic string) error {
 		return fmt.Errorf("failed to derive seed: %w", err)
 	}
 
-	hdWallet, err := NewHDWallet(seed, m.data.Network == "testnet")
+	params, err := ParamsForNetwork(m.data.Network)
+	if err != nil {
+		return fmt.Errorf("unsupported wallet network: %w", err)
+	}
+	hdWallet, err := NewHDWallet(seed, params.Net != chaincfg.MainNetParams.Net)
 	if err != nil {
 		return fmt.Errorf("failed to create HD wallet: %w", err)
 	}
@@ -614,7 +617,7 @@ func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 
 	m.state.SetStatus(SyncStatusConnecting, "Loading wallet...")
 
-	data, salt, key, err := m.storage.LoadWalletKey(name, password)
+	data, wk, err := m.storage.LoadWalletKeyInfo(name, password)
 	if err != nil {
 		m.state.SetError(fmt.Errorf("failed to load wallet: %w", err))
 		return fmt.Errorf("failed to load wallet: %w", err)
@@ -624,14 +627,20 @@ func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 	if data.Multisig == nil && data.HardwareWallet == nil {
 		seed, err := seedFromWalletData(data)
 		if err != nil {
-			Wipe(key)
+			wk.Wipe()
 			m.state.SetError(fmt.Errorf("failed to derive seed: %w", err))
 			return fmt.Errorf("failed to derive seed: %w", err)
 		}
-		hd, err = NewHDWallet(seed, data.Network == "testnet")
+		params, perr := ParamsForNetwork(data.Network)
+		if perr != nil {
+			wk.Wipe()
+			m.state.SetError(perr)
+			return fmt.Errorf("unsupported wallet network: %w", perr)
+		}
+		hd, err = NewHDWallet(seed, params.Net != chaincfg.MainNetParams.Net)
 		Wipe(seed)
 		if err != nil {
-			Wipe(key)
+			wk.Wipe()
 			m.state.SetError(fmt.Errorf("failed to create HD wallet: %w", err))
 			return fmt.Errorf("failed to create HD wallet: %w", err)
 		}
@@ -642,13 +651,13 @@ func (m *WalletManager) UnlockWalletBytes(name string, password []byte) error {
 	m.resetNetworkVerified()
 	verified, err := m.alignBackendNetwork(data.Network)
 	if err != nil {
-		Wipe(key)
+		wk.Wipe()
 		m.state.SetError(err)
 		return err
 	}
 	m.netVerified = verified
 
-	m.setKey(salt, key)
+	m.setKey(wk)
 	m.wallet = hd
 	m.data = data
 	m.unlocked = true
@@ -693,6 +702,9 @@ func (m *WalletManager) LockWallet() {
 	}
 	m.data = nil
 	m.dataMu.Unlock()
+	if m.wallet != nil {
+		m.wallet.Destroy()
+	}
 	m.wallet = nil
 	m.unlocked = false
 	m.cache = nil
