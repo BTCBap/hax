@@ -4,6 +4,21 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
+### Security
+- Wallet files now use Argon2id instead of PBKDF2, making stolen files much harder to crack offline. Existing wallet files still open normally and are re-encrypted with the stronger settings after the first successful unlock.
+- Fee estimates from Electrum and Bitcoin Core are capped. An absurd estimate is treated as unavailable, and a high fee needs the same typed confirmation as a custom rate. Transaction building also refuses invalid, overflowing, and excessive rates.
+- Imported PSBTs are checked before signing: legacy inputs must include their full previous transaction, mismatched amounts are rejected, and a PSBT with unverified inputs or outputs worth more than its inputs cannot be signed. A dangerous imported PSBT asks for a second keypress on the existing review screen.
+- Multisig descriptors that use `multi(...)` keep the supplied key order; only `sortedmulti(...)` sorts keys. A checksum mismatch or missing checksum is now an error.
+- Electrum responses are size-limited, returned transactions and broadcast txids are checked against their hashes, clearnet connections require TLS 1.2 or newer, and plain TCP is refused only for public hosts; local-network, loopback, and Tor onion servers may use it. A changed certificate pin fails with a clear error.
+- Bitcoin Core RPC uses TLS for public hosts; cleartext HTTP is refused only for public hosts, so local-network nodes work as-is and `allow_plaintext` remains a config opt-in. The host is validated and responses are size-limited.
+- Wallet, config, and pin files are written atomically with fsync and owner-only permissions, and looser permissions on existing files are tightened.
+- Unlock attempts get a short growing delay after repeated failures. Copied addresses and transaction data are cleared from the clipboard after 60 seconds if hax's value is still there, and on lock or exit.
+- Seed, passphrase, and password fields are cleared when setup finishes or a screen is left. Hardware-wallet signing rejects a result that describes a different transaction than the one reviewed.
+- Debug and crash logs are redacted, owner-only, rotated, and kept under `~/.hax`. Hardware wallet helper discovery checks the binary path and runs it with a timeout.
+- Updated `golang.org/x/net` to v0.62.0, gated releases on a verification job, pinned release tooling, and added SBOM generation.
+
 ## [1.2.0] - 2026-10-28
 
 ### Changed

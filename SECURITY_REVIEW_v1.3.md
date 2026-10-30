@@ -4,7 +4,9 @@
 **Revision reviewed:** `ca87a86aa4c156f88ace4887a0440ae7e284f13e` (2026-10-29, `v1.2.0`)
 **Review date:** 2026-10-30
 **Reviewer:** adversarial security audit
-**Status of source tree:** unchanged; this document is the only file added.
+**Status of source tree:** fixes for v1.3.0 applied; the status on each finding
+describes the tree after those changes. Findings marked deferred or accepted
+risk are documented as such and were not changed.
 
 ## Scope and method
 
@@ -77,7 +79,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** High
 - **Location:** `internal/wallet/storage.go:21-24`, `internal/wallet/storage.go:280-282`, `internal/wallet/validation.go:10`, `internal/wallet/validation.go:38-42`
-- **Status:** open
+- **Status:** fixed (Argon2id with 64 MiB memory and t=3; legacy PBKDF2 files open and are re-encrypted atomically)
 - **Exploit scenario:** An attacker who obtains `~/.hax/<name>.wallet` (stolen
   laptop, backup, sync service, mis-set permissions) runs an offline dictionary
   or brute-force attack. The file format is public and self-describing: a
@@ -97,7 +99,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** High
 - **Location:** `internal/ui/models/send.go:934-942`, `internal/ui/models/send.go:1051-1061`, `internal/backend/electrum_backend.go:1303-1319`, `internal/backend/electrum_backend.go:1370-1393`, `internal/backend/rpc_backend.go:418-460`
-- **Status:** open
+- **Status:** fixed (backend estimates capped at 1000 sat/vB, transaction construction hard-capped, soft-cap confirmation reuses the existing fee screen)
 - **Exploit scenario:** A malicious Electrum server answers
   `blockchain.estimatefee` (or a compromised Bitcoin Core answers
   `estimatesmartfee`) with an enormous rate. `btcPerKBToSatPerVB` and the RPC
@@ -121,7 +123,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** High
 - **Location:** `internal/ui/models/send_keys.go:801-842`, `internal/wallet/psbt_inspect.go:62-174`, `internal/ui/models/send_inspect.go:33-52`, `internal/ui/models/send_views.go:480-520`
-- **Status:** open
+- **Status:** fixed (inspection marks sign-blocked and sign-dangerous; dangerous imported PSBTs need a second keypress on the existing review screen)
 - **Exploit scenario:** An attacker sends the victim a PSBT, for example as a
   "transaction to co-sign" in a trade or multisig coordination flow. The
   wallet imports it and shows an inspection screen. `InspectPSBT` correctly
@@ -142,7 +144,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** High
 - **Location:** `internal/wallet/psbt_signer_data.go:18-34`, `internal/wallet/psbt.go:686`, `internal/wallet/psbt.go:1159-1204`, `internal/wallet/psbt_inspect.go:178-196`, `internal/wallet/psbt_manager.go:443-478`
-- **Status:** open
+- **Status:** fixed (legacy inputs require and verify NonWitnessUtxo; mismatched witness UTXO and previous transaction are rejected)
 - **Exploit scenario:** A legacy P2PKH input's signature does not commit to the
   input amount. An attacker crafts a PSBT that spends a victim UTXO to an
   attacker output, supplies a `WitnessUtxo` whose value is *lower* than the
@@ -164,7 +166,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** High
 - **Location:** `internal/wallet/descriptor.go:551`, `internal/wallet/descriptor.go:656-730`, `internal/wallet/storage.go:52-58`, `internal/wallet/hdwallet.go:729-737`, `internal/wallet/hdwallet.go:763-822`
-- **Status:** open
+- **Status:** fixed (multi and sortedmulti are distinguished, persisted, and used to derive addresses in the original key order)
 - **Exploit scenario:** A user imports an existing multisig descriptor that uses
   `multi(...)`, whose key order is significant. `ParseDescriptor` accepts both
   `multi(` and `sortedmulti(` but stores only `M`, `N`, and script type; there
@@ -186,7 +188,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/tx_sender.go:18-68`, `internal/backend/electrum_backend.go:945-989`, `internal/wallet/psbt_signer_data.go:82-115`
-- **Status:** open
+- **Status:** fixed (previous transaction must verify for every input; a listunspent value mismatch aborts)
 - **Exploit scenario:** `resolveUTXOs` takes each input's `value` from the
   Electrum `listunspent` response and uses it to compute change and fee.
   `attachPrevTxs` fetches the previous transaction and compares it with the
@@ -205,7 +207,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/backend/electrum_backend.go:416-444`, `internal/backend/electrum_backend.go:459`
-- **Status:** open
+- **Status:** fixed (1 MiB line cap; oversized or dribbled responses drop the connection)
 - **Exploit scenario:** `readLoop` uses `bufio.Reader.ReadBytes('\n')` with no
   size limit. On an idle timeout it appends whatever it has to `partial` and
   continues, so a malicious server can send one byte every 59 seconds and grow
@@ -221,7 +223,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/backend/electrum_backend.go:1090-1176`, `internal/backend/rawtx.go:13-25`
-- **Status:** open
+- **Status:** fixed (GetTransaction hashes the returned transaction and rejects a txid mismatch)
 - **Exploit scenario:** `GetTransaction(txid)` calls
   `blockchain.transaction.get` and deserializes the returned hex, then sets
   `TxID` to the *requested* `txid` without hashing the transaction. A malicious
@@ -238,7 +240,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/network_check.go:29-55`, `internal/wallet/network_check.go:73-87`, `internal/backend/electrum_backend.go:1090-1176`, `internal/backend/genesis.go`
-- **Status:** open
+- **Status:** deferred (SPV header and merkle proof validation is a feature; genesis check remains)
 - **Exploit scenario:** The wallet trusts the Electrum server for headers,
   history, UTXO set, balances, and fee estimates. There are no merkle proofs or
   header-chain validation; the only chain check is that block 0 hashes to the
@@ -259,7 +261,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/ui/models/unlock.go:113-115`, `internal/ui/models/unlock.go:180-190`
-- **Status:** open
+- **Status:** fixed (short in-process growing delay after repeated failures; never locks the user out)
 - **Exploit scenario:** An attacker with access to a running unlocked terminal
   session, or to the UI through a remote terminal, can submit unlimited
   password guesses. Each failed attempt only clears the input and shakes the
@@ -276,7 +278,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/ui/models/wallet_setup.go:92-100`, `internal/ui/models/wallet_setup.go:544`, `internal/ui/models/wallet_setup.go:627`, `internal/ui/models/wallet_setup.go:989`, `internal/ui/models/wallet_setup_backup.go:106-119`, `internal/ui/models/root.go:309-313`, `internal/wallet/hdwallet.go:428`, `internal/wallet/manager.go:672-702`, `internal/wallet/secret.go`
-- **Status:** open
+- **Status:** fixed (seed, passphrase, and password fields and models cleared; HD master key wiped; immutable string copies remain best-effort)
 - **Exploit scenario:** The mnemonic, BIP39 passphrase, and wallet password are
   held in Go `string` fields in `WalletSetupModel`. `finishCreate` has a value
   receiver and clears only `backupWords` and the backup input, so the copy
@@ -301,7 +303,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/ui/models/addresses.go:222`, `internal/ui/models/receive.go:307`, `internal/ui/models/utxos.go:190`, `internal/ui/models/history.go:414`, `internal/ui/models/settings.go:353`, `internal/ui/models/settings.go:553`, `internal/ui/models/send_keys.go:790`, `internal/ui/models/send_keys.go:923`, `internal/ui/models/send_keys.go:971`
-- **Status:** open
+- **Status:** fixed (60 s best-effort clipboard clear only while hax's value is still present; cleared on lock and exit)
 - **Exploit scenario:** The wallet copies addresses, outpoints, txids, the
   wallet descriptor, an xpub, the full PSBT base64, and raw transaction hex to
   the system clipboard. There is no auto-clear timer and no clear-on-exit.
@@ -320,7 +322,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/ui/models/connection_setup.go:586-593`, `internal/backend/rpc_backend.go:125-132`, `internal/backend/config.go:30-34`, `internal/config/config.go:109`
-- **Status:** open
+- **Status:** fixed (RPC uses TLS for public hosts; cleartext HTTP is refused only for public hosts, with `allow_plaintext` as a config opt-in, and credentials are redacted from logs; OS keyring storage not added)
 - **Exploit scenario:** The connection setup UI hardcodes `UseSSL: false` for
   the RPC backend, so `callRPC` sends the username and password in a Basic Auth
   header over plain HTTP. A network attacker, a malicious Wi-Fi access point,
@@ -340,7 +342,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/backend/rpc_backend.go:176`, `internal/config/config.go:247-251`, `internal/ui/models/connection_setup.go:441-443`, `internal/ui/models/connection_setup.go:586-591`
-- **Status:** open
+- **Status:** fixed (host validated as a bare hostname or IP; URL built with net.JoinHostPort)
 - **Exploit scenario:** `baseURL` is built with
   `fmt.Sprintf("%s://%s:%d", scheme, host, port)`. The host is validated only
   for being non-empty (the `config.Validate` function is not called on
@@ -359,7 +361,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/backend/rpc_backend.go:140`
-- **Status:** open
+- **Status:** fixed (32 MiB response cap plus Content-Length check)
 - **Exploit scenario:** `io.ReadAll(resp.Body)` reads an arbitrary amount from
   the RPC endpoint. A malicious or compromised Bitcoin Core endpoint (or a
   MITM on a plain-HTTP connection) can stream gigabytes and exhaust the
@@ -374,7 +376,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/storage.go:220-228`, `internal/config/config.go:99-109`, `internal/backend/pinning.go:68-80`
-- **Status:** open
+- **Status:** fixed (temp file, fsync, rename, and directory sync for wallets, config, and pin files)
 - **Exploit scenario:** `SaveWalletWithKey` writes to a predictable
   `<wallet>.wallet.tmp` with `os.WriteFile` (which follows symlinks and does
   not use `O_EXCL`), then `os.Rename`s it over the wallet. There is no
@@ -397,7 +399,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/storage.go:158-166`, `internal/wallet/storage.go:222`, `internal/config/config.go:99`, `internal/config/config.go:109`, `internal/backend/pinning.go:70-80`
-- **Status:** open
+- **Status:** fixed (wallet directory/file, config, and pin permissions tightened on load and save)
 - **Exploit scenario:** `os.MkdirAll(..., 0700)` and
   `os.WriteFile(..., 0600)` set permissions only when creating a new file or
   directory. If `~/.hax`, an existing wallet file, `config.json`, or
@@ -415,7 +417,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/ui/models/autolock.go:20-36`, `internal/ui/models/autolock.go:41-55`, `internal/ui/models/autolock.go:59-87`, `internal/ui/models/connection_setup.go:589-591`
-- **Status:** open
+- **Status:** fixed (config errors use the default timeout; auto-lock also covers connection setup; secret-bearing models nil on lock)
 - **Exploit scenario:** `autoLockAfter` returns `0` (disabled) when the config
   manager is nil or `Load` fails. A corrupted or unreadable `config.json`
   therefore silently disables auto-lock, leaving an unlocked wallet on screen
@@ -437,7 +439,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/cosigner_manager.go:259-330`, `internal/wallet/cosigner_manager.go:407-426`, `internal/ui/models/settings_multisig.go:337-363`
-- **Status:** open
+- **Status:** deferred (per-wallet consent UI adds friction to the existing cosigner scan)
 - **Exploit scenario:** `ScanLocalWalletsForCosigners` takes one password and
   attempts to decrypt *every* other wallet in `~/.hax` with it, then derives
   each seed and matches it against the current multisig cosigners. The UI
@@ -459,7 +461,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/backend/electrum_backend.go:216-223`, `internal/ui/models/connection_setup.go:531-545`
-- **Status:** open
+- **Status:** fixed (plain TCP refused only for public hosts; local-network, loopback, and .onion servers may use it)
 - **Exploit scenario:** The custom-server UI exposes an SSL toggle. With SSL
   off, the wallet speaks Electrum JSON-RPC over plain TCP. A network attacker
   can read all queried scripthashes (privacy), alter balances, history, UTXO
@@ -476,7 +478,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/psbt.go:1206-1390` (script selection at `1315-1360`), `internal/wallet/psbt.go:894-1096`
-- **Status:** open
+- **Status:** fixed (multisig script hash checked against the verified prevout before signing)
 - **Exploit scenario:** `SignMultisigPSBT` and
   `SignMultisigPSBTFromDerivation` take `WitnessScript` or `RedeemScript` from
   the PSBT, derive the cosigner key, and sign that script. For legacy P2SH the
@@ -499,7 +501,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Medium
 - **Location:** `internal/wallet/descriptor.go:525-580`, `internal/ui/models/wallet_setup_multisig.go:791-850`, `internal/ui/models/wallet_setup_multisig.go:890-930`, `internal/wallet/manager.go:360-443`, `internal/ui/models/settings_views.go:319-371`
-- **Status:** open
+- **Status:** deferred (requires on-device or user address comparison UI; descriptor checksum mismatches now hard-fail)
 - **Exploit scenario:** A user imports a single-sig or multisig output
   descriptor, or pastes an xpub into the hardware-wallet setup flow.
   `ParseDescriptor` validates the syntax and warns (only) when the descriptor
@@ -527,7 +529,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `cmd/hax/main.go:24-31`, `internal/wallet/psbt.go:470-478`, `internal/backend/electrum_backend.go:490-500`
-- **Status:** open
+- **Status:** fixed (debug log under ~/.hax at 0600 with rotation; addresses, txids, and paths redacted)
 - **Exploit scenario:** With `DEBUG` set, Bubble Tea writes `debug.log` in the
   current directory (mode 0600, which is correct). `psbtDebugLog` records UTXO
   txids, addresses, derivation paths, and scripts; the Electrum reader logs
@@ -543,7 +545,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `cmd/hax/main.go:90-100`, `internal/ui/models/root.go:235`, `internal/backend/electrum_backend.go:401`
-- **Status:** open
+- **Status:** fixed (top-level panic recovery locks the wallet and writes a redacted 0600 crash log)
 - **Exploit scenario:** The Electrum read loop has a local `recover`, but the
   Bubble Tea update/view path and the wallet code do not. A panic in a decoder,
   a malformed server response, or a UI index bug terminates the program. The
@@ -564,7 +566,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/pinning.go:95-118`
-- **Status:** open
+- **Status:** fixed (first use stays silent; a changed SPKI pin fails with a clear error and no auto-trust)
 - **Exploit scenario:** The first successful TLS connection to a server records
   its SPKI hash with no user confirmation. An attacker who can intercept the
   first connection to a hostname for which they hold a valid CA-issued
@@ -581,7 +583,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/electrum_backend.go:479-524`, `internal/backend/electrum_backend.go:1051-1088`
-- **Status:** open
+- **Status:** fixed (notifications strictly shaped and bounded; implausible header timestamps rejected; header-chain trust deferred with H3-09)
 - **Exploit scenario:** The server can send `blockchain.scripthash.subscribe`
   and `blockchain.headers.subscribe` notifications at any time, and the wallet
   accepts header status/full headers without validating the chain or header
@@ -597,7 +599,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/electrum_backend.go:1275-1293`, `internal/backend/rpc_backend.go:463-482`
-- **Status:** open
+- **Status:** fixed (broadcast txid compared with the locally computed hash in both backends)
 - **Exploit scenario:** Both backends return the server's txid string after
   broadcast without comparing it to the locally computed transaction hash. A
   malicious server can return a fake txid. The UI shows it as the sent
@@ -611,7 +613,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/factory.go:16-20`
-- **Status:** open
+- **Status:** fixed (unknown backend type returns an error instead of a testnet4 fallback)
 - **Exploit scenario:** `NewBackend` maps any unrecognised `Type` to a
   `DefaultElectrumConfig("testnet4")`. A config with a legacy or corrupted
   type (including `"api"`) silently connects to a testnet4 public server even
@@ -626,7 +628,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/descriptor.go:535-547`
-- **Status:** open
+- **Status:** fixed (checksum mismatch and empty checksum are hard errors)
 - **Exploit scenario:** When a descriptor carries a checksum that does not
   match its body, `ParseDescriptor` appends a warning and continues parsing.
   A typo or a tampered descriptor will be accepted and may derive addresses
@@ -639,7 +641,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/electrum_backend.go:190-207`
-- **Status:** open
+- **Status:** fixed (TLS 1.2 minimum on every Electrum TLS configuration)
 - **Exploit scenario:** The `tls.Config` sets `ServerName` and a pinning
   `VerifyConnection` callback but not `MinVersion`. Go's current default is TLS
   1.2, so this is not exploitable today, but an explicit floor prevents a
@@ -652,7 +654,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/hardware.go:134`, `internal/wallet/hardware.go:296-315`, `internal/wallet/hardware.go:330`
-- **Status:** open
+- **Status:** fixed (trusted absolute HWI path, 2-minute timeout, PIN on stdin, device text sanitized)
 - **Exploit scenario:** The wallet runs the first `hwi` found in `PATH` (plus
   a few fixed locations) with `exec.Command`, no context/timeout, and no
   absolute-path or signature check. A malicious `hwi` earlier in `PATH` (for
@@ -670,7 +672,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/settings.go:382`, `internal/ui/models/settings.go:397`, `internal/ui/models/settings.go:650`, `internal/ui/models/send_psbt.go:227`
-- **Status:** open
+- **Status:** fixed (unique filenames in 0700 directories, atomic 0600 writes, Coldcard export moved under ~/.hax)
 - **Exploit scenario:** Descriptor, multisig JSON, Coldcard config, and PSBT
   exports write to fixed paths and overwrite silently. An existing file with
   the same name is destroyed. `os.WriteFile(..., 0600)` does not change the
@@ -686,7 +688,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/config/config.go:75-93`, `internal/config/config.go:127-278`, `internal/backend/factory.go:16-20`
-- **Status:** open
+- **Status:** fixed (config validated on load and save, size-capped, version normalized; unknown fields tolerated for forward compatibility)
 - **Exploit scenario:** `Load` uses plain `json.Unmarshal` with no
   `DisallowUnknownFields`, no size limit, and no call to the existing
   `ConfigManager.Validate` (which is effectively dead code outside tests). A
@@ -703,7 +705,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/manager.go:626`, `internal/wallet/network.go:19-27`, `internal/ui/models/wallet_setup_network.go:27-29`
-- **Status:** open
+- **Status:** fixed (network parameters derived consistently; testnet4 aliases normalized on load)
 - **Exploit scenario:** `ParamsForNetwork` accepts both `"testnet"` and
   `"testnet4"`, but `UnlockWalletBytes` passes `data.Network == "testnet"` to
   `NewHDWallet`. A wallet file whose `Network` is `"testnet4"` (legacy file,
@@ -722,7 +724,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/testnet4.go`, `internal/wallet/network.go:46-56`
-- **Status:** open
+- **Status:** deferred (testnet3 and testnet4 share address encodings; distinguishing them needs a chain selector)
 - **Exploit scenario:** Testnet3 and testnet4 use the same base58 version bytes
   and the same `tb` bech32 HRP, so `ValidateAddressForNetwork` cannot
   distinguish them. A testnet3 recipient address passes validation in a
@@ -738,7 +740,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/psbt_manager.go:454-478`
-- **Status:** open
+- **Status:** fixed (outputs above verified inputs are rejected instead of showing a zero fee)
 - **Exploit scenario:** `ImportPSBTFromBase64` computes
   `fee = totalInput - totalOutput` and replaces a negative result with zero.
   A malformed PSBT whose outputs exceed its inputs is displayed with a zero
@@ -752,7 +754,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/history.go:1228`, `internal/ui/models/textutil.go:41-49`
-- **Status:** open
+- **Status:** fixed (txids validated as 64 hex at the backend boundary and sanitized before rendering)
 - **Exploit scenario:** Labels are passed through `sanitizeLine`, which strips
   control characters, but the transaction detail row renders `tx.TxID`
   directly. `TxID` can come from an Electrum history response (and
@@ -768,7 +770,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/bip21.go:108-121`
-- **Status:** open
+- **Status:** fixed (Unicode format characters stripped from BIP21 labels and messages)
 - **Exploit scenario:** `sanitizeURIText` removes `unicode.IsControl` runes
   (C0/C1 controls) but not Unicode format characters such as U+202A–U+202E
   (bidirectional embedding/override) or U+2066–U+2069 (isolates). A malicious
@@ -785,7 +787,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ur/decode.go`, `internal/ur/psbt.go`, `internal/ui/models/send_keys.go:893`, `internal/ui/models/send_psbt.go:191-195`, `internal/wallet/psbt.go:1797-1804`
-- **Status:** open
+- **Status:** fixed (UR and PSBT decoders enforce their own size limits)
 - **Exploit scenario:** `DecodeSinglePart`, `decodeCBORByteString`, and
   `ImportPSBT` perform bounds checks but have no explicit maximum payload
   size. The UI limits UR input to 10,000 characters and PSBT files to 10 MB,
@@ -801,7 +803,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/wallet_setup_backup.go:64-78`, `internal/ui/models/wallet_setup_backup.go:106-119`
-- **Status:** open
+- **Status:** deferred (enforced backup verification adds friction to onboarding)
 - **Exploit scenario:** After creating a wallet, the user can press `Ctrl+S`
   and then `y` to skip the word-check entirely. The warning explains the risk,
   but there is no enforced verification. A user who copied the phrase
@@ -817,7 +819,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `SECURITY.md` ("Privacy notes"), `internal/backend/electrum_backend.go` (scripthash subscriptions), `internal/ui/models/history.go:1379-1393`
-- **Status:** open
+- **Status:** deferred (Tor-first defaults and explorer warnings are product changes)
 - **Exploit scenario:** The Electrum server learns every address/scripthash
   the wallet queries, which links the wallet's entire address set and activity.
   Tor is optional, not default. The "open in explorer" action sends the txid to
@@ -834,7 +836,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `go.mod:23-24`, `go.sum`
-- **Status:** open
+- **Status:** fixed (golang.org/x/net upgraded to v0.62.0; the openpgp advisory is not reachable)
 - **Exploit scenario:** `govulncheck` reports no vulnerabilities in called
   code, but three module-level advisories remain: GO-2026-6866 and
   GO-2026-6860 in `golang.org/x/net@v0.61.0` (fixed in v0.62.0), and
@@ -851,7 +853,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `.github/workflows/release.yml`, `.goreleaser.yaml:51-62`, `Makefile:50-56`
-- **Status:** open
+- **Status:** fixed (release gated on a verify job, goreleaser v2.19.0 and cosign v3.0.6 pinned, SBOM generated, Makefile checksums labeled development-only)
 - **Exploit scenario:** The release workflow triggers directly on a `v*` tag
   push and does not depend on the CI workflow succeeding. A tag can be created
   from a commit that fails `go vet`, race tests, or `govulncheck`, and the
@@ -871,7 +873,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/storage.go:148-154`, `internal/wallet/storage.go:246-278`
-- **Status:** open
+- **Status:** fixed (version, salt, nonce, and KDF parameters validated before key derivation)
 - **Exploit scenario:** `LoadWalletKey` unmarshals `EncryptedWalletFile` and
   ignores `Version`; it passes `Salt` and `Nonce` directly to PBKDF2 and GCM
   without checking their lengths. A truncated or hand-edited file with an
@@ -889,7 +891,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/wallet/storage.go:205-215`, `internal/wallet/storage.go:359`
-- **Status:** open
+- **Status:** fixed (format version and KDF metadata bound as AES-GCM associated data)
 - **Exploit scenario:** `gcm.Seal(nil, nonce, plaintext, nil)` and
   `gcm.Open(nil, nonce, ciphertext, nil)` use no additional authenticated
   data. The outer `Version`, `Salt`, and `Nonce` are not authenticated.
@@ -904,7 +906,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/backend/config.go:18-30`, `internal/backend/electrum_backend.go:190-207`, `internal/backend/pinning.go:95-118`
-- **Status:** open
+- **Status:** deferred (user-supplied CA configuration is a new feature)
 - **Exploit scenario:** A user runs a private Electrum server with a
   self-signed certificate or a private CA. The Electrum TLS config sets only
   `ServerName` and the TOFU `VerifyConnection` hook; the pin is checked after
@@ -924,7 +926,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/send_hwi.go:24-47`, `internal/ui/models/send.go:756-777`, `internal/wallet/psbt_manager.go:443-483`
-- **Status:** open
+- **Status:** fixed (hardware-signed PSBT must describe the same unsigned transaction as the reviewed PSBT)
 - **Exploit scenario:** `signWithHWI` sends the reviewed PSBT to HWI, parses
   the returned PSBT with `ImportPSBTFromBase64`, and the UI replaces the
   current result with it. The import recomputes the fee and size from the
@@ -944,7 +946,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/connection_setup.go:735-736`, `internal/ui/models/connection_setup.go:767-790`, `internal/backend/config.go:57-100`, `internal/ui/models/splash.go:48-55`, `SECURITY.md:61-62`
-- **Status:** open
+- **Status:** deferred (onboarding privacy notice changes text, ordering, and navigation)
 - **Exploit scenario:** The server setup screen labels "Electrum Server" as
   "(Recommended)" and "Bitcoin Core RPC" as "Connect to your own Bitcoin Core
   node". The Electrum screen lists public servers first and
@@ -966,7 +968,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Low
 - **Location:** `internal/ui/models/send_keys.go:47-68`, `internal/ui/models/addresses.go:24`, `internal/ui/models/addresses.go:437`, `internal/wallet/address_manager.go:334-349`
-- **Status:** open
+- **Status:** deferred (address-reuse warning needs new send-screen UI)
 - **Exploit scenario:** The recipient step checks only that the address parses
   and belongs to the wallet's network. It does not check whether the address
   is one of this wallet's addresses, or whether that address has already been
@@ -985,7 +987,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Info
 - **Location:** `internal/ui/models/root.go:92`, `internal/ui/models/root.go:209`
-- **Status:** open
+- **Status:** fixed (dead testnet field and misleading comment removed)
 - **Exploit scenario:** `RootModel.testnet` is set to `true` with the comment
   "Always testnet for safety" but is never read. Mainnet wallets are fully
   supported and selected in wallet setup. A future reader could mistake the
@@ -997,7 +999,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Info
 - **Location:** `internal/config/config.go:290-296`
-- **Status:** open
+- **Status:** fixed (RawConfigJSON removed; diagnostic logs redact credentials)
 - **Exploit scenario:** `RawConfigJSON` marshals the whole config, including
   `backend.rpc.password`, and is currently unused. If a future UI or debug
   feature displays or logs it, the RPC password is disclosed. The same risk
@@ -1009,7 +1011,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Info
 - **Location:** `internal/wallet/testnet4.go`
-- **Status:** open
+- **Status:** fixed (test pins TestNet4 parameters to Bitcoin Core values)
 - **Exploit scenario:** `TestNet4Params` is a hand-written `chaincfg.Params`
   (magic `0x1C163F28`, testnet address prefixes, coin type 1, genesis hash,
   proof-of-work limit, deployments). It defines no checkpoints. The wallet does
@@ -1025,7 +1027,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Info
 - **Location:** `internal/wallet/psbt.go:438`
-- **Status:** open
+- **Status:** accepted risk (RBF signaling is intentional and enables the fee-bump feature)
 - **Exploit scenario:** `assemblePSBT` sets `Sequence = 0xfffffffd` on every
   input, making every transaction replaceable by default. This is intentional
   (it enables the fee-bump feature) and is generally desirable, but it means a
@@ -1039,7 +1041,7 @@ unusually well hardened. The material risks are concentrated in four places:
 
 - **Severity:** Info
 - **Location:** `internal/wallet/backup.go`, `internal/ui/models/wallet_setup_backup.go`
-- **Status:** open
+- **Status:** deferred (automatic encrypted backup is a new feature)
 - **Exploit scenario:** The wallet encrypts and stores the seed in one file and
   relies on the user's written seed phrase for recovery. There is no automatic
   encrypted backup, no reminder to verify the backup later, and no warning if
@@ -1433,60 +1435,60 @@ work and new UI: **deferred to v1.4**.
 
 | ID | Severity | Area | Location | Status |
 |---|---|---|---|---|
-| H3-01 | High | Crypto / storage | `internal/wallet/storage.go:21-24,280-282`; `internal/wallet/validation.go:10,38-42` | open |
-| H3-02 | High | Fees / backend | `internal/ui/models/send.go:934-942,1051-1061`; `internal/backend/electrum_backend.go:1303-1319`; `internal/backend/rpc_backend.go:418-460` | open |
-| H3-03 | High | PSBT signing | `internal/ui/models/send_keys.go:801-842`; `internal/wallet/psbt_inspect.go:62-174` | open |
-| H3-04 | High | PSBT / legacy inputs | `internal/wallet/psbt_signer_data.go:18-34`; `internal/wallet/psbt.go:686,1159-1204`; `internal/wallet/psbt_manager.go:443-478` | open |
-| H3-05 | High | Descriptors / multisig | `internal/wallet/descriptor.go:551,656-730`; `internal/wallet/hdwallet.go:729-737,763-822` | open |
-| H3-06 | Medium | UTXO trust | `internal/wallet/tx_sender.go:18-68`; `internal/wallet/psbt_signer_data.go:82-115` | open |
-| H3-07 | Medium | Electrum DoS | `internal/backend/electrum_backend.go:416-444,459` | open |
-| H3-08 | Medium | Electrum integrity | `internal/backend/electrum_backend.go:1090-1176` | open |
-| H3-09 | Medium | SPV / network trust | `internal/wallet/network_check.go:29-55,73-87`; `internal/backend/genesis.go` | open |
-| H3-10 | Medium | Unlock / brute force | `internal/ui/models/unlock.go:113-115,180-190` | open |
-| H3-11 | Medium | Memory handling | `internal/ui/models/wallet_setup.go:92-100,544,627,989`; `internal/ui/models/wallet_setup_backup.go:106-119`; `internal/ui/models/root.go:309-313` | open |
-| H3-12 | Medium | Clipboard | `internal/ui/models/addresses.go:222`; `internal/ui/models/receive.go:307`; `internal/ui/models/settings.go:353,553`; `internal/ui/models/send_keys.go:790,923,971` | open |
-| H3-13 | Medium | RPC credentials | `internal/ui/models/connection_setup.go:586-593`; `internal/backend/rpc_backend.go:125-132`; `internal/backend/config.go:30-34` | open |
-| H3-14 | Medium | RPC URL injection | `internal/backend/rpc_backend.go:176`; `internal/config/config.go:247-251` | open |
-| H3-15 | Medium | RPC DoS | `internal/backend/rpc_backend.go:140` | open |
-| H3-16 | Medium | Storage durability | `internal/wallet/storage.go:220-228`; `internal/config/config.go:109`; `internal/backend/pinning.go:68-80` | open |
-| H3-17 | Medium | File permissions | `internal/wallet/storage.go:158-166,222`; `internal/config/config.go:99,109` | open |
-| H3-18 | Medium | Auto-lock | `internal/ui/models/autolock.go:20-36,41-55,59-87` | open |
-| H3-19 | Medium | Cosigner seeds | `internal/wallet/cosigner_manager.go:259-330,407-426`; `internal/ui/models/settings_multisig.go:337-363` | open |
-| H3-20 | Medium | Electrum transport | `internal/backend/electrum_backend.go:216-223`; `internal/ui/models/connection_setup.go:542` | open |
-| H3-21 | Medium | Multisig signing | `internal/wallet/psbt.go:1206-1390` | open |
-| H3-22 | Low | Debug logging | `cmd/hax/main.go:24-31`; `internal/wallet/psbt.go:470-478`; `internal/backend/electrum_backend.go:490-500` | open |
-| H3-23 | Low | Panic handling | `cmd/hax/main.go:90-100`; `internal/ui/models/root.go:235` | open |
-| H3-24 | Low | TOFU | `internal/backend/pinning.go:95-118` | open |
-| H3-25 | Low | Electrum notifications | `internal/backend/electrum_backend.go:479-524,1051-1088` | open |
-| H3-26 | Low | Broadcast integrity | `internal/backend/electrum_backend.go:1275-1293`; `internal/backend/rpc_backend.go:463-482` | open |
-| H3-27 | Low | Backend factory | `internal/backend/factory.go:16-20` | open |
-| H3-28 | Low | Descriptor checksum | `internal/wallet/descriptor.go:535-547` | open |
-| H3-29 | Low | TLS configuration | `internal/backend/electrum_backend.go:190-207` | open |
-| H3-30 | Low | HWI | `internal/wallet/hardware.go:134,296-315,330` | open |
-| H3-31 | Low | Exports | `internal/ui/models/settings.go:382,397,650`; `internal/ui/models/send_psbt.go:227` | open |
-| H3-32 | Low | Config parsing | `internal/config/config.go:75-93,127-278` | open |
-| H3-33 | Low | Network alias | `internal/wallet/manager.go:626`; `internal/wallet/network.go:19-27` | open |
-| H3-34 | Low | Testnet ambiguity | `internal/wallet/testnet4.go`; `internal/wallet/network.go:46-56` | open |
-| H3-35 | Low | PSBT fee | `internal/wallet/psbt_manager.go:454-478` | open |
-| H3-36 | Low | Terminal injection | `internal/ui/models/history.go:1228` | open |
-| H3-37 | Low | BIP21 text | `internal/wallet/bip21.go:108-121` | open |
-| H3-38 | Low | Decoder limits | `internal/ur/decode.go`; `internal/ur/psbt.go`; `internal/wallet/psbt.go:1797-1804` | open |
-| H3-39 | Low | Backup flow | `internal/ui/models/wallet_setup_backup.go:64-78,106-119` | open |
-| H3-40 | Low | Privacy | `internal/ui/models/history.go:1379-1393`; `SECURITY.md` | open |
-| H3-41 | Low | Dependencies | `go.mod:23-24` | open |
-| H3-42 | Low | Release pipeline | `.github/workflows/release.yml`; `.goreleaser.yaml:51-62`; `Makefile:50-56` | open |
-| H3-43 | Low | Wallet format | `internal/wallet/storage.go:148-154,246-278` | open |
-| H3-44 | Low | AEAD metadata | `internal/wallet/storage.go:205-215,359` | open |
-| H3-45 | Info | Dead field | `internal/ui/models/root.go:92,209` | open |
-| H3-46 | Info | Config redaction | `internal/config/config.go:290-296` | open |
-| H3-47 | Info | Testnet4 params | `internal/wallet/testnet4.go` | open |
-| H3-48 | Info | RBF policy | `internal/wallet/psbt.go:438` | open |
-| H3-49 | Info | Backup policy | `internal/wallet/backup.go`; `internal/ui/models/wallet_setup_backup.go` | open |
-| H3-50 | Medium | Key import | `internal/wallet/descriptor.go:525-580`; `internal/ui/models/wallet_setup_multisig.go:791-850,890-930`; `internal/wallet/manager.go:360-443` | open |
-| H3-51 | Low | Electrum TLS | `internal/backend/config.go:18-30`; `internal/backend/electrum_backend.go:190-207`; `internal/backend/pinning.go:95-118` | open |
-| H3-52 | Low | Hardware signing | `internal/ui/models/send_hwi.go:24-47`; `internal/ui/models/send.go:756-777`; `internal/wallet/psbt_manager.go:443-483` | open |
-| H3-53 | Low | Onboarding privacy | `internal/ui/models/connection_setup.go:735-736,767-790`; `internal/backend/config.go:57-100`; `internal/ui/models/splash.go:48-55` | open |
-| H3-54 | Low | Address reuse | `internal/ui/models/send_keys.go:47-68`; `internal/ui/models/addresses.go:24,437`; `internal/wallet/address_manager.go:334-349` | open |
+| H3-01 | High | Crypto / storage | `internal/wallet/storage.go:21-24,280-282`; `internal/wallet/validation.go:10,38-42` | fixed (Argon2id with 64 MiB memory and t=3; legacy PBKDF2 files open and are re-encrypted atomically) |
+| H3-02 | High | Fees / backend | `internal/ui/models/send.go:934-942,1051-1061`; `internal/backend/electrum_backend.go:1303-1319`; `internal/backend/rpc_backend.go:418-460` | fixed (backend estimates capped at 1000 sat/vB, transaction construction hard-capped, soft-cap confirmation reuses the existing fee screen) |
+| H3-03 | High | PSBT signing | `internal/ui/models/send_keys.go:801-842`; `internal/wallet/psbt_inspect.go:62-174` | fixed (inspection marks sign-blocked and sign-dangerous; dangerous imported PSBTs need a second keypress on the existing review screen) |
+| H3-04 | High | PSBT / legacy inputs | `internal/wallet/psbt_signer_data.go:18-34`; `internal/wallet/psbt.go:686,1159-1204`; `internal/wallet/psbt_manager.go:443-478` | fixed (legacy inputs require and verify NonWitnessUtxo; mismatched witness UTXO and previous transaction are rejected) |
+| H3-05 | High | Descriptors / multisig | `internal/wallet/descriptor.go:551,656-730`; `internal/wallet/hdwallet.go:729-737,763-822` | fixed (multi and sortedmulti are distinguished, persisted, and used to derive addresses in the original key order) |
+| H3-06 | Medium | UTXO trust | `internal/wallet/tx_sender.go:18-68`; `internal/wallet/psbt_signer_data.go:82-115` | fixed (previous transaction must verify for every input; a listunspent value mismatch aborts) |
+| H3-07 | Medium | Electrum DoS | `internal/backend/electrum_backend.go:416-444,459` | fixed (1 MiB line cap; oversized or dribbled responses drop the connection) |
+| H3-08 | Medium | Electrum integrity | `internal/backend/electrum_backend.go:1090-1176` | fixed (GetTransaction hashes the returned transaction and rejects a txid mismatch) |
+| H3-09 | Medium | SPV / network trust | `internal/wallet/network_check.go:29-55,73-87`; `internal/backend/genesis.go` | deferred (SPV header and merkle proof validation is a feature; genesis check remains) |
+| H3-10 | Medium | Unlock / brute force | `internal/ui/models/unlock.go:113-115,180-190` | fixed (short in-process growing delay after repeated failures; never locks the user out) |
+| H3-11 | Medium | Memory handling | `internal/ui/models/wallet_setup.go:92-100,544,627,989`; `internal/ui/models/wallet_setup_backup.go:106-119`; `internal/ui/models/root.go:309-313` | fixed (seed, passphrase, and password fields and models cleared; HD master key wiped; immutable string copies remain best-effort) |
+| H3-12 | Medium | Clipboard | `internal/ui/models/addresses.go:222`; `internal/ui/models/receive.go:307`; `internal/ui/models/settings.go:353,553`; `internal/ui/models/send_keys.go:790,923,971` | fixed (60 s best-effort clipboard clear only while hax's value is still present; cleared on lock and exit) |
+| H3-13 | Medium | RPC credentials | `internal/ui/models/connection_setup.go:586-593`; `internal/backend/rpc_backend.go:125-132`; `internal/backend/config.go:30-34` | fixed (RPC uses TLS for public hosts; cleartext HTTP is refused only for public hosts, with `allow_plaintext` as a config opt-in, and credentials are redacted from logs; OS keyring storage not added) |
+| H3-14 | Medium | RPC URL injection | `internal/backend/rpc_backend.go:176`; `internal/config/config.go:247-251` | fixed (host validated as a bare hostname or IP; URL built with net.JoinHostPort) |
+| H3-15 | Medium | RPC DoS | `internal/backend/rpc_backend.go:140` | fixed (32 MiB response cap plus Content-Length check) |
+| H3-16 | Medium | Storage durability | `internal/wallet/storage.go:220-228`; `internal/config/config.go:109`; `internal/backend/pinning.go:68-80` | fixed (temp file, fsync, rename, and directory sync for wallets, config, and pin files) |
+| H3-17 | Medium | File permissions | `internal/wallet/storage.go:158-166,222`; `internal/config/config.go:99,109` | fixed (wallet directory/file, config, and pin permissions tightened on load and save) |
+| H3-18 | Medium | Auto-lock | `internal/ui/models/autolock.go:20-36,41-55,59-87` | fixed (config errors use the default timeout; auto-lock also covers connection setup; secret-bearing models nil on lock) |
+| H3-19 | Medium | Cosigner seeds | `internal/wallet/cosigner_manager.go:259-330,407-426`; `internal/ui/models/settings_multisig.go:337-363` | deferred (per-wallet consent UI adds friction to the existing cosigner scan) |
+| H3-20 | Medium | Electrum transport | `internal/backend/electrum_backend.go:216-223`; `internal/ui/models/connection_setup.go:542` | fixed (plain TCP refused only for public hosts; local-network, loopback, and .onion servers may use it) |
+| H3-21 | Medium | Multisig signing | `internal/wallet/psbt.go:1206-1390` | fixed (multisig script hash checked against the verified prevout before signing) |
+| H3-22 | Low | Debug logging | `cmd/hax/main.go:24-31`; `internal/wallet/psbt.go:470-478`; `internal/backend/electrum_backend.go:490-500` | fixed (debug log under ~/.hax at 0600 with rotation; addresses, txids, and paths redacted) |
+| H3-23 | Low | Panic handling | `cmd/hax/main.go:90-100`; `internal/ui/models/root.go:235` | fixed (top-level panic recovery locks the wallet and writes a redacted 0600 crash log) |
+| H3-24 | Low | TOFU | `internal/backend/pinning.go:95-118` | fixed (first use stays silent; a changed SPKI pin fails with a clear error and no auto-trust) |
+| H3-25 | Low | Electrum notifications | `internal/backend/electrum_backend.go:479-524,1051-1088` | fixed (notifications strictly shaped and bounded; implausible header timestamps rejected; header-chain trust deferred with H3-09) |
+| H3-26 | Low | Broadcast integrity | `internal/backend/electrum_backend.go:1275-1293`; `internal/backend/rpc_backend.go:463-482` | fixed (broadcast txid compared with the locally computed hash in both backends) |
+| H3-27 | Low | Backend factory | `internal/backend/factory.go:16-20` | fixed (unknown backend type returns an error instead of a testnet4 fallback) |
+| H3-28 | Low | Descriptor checksum | `internal/wallet/descriptor.go:535-547` | fixed (checksum mismatch and empty checksum are hard errors) |
+| H3-29 | Low | TLS configuration | `internal/backend/electrum_backend.go:190-207` | fixed (TLS 1.2 minimum on every Electrum TLS configuration) |
+| H3-30 | Low | HWI | `internal/wallet/hardware.go:134,296-315,330` | fixed (trusted absolute HWI path, 2-minute timeout, PIN on stdin, device text sanitized) |
+| H3-31 | Low | Exports | `internal/ui/models/settings.go:382,397,650`; `internal/ui/models/send_psbt.go:227` | fixed (unique filenames in 0700 directories, atomic 0600 writes, Coldcard export moved under ~/.hax) |
+| H3-32 | Low | Config parsing | `internal/config/config.go:75-93,127-278` | fixed (config validated on load and save, size-capped, version normalized; unknown fields tolerated for forward compatibility) |
+| H3-33 | Low | Network alias | `internal/wallet/manager.go:626`; `internal/wallet/network.go:19-27` | fixed (network parameters derived consistently; testnet4 aliases normalized on load) |
+| H3-34 | Low | Testnet ambiguity | `internal/wallet/testnet4.go`; `internal/wallet/network.go:46-56` | deferred (testnet3 and testnet4 share address encodings; distinguishing them needs a chain selector) |
+| H3-35 | Low | PSBT fee | `internal/wallet/psbt_manager.go:454-478` | fixed (outputs above verified inputs are rejected instead of showing a zero fee) |
+| H3-36 | Low | Terminal injection | `internal/ui/models/history.go:1228` | fixed (txids validated as 64 hex at the backend boundary and sanitized before rendering) |
+| H3-37 | Low | BIP21 text | `internal/wallet/bip21.go:108-121` | fixed (Unicode format characters stripped from BIP21 labels and messages) |
+| H3-38 | Low | Decoder limits | `internal/ur/decode.go`; `internal/ur/psbt.go`; `internal/wallet/psbt.go:1797-1804` | fixed (UR and PSBT decoders enforce their own size limits) |
+| H3-39 | Low | Backup flow | `internal/ui/models/wallet_setup_backup.go:64-78,106-119` | deferred (enforced backup verification adds friction to onboarding) |
+| H3-40 | Low | Privacy | `internal/ui/models/history.go:1379-1393`; `SECURITY.md` | deferred (Tor-first defaults and explorer warnings are product changes) |
+| H3-41 | Low | Dependencies | `go.mod:23-24` | fixed (golang.org/x/net upgraded to v0.62.0; the openpgp advisory is not reachable) |
+| H3-42 | Low | Release pipeline | `.github/workflows/release.yml`; `.goreleaser.yaml:51-62`; `Makefile:50-56` | fixed (release gated on a verify job, goreleaser v2.19.0 and cosign v3.0.6 pinned, SBOM generated, Makefile checksums labeled development-only) |
+| H3-43 | Low | Wallet format | `internal/wallet/storage.go:148-154,246-278` | fixed (version, salt, nonce, and KDF parameters validated before key derivation) |
+| H3-44 | Low | AEAD metadata | `internal/wallet/storage.go:205-215,359` | fixed (format version and KDF metadata bound as AES-GCM associated data) |
+| H3-45 | Info | Dead field | `internal/ui/models/root.go:92,209` | fixed (dead testnet field and misleading comment removed) |
+| H3-46 | Info | Config redaction | `internal/config/config.go:290-296` | fixed (RawConfigJSON removed; diagnostic logs redact credentials) |
+| H3-47 | Info | Testnet4 params | `internal/wallet/testnet4.go` | fixed (test pins TestNet4 parameters to Bitcoin Core values) |
+| H3-48 | Info | RBF policy | `internal/wallet/psbt.go:438` | accepted risk (RBF signaling is intentional and enables the fee-bump feature) |
+| H3-49 | Info | Backup policy | `internal/wallet/backup.go`; `internal/ui/models/wallet_setup_backup.go` | deferred (automatic encrypted backup is a new feature) |
+| H3-50 | Medium | Key import | `internal/wallet/descriptor.go:525-580`; `internal/ui/models/wallet_setup_multisig.go:791-850,890-930`; `internal/wallet/manager.go:360-443` | deferred (requires on-device or user address comparison UI; descriptor checksum mismatches now hard-fail) |
+| H3-51 | Low | Electrum TLS | `internal/backend/config.go:18-30`; `internal/backend/electrum_backend.go:190-207`; `internal/backend/pinning.go:95-118` | deferred (user-supplied CA configuration is a new feature) |
+| H3-52 | Low | Hardware signing | `internal/ui/models/send_hwi.go:24-47`; `internal/ui/models/send.go:756-777`; `internal/wallet/psbt_manager.go:443-483` | fixed (hardware-signed PSBT must describe the same unsigned transaction as the reviewed PSBT) |
+| H3-53 | Low | Onboarding privacy | `internal/ui/models/connection_setup.go:735-736,767-790`; `internal/backend/config.go:57-100`; `internal/ui/models/splash.go:48-55` | deferred (onboarding privacy notice changes text, ordering, and navigation) |
+| H3-54 | Low | Address reuse | `internal/ui/models/send_keys.go:47-68`; `internal/ui/models/addresses.go:24,437`; `internal/wallet/address_manager.go:334-349` | deferred (address-reuse warning needs new send-screen UI) |
 
 ## Dependency scan detail
 
@@ -1503,8 +1505,8 @@ Result:
 No vulnerabilities found.
 
 Your code is affected by 0 vulnerabilities.
-This scan also found 0 vulnerabilities in packages you import and 3
-vulnerabilities in modules you require, but your code doesn't appear to call
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call
 these vulnerabilities.
 ```
 
@@ -1512,13 +1514,14 @@ Module-level advisories:
 
 | Advisory | Module | Found | Fixed | Reachable |
 |---|---|---|---|---|
-| GO-2026-6866 | `golang.org/x/net` | v0.61.0 | v0.62.0 | No |
-| GO-2026-6860 | `golang.org/x/net` | v0.61.0 | v0.62.0 | No |
+| GO-2026-6866 | `golang.org/x/net` | v0.62.0 | v0.62.0 | No |
+| GO-2026-6860 | `golang.org/x/net` | v0.62.0 | v0.62.0 | No |
 | GO-2026-5932 | `golang.org/x/crypto` | v0.58.0 | N/A | No |
 
 `go.mod` declares `go 1.26.10`; the review used Go 1.27.3. No unsupported Go
-version or language-feature issue was found. The three module advisories are
-tracked as H3-41.
+version or language-feature issue was found. The two x/net advisories are fixed
+by the v0.62.0 bump; the unreachable `openpgp` advisory remains tracked as
+H3-41.
 
 ## Suggested remediation order
 
