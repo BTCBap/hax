@@ -1,6 +1,8 @@
 package wallet
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -49,14 +51,34 @@ func TestVerifyAddressOnDevice(t *testing.T) {
 
 	other, _, _ := m.GetAddressByIndex(0, 3)
 	h, _ = fakeHWI(t, other)
-	if err := m.verifyAddressOnDevice(h, dev, addr, path); err == nil ||
-		!strings.Contains(err.Error(), "mismatch") {
-		t.Fatalf("different address: %v, want mismatch", err)
+	err = m.verifyAddressOnDevice(h, dev, addr, path)
+	var mismatch *AddressMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("different address: %v, want AddressMismatchError", err)
+	}
+	if mismatch.Displayed != other || mismatch.Expected != addr {
+		t.Fatalf("mismatch = %+v, want displayed %s and expected %s", mismatch, other, addr)
 	}
 
 	h, _ = fakeHWI(t, "")
 	if err := m.verifyAddressOnDevice(h, dev, addr, path); err == nil {
 		t.Fatal("no address reported, want an error")
+	}
+}
+
+func TestAddressMismatchErrorMessage(t *testing.T) {
+	inner := &AddressMismatchError{Displayed: "tb1qdevice", Expected: "tb1qwallet"}
+	wrapped := fmt.Errorf("verification failed: %w", inner)
+
+	if got, want := wrapped.Error(), "verification failed: address mismatch: device showed tb1qdevice but expected tb1qwallet"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	var mismatch *AddressMismatchError
+	if !errors.As(wrapped, &mismatch) {
+		t.Fatal("errors.As did not find AddressMismatchError")
+	}
+	if mismatch.Displayed != "tb1qdevice" || mismatch.Expected != "tb1qwallet" {
+		t.Fatalf("mismatch = %+v", mismatch)
 	}
 }
 

@@ -263,6 +263,34 @@ func renderScreens(w, h int) []renderedScreen {
 	r.revealProgress = 1.0
 	screens = append(screens, renderedScreen{"receive", r.View()})
 
+	// Receive screen with the on-device verification panel in each result state.
+	hwm := NewMockWalletManager()
+	hwm.IsHardwareWalletFn = func() bool { return true }
+	hwm.IsMultisigFn = func() bool { return false }
+	for _, verify := range []struct {
+		name  string
+		state AddressVerifyState
+	}{
+		{name: "verify_waiting", state: AddressVerifyWaiting},
+		{name: "verify_match", state: AddressVerifyMatch},
+		{name: "verify_mismatch", state: AddressVerifyMismatch},
+	} {
+		hm := sized(NewReceiveModel(hwm), w, h)
+		hm.selectedAddress = verifyTestAddress
+		hm.derivationPath = verifyTestPath
+		hm.revealProgress = 1.0
+		hm.verify.Reset(verifyTestAddress, verifyTestPath)
+		hm.verify.State = verify.state
+		hm.verify.Frame = 3
+		if verify.state == AddressVerifyWaiting {
+			hm.verify.StartedAt = time.Now().Add(-2 * time.Second)
+		}
+		if verify.state == AddressVerifyMismatch {
+			hm.verify.DeviceAddress = verifyTestDevice
+		}
+		screens = append(screens, renderedScreen{verify.name, hm.View()})
+	}
+
 	hi := sized(NewTransactionHistoryModel(mock), w, h)
 	hi.loading, hi.fadeIn, hi.isActive, hi.blockHeight = false, 1.0, true, 98_412
 	hi.transactions = demoTxs

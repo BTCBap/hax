@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func TestGetAddressVisualState(t *testing.T) {
@@ -37,6 +40,50 @@ func TestGetAddressVisualState(t *testing.T) {
 				t.Fatalf("getAddressVisualState() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestAddresses_VerifyOnDeviceMismatch(t *testing.T) {
+	mock := NewMockWalletManager()
+	mock.IsHardwareWalletFn = func() bool { return true }
+	mock.IsMultisigFn = func() bool { return false }
+	mock.DisplayAddrOnDeviceFn = func(addr, path string) error {
+		if addr != verifyTestAddress || path != verifyTestPath {
+			t.Fatalf("device called with %q %q", addr, path)
+		}
+		return &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: addr}
+	}
+
+	m := NewAddressesModel(mock, nil)
+	m.width = 80
+	m.height = 24
+	m.receiveAddresses = []AddrDisplayInfo{{
+		Address: verifyTestAddress,
+		Path:    verifyTestPath,
+		Index:   0,
+	}}
+	m.updateTable()
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	waiting := model.(AddressesModel)
+	if !waiting.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+	if waiting.verify.Address != verifyTestAddress || waiting.verify.Path != verifyTestPath {
+		t.Fatalf("verifying %q at %q", waiting.verify.Address, waiting.verify.Path)
+	}
+
+	result, ok := findMsgOfType[HWIVerifyMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("verification command did not produce HWIVerifyMsg")
+	}
+	model, _ = waiting.Update(result)
+	updated := model.(AddressesModel)
+	if updated.verify.State != AddressVerifyMismatch {
+		t.Fatalf("state = %d, want mismatch", updated.verify.State)
+	}
+	if !strings.Contains(stripANSI(updated.View()), "✗ Device shows a different address") {
+		t.Fatalf("view does not show mismatch:\n%s", stripANSI(updated.View()))
 	}
 }
 

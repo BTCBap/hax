@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/wallet"
 )
 
 func newTestReceive(t *testing.T) (ReceiveModel, *MockWalletManager) {
@@ -205,7 +206,7 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 	mock.IsHardwareWalletFn = func() bool { return false }
 	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	updated := model.(ReceiveModel)
-	if updated.hwiVerifying {
+	if updated.verify.IsWaiting() {
 		t.Error("v should not trigger verify for software wallet")
 	}
 
@@ -214,7 +215,46 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 	mock.IsMultisigFn = func() bool { return false }
 	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	updated = model.(ReceiveModel)
-	if !updated.hwiVerifying {
+	if !updated.verify.IsWaiting() {
 		t.Error("v should trigger verify for hardware wallet")
+	}
+}
+
+func TestReceive_VerifyOnDevice_Mismatch(t *testing.T) {
+	m, mock := newTestReceive(t)
+	m.selectedAddress = verifyTestAddress
+	m.derivationPath = verifyTestPath
+	m.revealProgress = 1.0
+	mock.IsHardwareWalletFn = func() bool { return true }
+	mock.IsMultisigFn = func() bool { return false }
+	mock.DisplayAddrOnDeviceFn = func(addr, path string) error {
+		if addr != verifyTestAddress || path != verifyTestPath {
+			t.Fatalf("device called with %q %q", addr, path)
+		}
+		return &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: addr}
+	}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	waiting := model.(ReceiveModel)
+	if !waiting.verify.IsWaiting() {
+		t.Fatal("v should start device verification")
+	}
+
+	result, ok := findMsgOfType[HWIVerifyMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("verification command did not produce HWIVerifyMsg")
+	}
+	model, _ = waiting.Update(result)
+	updated := model.(ReceiveModel)
+	if updated.verify.State != AddressVerifyMismatch {
+		t.Fatalf("state = %d, want mismatch", updated.verify.State)
+	}
+	if updated.verify.DeviceAddress != verifyTestDevice {
+		t.Fatalf("device address = %q", updated.verify.DeviceAddress)
+	}
+
+	view := stripANSI(updated.View())
+	if !strings.Contains(view, "✗ Device shows a different address") {
+		t.Fatalf("view does not show mismatch:\n%s", view)
 	}
 }

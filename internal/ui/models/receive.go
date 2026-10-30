@@ -28,10 +28,7 @@ type ReceiveModel struct {
 	err             error
 
 	// Hardware wallet address verification
-	hwiVerifying  bool   // Currently verifying on device
-	hwiVerifyOK   bool   // true = success, false = error
-	hwiVerifyMsg  string // Status message from verification
-	hwiVerifyTime time.Time
+	verify AddressVerifyView
 
 	// Animation state
 	viewport       viewport.Model
@@ -178,6 +175,9 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.err = msg.Err
 		} else {
+			if msg.Address != m.selectedAddress || msg.Path != m.derivationPath {
+				m.verify.Reset(msg.Address, msg.Path)
+			}
 			m.selectedAddress = msg.Address
 			m.derivationPath = msg.Path
 			m.currentIndex = msg.Index
@@ -222,32 +222,20 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Check if HWI verify message should be hidden (after 4 seconds)
-		if m.hwiVerifyMsg != "" {
-			if time.Since(m.hwiVerifyTime) > 4*time.Second {
-				m.hwiVerifyMsg = ""
-			} else {
-				needsAnimation = true
-			}
-		}
-
 		// Only continue animation if something is actively animating
 		// Don't run animations indefinitely just because an address exists
 		if needsAnimation {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case HWIVerifyMsg:
-		m.hwiVerifying = false
-		if msg.Err != nil {
-			m.hwiVerifyOK = false
-			m.hwiVerifyMsg = msg.Err.Error()
-		} else {
-			m.hwiVerifyOK = true
-			m.hwiVerifyMsg = "Address verified on device!"
+	case AddressVerifyTickMsg:
+		if m.verify.IsWaiting() {
+			m.verify.Advance()
+			cmds = append(cmds, AddressVerifyTickCmd())
 		}
-		m.hwiVerifyTime = time.Now()
-		cmds = append(cmds, m.animateTick())
+
+	case HWIVerifyMsg:
+		m.verify.Complete(msg.Err)
 
 	case StateChangedMsg:
 		// Update from unified state - refresh address balance if needed
@@ -314,10 +302,9 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "v":
 			if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() &&
-				m.selectedAddress != "" && m.derivationPath != "" && !m.hwiVerifying {
-				m.hwiVerifying = true
-				m.hwiVerifyMsg = ""
-				cmds = append(cmds, m.verifyAddressOnDevice())
+				m.selectedAddress != "" && m.derivationPath != "" && !m.verify.IsWaiting() {
+				m.verify.Begin()
+				cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice())
 			}
 		}
 	}
@@ -355,16 +342,12 @@ func (m ReceiveModel) View() string {
 	// Single box with QR code and address together
 	combinedBox := m.renderCombinedQRAndAddress()
 
-	// HWI verification status
-	hwiStatus := ""
-	if m.hwiVerifying {
-		hwiStatus = "\n" + styles.DimText.Render("  Verifying on device... check your hardware wallet screen")
-	} else if m.hwiVerifyMsg != "" {
-		if m.hwiVerifyOK {
-			hwiStatus = "\n" + styles.SuccessBoxStyle.Render("✓ "+m.hwiVerifyMsg)
-		} else {
-			hwiStatus = "\n" + styles.RenderErrorBox("⚠ "+m.hwiVerifyMsg, width)
-		}
+	// HWI verification panel. It has a fixed height in every state.
+	verifyPanel := ""
+	if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+		verify := m.verify
+		verify.Width = width
+		verifyPanel = verify.View() + "\n"
 	}
 
 	// Help
@@ -373,7 +356,8 @@ func (m ReceiveModel) View() string {
 	// Final layout - ultra compact for small terminals
 	return header + copyStatus + "\n" +
 		combinedBox + "\n" +
-		help + hwiStatus + "\n" +
+		verifyPanel +
+		help + "\n" +
 		errorLine
 }
 

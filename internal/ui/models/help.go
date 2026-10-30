@@ -283,6 +283,9 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, m.shortcut("tab", "Toggle receive / change"))
 	lines = append(lines, m.shortcut("c", "Copy address"))
 	lines = append(lines, m.shortcut("e", "Edit address label"))
+	if m.walletMode() == helpWalletHardware {
+		lines = append(lines, m.shortcut("v", "Verify address on hardware device"))
+	}
 	lines = append(lines, m.shortcut("r", "Refresh"))
 
 	// UTXOs

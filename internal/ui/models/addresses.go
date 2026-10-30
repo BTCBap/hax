@@ -19,6 +19,7 @@ import (
 // AddrDisplayInfo holds info about an address for display
 type AddrDisplayInfo struct {
 	Address string
+	Path    string
 	Index   uint32
 	Used    bool
 	Balance api.Satoshi
@@ -83,6 +84,9 @@ type AddressesModel struct {
 	editing    bool
 	editAddr   string
 	labelInput textinput.Model
+
+	// Hardware wallet address verification
+	verify AddressVerifyView
 }
 
 // AddressesInitMsg triggers initial load
@@ -141,6 +145,7 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateTable()
 		m.table.Focus()
 		m.table.GotoTop()
+		m.syncVerifyAddress()
 		return m, nil
 
 	case ScreenActiveMsg:
@@ -149,11 +154,24 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateTable()
 		m.table.Focus()
 		m.table.GotoTop()
+		m.syncVerifyAddress()
 		return m, nil
 
 	case StateChangedMsg:
 		m.loadAddresses()
 		m.updateTable()
+		m.syncVerifyAddress()
+		return m, nil
+
+	case AddressVerifyTickMsg:
+		if m.verify.IsWaiting() {
+			m.verify.Advance()
+			cmds = append(cmds, AddressVerifyTickCmd())
+		}
+		return m, tea.Batch(cmds...)
+
+	case HWIVerifyMsg:
+		m.verify.Complete(msg.Err)
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -162,6 +180,11 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeColumnsForWidth()
 		// Keep table height stable across scroll/selection states.
 		tableHeight := m.height - 9 // leaves a line for the label
+		if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+			verify := m.verify
+			verify.Width = m.width
+			tableHeight -= verify.Height()
+		}
 		if tableHeight < 3 {
 			tableHeight = 3
 		}
@@ -206,6 +229,7 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewMode = (m.viewMode + 1) % 2
 			m.updateTable()
 			m.table.GotoTop()
+			m.syncVerifyAddress()
 
 		case "c":
 			// Copy selected address
@@ -238,6 +262,18 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.labelInput.Focus()
 			}
 
+		case "v":
+			if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+				if a, ok := m.selected(); ok && a.Address != "" && a.Path != "" && !m.verify.IsWaiting() {
+					if m.verify.Address != a.Address || m.verify.Path != a.Path {
+						m.verify.Reset(a.Address, a.Path)
+					}
+					m.verify.Begin()
+					cmds = append(cmds, AddressVerifyTickCmd(), m.verifyAddressOnDevice(a))
+					return m, tea.Batch(cmds...)
+				}
+			}
+
 		case "r":
 			// Refresh
 			m.loadAddresses()
@@ -248,12 +284,39 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var tableCmd tea.Cmd
 		m.table, tableCmd = m.table.Update(msg)
 		m.clampCursor()
+		m.syncVerifyAddress()
 		if tableCmd != nil {
 			cmds = append(cmds, tableCmd)
 		}
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// syncVerifyAddress resets the verification result when the selected address
+// changes. Results stay visible while the same address is selected.
+func (m *AddressesModel) syncVerifyAddress() {
+	a, ok := m.selected()
+	if !ok || !m.walletManager.IsHardwareWallet() || m.walletManager.IsMultisig() {
+		if m.verify.Address != "" || m.verify.State != AddressVerifyIdle {
+			m.verify.Reset("", "")
+		}
+		return
+	}
+	if m.verify.Address != a.Address || m.verify.Path != a.Path {
+		m.verify.Reset(a.Address, a.Path)
+	}
+}
+
+// verifyAddressOnDevice asks the hardware wallet to display the selected
+// address so the user can compare it.
+func (m AddressesModel) verifyAddressOnDevice(a AddrDisplayInfo) tea.Cmd {
+	walletMgr := m.walletManager
+	address := a.Address
+	path := a.Path
+	return func() tea.Msg {
+		return HWIVerifyMsg{Err: walletMgr.DisplayAddressOnDevice(address, path)}
+	}
 }
 
 func (m *AddressesModel) resizeColumnsForWidth() {
@@ -380,6 +443,7 @@ func (m *AddressesModel) loadAddresses() {
 
 			info := AddrDisplayInfo{
 				Address: addr.Address,
+				Path:    addr.Path,
 				Index:   addr.Index,
 				Used:    addr.Used,
 				Balance: balance,
@@ -574,14 +638,18 @@ func (m AddressesModel) View() string {
 	}
 
 	// Help footer
-	help := styles.RenderHelpWrapped(m.width,
+	helpItems := []styles.HelpItem{
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("PgUp/PgDn", "scroll"),
 		styles.HK("tab", "recv/change"),
 		styles.HK("c", "copy"),
 		styles.HK("e", "label"),
-		styles.HK("esc", "back"),
-	)
+	}
+	if m.walletManager.IsHardwareWallet() && !m.walletManager.IsMultisig() {
+		helpItems = append(helpItems, styles.HK("v", "verify on device"))
+	}
+	helpItems = append(helpItems, styles.HK("esc", "back"))
+	help := styles.RenderHelpWrapped(m.width, helpItems...)
 	if m.editing {
 		help = styles.RenderHelp(
 			styles.HK("enter", "save"),
@@ -594,9 +662,23 @@ func (m AddressesModel) View() string {
 	if l := m.labelLine(); l != "" {
 		parts = append(parts, l)
 	}
+	// Hardware wallet address verification panel.
+	if panel := m.verifyPanel(); panel != "" {
+		parts = append(parts, panel)
+	}
 	output := strings.Join(append(parts, help), "\n")
 
 	return output
+}
+
+// verifyPanel renders the on-device verification panel for hardware wallets.
+func (m AddressesModel) verifyPanel() string {
+	if !m.walletManager.IsHardwareWallet() || m.walletManager.IsMultisig() {
+		return ""
+	}
+	verify := m.verify
+	verify.Width = m.width
+	return verify.View()
 }
 
 // selected returns the address under the cursor.

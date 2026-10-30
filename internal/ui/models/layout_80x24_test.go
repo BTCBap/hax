@@ -13,14 +13,41 @@ import (
 // awkward data, in an 80×24 terminal and fails if any line is wider than 80.
 func TestViews_FitIn80Columns(t *testing.T) {
 	builders := map[string]func(*MockWalletManager) tea.Model{
-		"splash":     func(*MockWalletManager) tea.Model { return NewSplashModel() },
-		"unlock":     func(w *MockWalletManager) tea.Model { return NewUnlockModel(w) },
-		"dashboard":  func(w *MockWalletManager) tea.Model { return NewMainDashboardModel(w, nil) },
-		"receive":    func(w *MockWalletManager) tea.Model { return NewReceiveModel(w) },
-		"send":       func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
-		"feebump":    func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
-		"history":    func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
-		"addresses":  func(w *MockWalletManager) tea.Model { return NewAddressesModel(w, nil) },
+		"splash":    func(*MockWalletManager) tea.Model { return NewSplashModel() },
+		"unlock":    func(w *MockWalletManager) tea.Model { return NewUnlockModel(w) },
+		"dashboard": func(w *MockWalletManager) tea.Model { return NewMainDashboardModel(w, nil) },
+		"receive":   func(w *MockWalletManager) tea.Model { return NewReceiveModel(w) },
+		"send":      func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
+		"feebump":   func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
+		"history":   func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
+		"addresses": func(w *MockWalletManager) tea.Model { return NewAddressesModel(w, nil) },
+		"receive_hwi": func(w *MockWalletManager) tea.Model {
+			w.IsHardwareWalletFn = func() bool { return true }
+			w.IsMultisigFn = func() bool { return false }
+			r := NewReceiveModel(w)
+			r.selectedAddress = verifyTestAddress
+			r.derivationPath = verifyTestPath
+			r.revealProgress = 1.0
+			r.verify.Reset(verifyTestAddress, verifyTestPath)
+			r.verify.State = AddressVerifyMismatch
+			r.verify.DeviceAddress = verifyTestDevice
+			return r
+		},
+		"addresses_hwi": func(w *MockWalletManager) tea.Model {
+			w.IsHardwareWalletFn = func() bool { return true }
+			w.IsMultisigFn = func() bool { return false }
+			a := NewAddressesModel(w, nil)
+			a.receiveAddresses = []AddrDisplayInfo{{
+				Address: verifyTestAddress,
+				Path:    verifyTestPath,
+				Index:   0,
+			}}
+			a.updateTable()
+			a.verify.Reset(verifyTestAddress, verifyTestPath)
+			a.verify.State = AddressVerifyMismatch
+			a.verify.DeviceAddress = verifyTestDevice
+			return a
+		},
 		"utxos":      func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },
 		"settings":   func(w *MockWalletManager) tea.Model { return NewSettingsModel(w, nil) },
 		"help":       func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
