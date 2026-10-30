@@ -19,6 +19,9 @@ This is a lightweight project changelog, not a strict release ledger.
 - Debug and crash logs are redacted, owner-only, rotated, and kept under `~/.hax`. Hardware wallet helper discovery checks the binary path and runs it with a timeout.
 - Updated `golang.org/x/net` to v0.62.0, gated releases on a verification job, pinned release tooling, and added SBOM generation.
 
+### Fixed
+- Multisig wallets imported from a `multi(...)` descriptor now export `multi(...)` with the original key order (descriptor, unified backup, and UR QR with tag 406) instead of `sortedmulti(...)`, so re-importing gives the same addresses. The Sparrow/Caravan JSON export falls back to the descriptor file for these wallets, and the Coldcard file export explains that it needs `sortedmulti`.
+
 ## [1.2.0] - 2026-10-28
 
 ### Changed
