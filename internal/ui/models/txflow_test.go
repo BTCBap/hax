@@ -312,15 +312,167 @@ func TestTxFlow_NoDanglingBusInPadding(t *testing.T) {
 	const diagramStart = 2 // header plus blank row
 	const usedRows = 5     // three items with spacer rows
 	for i := diagramStart + usedRows; i < len(lines); i++ {
-		if strings.ContainsRune(lines[i], '┃') {
-			t.Fatalf("dangling bus on padding line %d: %q", i, lines[i])
+		for _, glyph := range flowBusGlyphs {
+			if strings.ContainsRune(lines[i], glyph) {
+				t.Fatalf("dangling bus glyph %q on line %d: %q", glyph, i, lines[i])
+			}
 		}
 	}
-	if !strings.ContainsRune(lines[diagramStart+usedRows-1], '┛') {
-		t.Errorf("left bus does not close on its last row: %q", lines[diagramStart+usedRows-1])
+}
+
+var flowBusGlyphs = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┣', '┫', '┳', '┻', '╋'}
+
+func TestTxFlow_CentersShorterSideAndBusConnections(t *testing.T) {
+	const width, height = 80, 24
+	leftW, bandW, _ := flowColumnWidths(width)
+	busL, busR := flowBusColumns(leftW, bandW)
+
+	// 2 inputs and 3 outputs (including fee): the left bus connects only on
+	// diagram rows 1..3, centered around the core row 2.
+	v := TxFlowView{Flow: txFlowFixture(2, 2), Width: width, Height: height}
+	lines := strings.Split(ansi.Strip(v.View()), "\n")
+	diagramStart, diagramEnd := flowTestDiagram(lines)
+	if diagramEnd-diagramStart != 5 {
+		t.Fatalf("2-in/3-out diagram has %d rows, want 5", diagramEnd-diagramStart)
 	}
-	if !strings.ContainsRune(lines[diagramStart+usedRows-1], '┗') {
-		t.Errorf("right bus does not close on its last row: %q", lines[diagramStart+usedRows-1])
+	wantLeft := []rune{' ', '┓', '┣', '┛', ' '}
+	wantRight := []rune{'┏', '┃', '╋', '┃', '┗'}
+	for row, want := range wantLeft {
+		if got := flowTestRuneAt(lines[diagramStart+row], busL); got != want {
+			t.Errorf("left bus row %d = %q, want %q", row, got, want)
+		}
+	}
+	for row, want := range wantRight {
+		if got := flowTestRuneAt(lines[diagramStart+row], busR); got != want {
+			t.Errorf("right bus row %d = %q, want %q", row, got, want)
+		}
+	}
+
+	shapes := []struct {
+		name    string
+		inputs  int
+		outputs int
+	}{
+		{name: "1-in-1-out", inputs: 1, outputs: 0},
+		{name: "1-in-3-out", inputs: 1, outputs: 2},
+		{name: "3-in-1-out", inputs: 3, outputs: 0},
+		{name: "2-in-3-out", inputs: 2, outputs: 2},
+		{name: "5-in-2-out", inputs: 5, outputs: 1},
+		{name: "overflow-25-in-12-out", inputs: 25, outputs: 12},
+	}
+	for _, shape := range shapes {
+		for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
+			t.Run(fmt.Sprintf("%s/%s", shape.name, sideName(side)), func(t *testing.T) {
+				v := TxFlowView{Flow: txFlowFixture(shape.inputs, shape.outputs), Width: width, Height: height}
+				v.SwitchSide(side)
+				lines := strings.Split(ansi.Strip(v.View()), "\n")
+				if len(lines) != height {
+					t.Fatalf("%d lines, want %d", len(lines), height)
+				}
+				start, end := flowTestDiagram(lines)
+				flowTestBusArms(t, lines, start, end, busL, true)
+				flowTestBusArms(t, lines, start, end, busR, false)
+			})
+		}
+	}
+}
+
+// flowTestDiagram locates the diagram block: it starts after the header and
+// blank row, and ends at the blank row before the detail panel.
+func flowTestDiagram(lines []string) (start, end int) {
+	for i, line := range lines {
+		if strings.HasPrefix(line, "Address") {
+			return 2, i - 1
+		}
+	}
+	return 2, 2
+}
+
+func flowTestRuneAt(line string, col int) rune {
+	runes := []rune(line)
+	if col < 0 || col >= len(runes) {
+		return ' '
+	}
+	return runes[col]
+}
+
+type flowTestArms struct {
+	left, right, up, down bool
+}
+
+var flowTestBusArmsByRune = map[rune]flowTestArms{
+	'━': {left: true, right: true},
+	'┃': {up: true, down: true},
+	'┏': {right: true, down: true},
+	'┓': {left: true, down: true},
+	'┗': {right: true, up: true},
+	'┛': {left: true, up: true},
+	'┣': {right: true, up: true, down: true},
+	'┫': {left: true, up: true, down: true},
+	'┳': {left: true, right: true, down: true},
+	'┻': {left: true, right: true, up: true},
+	'╋': {left: true, right: true, up: true, down: true},
+}
+
+// flowTestBusArms verifies that a bus has no gaps, stops at its first and
+// last connecting rows, and that every arm meets a matching arm in the
+// neighbouring cell. outwardLeft selects the side whose connector leaves
+// toward the left column.
+func flowTestBusArms(t *testing.T, lines []string, start, end, col int, outwardLeft bool) {
+	t.Helper()
+	rows := make([]int, 0, end-start)
+	for row := start; row < end; row++ {
+		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) == 0 {
+		t.Fatalf("no bus glyphs in column %d", col)
+	}
+	for i := 1; i < len(rows); i++ {
+		if rows[i] != rows[i-1]+1 {
+			t.Fatalf("bus column %d has a gap between rows %d and %d", col, rows[i-1], rows[i])
+		}
+	}
+
+	for _, row := range rows {
+		arms := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]
+		if arms.up {
+			if row == start {
+				t.Fatalf("bus column %d row %d has an up arm above the diagram", col, row)
+			}
+			above, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row-1], col)]
+			if !ok || !above.down {
+				t.Fatalf("bus column %d row %d has an up arm but the cell above (row %d) has no down arm", col, row, row-1)
+			}
+		}
+		if arms.down {
+			if row == end-1 {
+				t.Fatalf("bus column %d row %d has a down arm below the diagram", col, row)
+			}
+			below, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row+1], col)]
+			if !ok || !below.up {
+				t.Fatalf("bus column %d row %d has a down arm but the cell below (row %d) has no up arm", col, row, row+1)
+			}
+		}
+		if outwardLeft && arms.left && flowTestRuneAt(lines[row], col-1) == ' ' {
+			t.Fatalf("bus column %d row %d has a left arm with no connector", col, row)
+		}
+		if !outwardLeft && arms.right && flowTestRuneAt(lines[row], col+1) == ' ' {
+			t.Fatalf("bus column %d row %d has a right arm with no connector", col, row)
+		}
+	}
+
+	// No bus glyph may appear above or below the contiguous span.
+	for row := start; row < rows[0]; row++ {
+		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
+			t.Fatalf("bus column %d has a dangling glyph on row %d", col, row)
+		}
+	}
+	for row := rows[len(rows)-1] + 1; row < end; row++ {
+		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
+			t.Fatalf("bus column %d has a dangling glyph on row %d", col, row)
+		}
 	}
 }
 

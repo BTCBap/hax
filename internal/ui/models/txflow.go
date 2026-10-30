@@ -250,17 +250,19 @@ func (v *TxFlowView) SwitchSide(side ...TxFlowSide) {
 func (v TxFlowView) View() string {
 	width := v.effectiveWidth()
 	height := v.effectiveHeight()
-	diagramHeight := height - 7 // header, blank, padding, blank, 3 detail rows, hint
-	if diagramHeight < 0 {
-		diagramHeight = 0
-	}
 
 	lines := make([]string, 0, height)
 	lines = append(lines, v.headerLine(width))
 	lines = append(lines, "")
-	lines = append(lines, v.diagramLines(width, diagramHeight)...)
+	lines = append(lines, v.diagramLines(width, v.diagramRows())...)
 	lines = append(lines, "")
 	lines = append(lines, v.detailLines(width)...)
+	if len(lines) > height-1 {
+		lines = lines[:max(0, height-1)]
+	}
+	for len(lines) < height-1 {
+		lines = append(lines, "")
+	}
 	lines = append(lines, v.hintLine(width))
 
 	for i, line := range lines {
@@ -525,7 +527,7 @@ func (v TxFlowView) diagramLines(width, height int) []string {
 		n = len(outputs)
 	}
 	if n == 0 {
-		return make([]string, height)
+		return nil
 	}
 
 	spaced := 2*n-1 <= height
@@ -540,10 +542,10 @@ func (v TxFlowView) diagramLines(width, height int) []string {
 
 	leftW, bandW, rightW := flowColumnWidths(width)
 	busL, busR := flowBusColumns(leftW, bandW)
-	grid := newFlowGrid(width, height)
+	grid := newFlowGrid(width, used)
 
-	inLayout := v.layoutSide(FlowInput, inputs, n, used, center, spaced)
-	outLayout := v.layoutSide(FlowOutput, outputs, n, used, center, spaced)
+	inLayout := v.layoutSide(FlowInput, inputs, used, center, spaced)
+	outLayout := v.layoutSide(FlowOutput, outputs, used, center, spaced)
 
 	inLayout.draw(grid, center, FlowInput, leftW, bandW, rightW, busL, busR, width, v)
 	outLayout.draw(grid, center, FlowOutput, leftW, bandW, rightW, busL, busR, width, v)
@@ -552,7 +554,7 @@ func (v TxFlowView) diagramLines(width, height int) []string {
 	return grid.lines()
 }
 
-func (v TxFlowView) layoutSide(side TxFlowSide, items []TxFlowItem, n, used, center int, spaced bool) flowSideLayout {
+func (v TxFlowView) layoutSide(side TxFlowSide, items []TxFlowItem, used, center int, spaced bool) flowSideLayout {
 	layout := flowSideLayout{
 		items: items,
 		rows:  make([]flowSideRow, used),
@@ -567,18 +569,33 @@ func (v TxFlowView) layoutSide(side TxFlowSide, items []TxFlowItem, n, used, cen
 	}
 
 	switch {
+	case m == 1:
+		row := center
+		if row < 0 {
+			row = 0
+		}
+		if row >= used {
+			row = used - 1
+		}
+		layout.rows[row].item = 0
 	case m <= used && spaced:
-		startSlot := (n - m) / 2
+		start := center - (m - 1)
+		if start < 0 {
+			start = 0
+		}
+		if start+2*(m-1) >= used {
+			start = used - 1 - 2*(m-1)
+		}
 		for i := 0; i < m; i++ {
-			row := 2 * (startSlot + i)
+			row := start + 2*i
 			if row >= 0 && row < used {
 				layout.rows[row].item = i
 			}
 		}
 	case m <= used:
-		startRow := (used - m) / 2
+		start := (used - m) / 2
 		for i := 0; i < m; i++ {
-			row := startRow + i
+			row := start + i
 			if row >= 0 && row < used {
 				layout.rows[row].item = i
 			}
@@ -601,28 +618,27 @@ func (v TxFlowView) layoutSide(side TxFlowSide, items []TxFlowItem, n, used, cen
 		}
 	}
 
-	layout.hasBus = true
-	if m == 1 {
-		itemRow := 0
-		for r, row := range layout.rows {
-			if row.item >= 0 {
-				itemRow = r
-				break
+	first, last := -1, -1
+	for r, row := range layout.rows {
+		if row.item >= 0 || row.more > 0 {
+			if first < 0 {
+				first = r
 			}
+			last = r
 		}
-		layout.busTop = itemRow
-		layout.busBottom = itemRow
-		if center < layout.busTop {
-			layout.busTop = center
-		}
-		if center > layout.busBottom {
-			layout.busBottom = center
-		}
-		layout.single = true
+	}
+	if first < 0 {
 		return layout
 	}
-	layout.busTop = 0
-	layout.busBottom = used - 1
+	if center < first {
+		first = center
+	}
+	if center > last {
+		last = center
+	}
+	layout.hasBus = true
+	layout.busTop = first
+	layout.busBottom = last
 	return layout
 }
 
@@ -639,7 +655,6 @@ type flowSideLayout struct {
 	busTop    int
 	busBottom int
 	hasBus    bool
-	single    bool
 }
 
 func (l flowSideLayout) draw(grid *flowGrid, center int, side TxFlowSide, leftW, bandW, rightW, busL, busR, width int, v TxFlowView) {
@@ -707,72 +722,57 @@ func (l flowSideLayout) draw(grid *flowGrid, center int, side TxFlowSide, leftW,
 
 func (l flowSideLayout) joint(row, center int, side TxFlowSide, hasContent, selected bool) (rune, flowCellKind) {
 	isLeft := side == FlowInput
-	if row == center {
-		if hasContent {
-			kind := flowCellBus
-			if selected {
-				kind = flowCellAccent
-			}
-			if l.single {
-				return '━', kind
-			}
-			return '╋', kind
-		}
-		if isLeft {
-			return '┣', flowCellBus
-		}
-		return '┫', flowCellBus
+	kind := flowCellBus
+	if hasContent && selected {
+		kind = flowCellAccent
 	}
+	var left, right bool
 	if hasContent {
-		kind := flowCellBus
-		if selected {
-			kind = flowCellAccent
-		}
-		hasAbove := row > l.busTop
-		hasBelow := row < l.busBottom
 		if isLeft {
-			return flowLeftJoint(hasAbove, hasBelow), kind
+			left = true
+		} else {
+			right = true
 		}
-		return flowRightJoint(hasAbove, hasBelow), kind
 	}
-	if row == l.busTop {
+	if row == center {
+		// The core sits inward of the bus on the center row.
 		if isLeft {
-			return '┓', flowCellBus
+			right = true
+		} else {
+			left = true
 		}
-		return '┏', flowCellBus
 	}
-	if row == l.busBottom {
-		if isLeft {
-			return '┛', flowCellBus
-		}
-		return '┗', flowCellBus
-	}
-	return '┃', flowCellBus
+	return flowJointRune(left, right, row > l.busTop, row < l.busBottom), kind
 }
 
-func flowLeftJoint(hasAbove, hasBelow bool) rune {
+// flowJointRune picks the box-drawing glyph whose arms match exactly the
+// connections present at a bus cell.
+func flowJointRune(left, right, up, down bool) rune {
 	switch {
-	case hasAbove && hasBelow:
+	case left && right && up && down:
+		return '╋'
+	case left && up && down:
 		return '┫'
-	case hasAbove:
-		return '┛'
-	case hasBelow:
-		return '┓'
-	default:
-		return '━'
-	}
-}
-
-func flowRightJoint(hasAbove, hasBelow bool) rune {
-	switch {
-	case hasAbove && hasBelow:
+	case right && up && down:
 		return '┣'
-	case hasAbove:
-		return '┗'
-	case hasBelow:
+	case left && right && down:
+		return '┳'
+	case left && right && up:
+		return '┻'
+	case left && down:
+		return '┓'
+	case left && up:
+		return '┛'
+	case right && down:
 		return '┏'
-	default:
+	case right && up:
+		return '┗'
+	case left || right:
 		return '━'
+	case up || down:
+		return '┃'
+	default:
+		return ' '
 	}
 }
 
