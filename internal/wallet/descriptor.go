@@ -406,6 +406,7 @@ func (m *WalletManager) exportMultisigDescriptorUR(network int) (string, error) 
 	return ur.EncodeDescriptorAsUR(ur.DescriptorInfo{
 		ScriptType: scriptType,
 		IsMultisig: true,
+		Unsorted:   config.Unsorted,
 		Threshold:  config.M,
 		Keys:       keys,
 		Network:    network,

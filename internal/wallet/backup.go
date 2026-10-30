@@ -2,9 +2,16 @@ package wallet
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrUnsortedMultisigFormat is returned when a wallet created from a
+// multi(...) descriptor is exported to a format that assumes BIP67 sorted
+// keys (Caravan/Sparrow JSON, Coldcard multisig file). The descriptor is the
+// only export that preserves the original key order.
+var ErrUnsortedMultisigFormat = errors.New("this format only supports sortedmulti; export the descriptor instead")
 
 // WalletBackup is the unified backup format for all wallet types.
 // It bundles the output descriptor, wallet config, and labels into
@@ -110,6 +117,9 @@ func (m *WalletManager) ExportMultisigConfig() ([]byte, error) {
 	}
 
 	config := m.data.Multisig
+	if config.Unsorted {
+		return nil, ErrUnsortedMultisigFormat
+	}
 
 	// Map script type to addressType
 	var addressType string
