@@ -95,7 +95,7 @@ func sendHintCases() []sendHintCase {
 				m.syncScrollViewport()
 				return m
 			},
-			primary:   "enter confirm & broadcast",
+			primary:   "enter confirm & sign",
 			following: "v flow",
 			rest:      []string{"v flow", "esc change fee"},
 		},
@@ -154,13 +154,41 @@ func TestSendHintMorphFinalUsesWarningStyle(t *testing.T) {
 
 	cases := sendHintCases()
 	review := cases[len(cases)-1].build(t).View()
-	if !strings.Contains(review, styles.WarningText.Render("enter confirm & broadcast")) {
+	if !strings.Contains(review, styles.WarningText.Render("enter confirm & sign")) {
 		t.Fatalf("final hint is not warning-colored and bold:\n%q", review)
 	}
 
 	address := cases[0].build(t).View()
 	if strings.Contains(address, styles.WarningText.Render("enter continue")) {
 		t.Fatalf("continue hint should not use the warning style:\n%q", address)
+	}
+}
+
+// The review step starts signing; it does not broadcast straight away.
+func TestSendReviewHintSaysSignNotBroadcast(t *testing.T) {
+	cases := sendHintCases()
+	review := cases[len(cases)-1]
+	view := review.build(t).View()
+	plain := stripANSI(view)
+
+	pos := requireTextPosition(t, view, "enter confirm & sign")
+	lines := strings.Split(plain, "\n")
+	hintLine := lines[pos.line]
+	const want = "enter confirm & sign"
+	if !strings.HasPrefix(hintLine, want) {
+		t.Fatalf("review hint = %q, want it to start with %q", hintLine, want)
+	}
+	primary := strings.TrimRight(strings.SplitN(hintLine, " • ", 2)[0], " ")
+	if primary != want {
+		t.Fatalf("review hint = %q, want %q", primary, want)
+	}
+
+	for _, tc := range cases {
+		for _, line := range strings.Split(stripANSI(tc.build(t).View()), "\n") {
+			if strings.Contains(line, "enter ") && strings.Contains(line, "broadcast") {
+				t.Fatalf("%s: enter hint still says broadcast: %q", tc.name, line)
+			}
+		}
 	}
 }
 

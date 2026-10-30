@@ -6,8 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
+
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -671,6 +676,14 @@ func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
 	devices := []wallet.HardwareDevice{
 		{Type: "trezor", Model: "Trezor One", Fingerprint: "abcd1234", NeedsPin: true},
 		{Type: "ledger", Model: "Ledger Nano X", Fingerprint: "deadbeef1234", NeedsPass: true},
+		{
+			Type:        "coldcard",
+			Model:       "Coldcard Mk4",
+			Fingerprint: "cafebabe",
+			Error: "Could not connect to device: the user did not confirm the request " +
+				"on the device screen before the transport closed unexpectedly",
+		},
+		{Type: "bitbox", Model: "BitBox02", Fingerprint: "12345678"},
 	}
 
 	t.Run("send", func(t *testing.T) {
@@ -690,7 +703,7 @@ func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
 		m.width, m.height = 80, 24
 		m.step = StepHardwareWalletConnect
 		m.hwiDevices = devices
-		assertDeviceMenuStable(t, devices, "Found 2 device(s):", func(selected int) string {
+		assertDeviceMenuStable(t, devices, "Found 4 device(s):", func(selected int) string {
 			m.selectedHWDevice = selected
 			return m.View()
 		})
@@ -720,11 +733,31 @@ func assertDeviceMenuStable(t *testing.T, devices []wallet.HardwareDevice, listH
 	wantActions := requireTextPosition(t, base, listHeader)
 
 	wantNames := make([]viewPosition, len(options))
+	wantRows := make([]int, len(options))
+	var wantStatusCol int
+	statusColSet := false
 	for i, opt := range options {
 		wantNames[i] = requireTextPosition(t, base, opt.name)
+		if opt.status != "" {
+			status := requireTextPosition(t, base, stripANSI(opt.status))
+			if status.line != wantNames[i].line {
+				t.Fatalf("device %d: status is on line %d, name on line %d",
+					i, status.line, wantNames[i].line)
+			}
+			if !statusColSet {
+				wantStatusCol = status.col
+				statusColSet = true
+			} else if status.col != wantStatusCol {
+				t.Fatalf("device %d: status starts at x=%d, want %d",
+					i, status.col, wantStatusCol)
+			}
+		}
+		lines := strings.Split(stripANSI(base), "\n")
+		wantRows[i] = ansi.StringWidth(lines[wantNames[i].line])
 	}
 
 	var wantHelperCol int
+	helperColSet := false
 	for selected := range options {
 		view := render(selected)
 
@@ -737,26 +770,85 @@ func assertDeviceMenuStable(t *testing.T, devices []wallet.HardwareDevice, listH
 		if got := requireTextPosition(t, view, listHeader); got != wantActions {
 			t.Fatalf("device %d: list header moved from %+v to %+v", selected, wantActions, got)
 		}
+
+		lines := strings.Split(stripANSI(view), "\n")
 		for i, opt := range options {
-			if got := requireTextPosition(t, view, opt.name); got != wantNames[i] {
+			namePos := requireTextPosition(t, view, opt.name)
+			if namePos != wantNames[i] {
 				t.Fatalf("device %d: %q moved from %+v to %+v",
-					selected, opt.name, wantNames[i], got)
+					selected, opt.name, wantNames[i], namePos)
+			}
+			// Status is visible on every row, including non-selected ones.
+			if opt.status != "" {
+				status := requireTextPosition(t, view, stripANSI(opt.status))
+				if status.line != namePos.line {
+					t.Fatalf("device %d: status is on line %d, name on line %d",
+						selected, status.line, namePos.line)
+				}
+				if status.col != wantStatusCol {
+					t.Fatalf("device %d: status starts at x=%d, want %d",
+						selected, status.col, wantStatusCol)
+				}
+			}
+			if got := ansi.StringWidth(lines[namePos.line]); got != wantRows[i] {
+				t.Fatalf("device %d: row %d is %d cells wide, want %d",
+					selected, i, got, wantRows[i])
 			}
 		}
 
 		opt := options[selected]
-		if opt.desc == "" {
-			continue
+		nameLine := wantNames[selected].line
+		if opt.needsPin {
+			requireHelperOnSelectedLine(t, view, opt.name, devicePinHelper)
+			helper := requireTextPosition(t, view, devicePinHelper)
+			if !helperColSet {
+				wantHelperCol = helper.col
+				helperColSet = true
+			} else if helper.col != wantHelperCol {
+				t.Fatalf("device %d: helper starts at x=%d, want %d",
+					selected, helper.col, wantHelperCol)
+			}
 		}
-		requireHelperOnSelectedLine(t, view, opt.name, opt.desc)
-		helper := requireTextPosition(t, view, opt.desc)
-		if selected == 0 {
-			wantHelperCol = helper.col
-		} else if helper.col != wantHelperCol {
-			t.Fatalf("device %d: helper starts at x=%d, want %d",
-				selected, helper.col, wantHelperCol)
+		for i, line := range lines {
+			if i != nameLine && strings.Contains(line, devicePinHelper) {
+				t.Fatalf("device %d: helper shown on non-selected line %d:\n%s",
+					selected, i, strings.Join(lines, "\n"))
+			}
 		}
 		assertFits(t, view, 80)
+	}
+}
+
+func TestHardwareDeviceMenuStatusStyles(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
+
+	longError := "Could not connect to device: the user did not confirm the request " +
+		"on the device screen before the transport closed unexpectedly"
+	devices := []wallet.HardwareDevice{
+		{Type: "trezor", Model: "Trezor One", Fingerprint: "abcd1234", NeedsPin: true},
+		{Type: "ledger", Model: "Ledger Nano X", Fingerprint: "deadbeef", NeedsPass: true},
+		{Type: "coldcard", Model: "Coldcard Mk4", Fingerprint: "cafebabe", Error: longError},
+	}
+
+	menu := renderDeviceMenu(hardwareDeviceChoices(devices), 0)
+	for _, want := range []string{
+		styles.WarningText.Render("⚠ needs PIN"),
+		styles.DimText.Render("(needs passphrase)"),
+		styles.ErrorText.Render(truncateDisplay(strings.Join(strings.Fields(longError), " "), deviceStatusWidth)),
+	} {
+		if !strings.Contains(menu, want) {
+			t.Fatalf("device menu is missing status %q:\n%q", stripANSI(want), menu)
+		}
+	}
+
+	plain := stripANSI(menu)
+	if !strings.Contains(plain, "…") {
+		t.Fatalf("long device error is not truncated:\n%s", plain)
+	}
+	if strings.Contains(plain, longError) {
+		t.Fatalf("full device error should not be shown:\n%s", plain)
 	}
 }
 

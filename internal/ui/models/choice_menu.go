@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -49,11 +50,75 @@ func renderChoiceMenu(options []choiceOption, cursor int) string {
 	return b.String()
 }
 
-// hardwareDeviceChoices turns detected devices into menu rows. Device state
-// that used to sit on its own row below the list becomes the selected row's
-// helper text, so moving between devices never changes the line count.
-func hardwareDeviceChoices(devices []wallet.HardwareDevice) []choiceOption {
-	options := make([]choiceOption, len(devices))
+const (
+	// deviceStatusWidth keeps the status column the same size no matter how
+	// long a device error is, so rows never reflow.
+	deviceStatusWidth  = 32
+	deviceNameMaxWidth = 32
+	devicePinHelper    = "unlock device first"
+)
+
+// deviceMenuOption is a hardware device row with its already-styled status.
+// The status is rendered for every row, not only the selected one.
+type deviceMenuOption struct {
+	name     string
+	status   string
+	needsPin bool
+}
+
+// renderDeviceMenu draws hardware devices with a fixed name column, a fixed
+// status column and a helper column reserved for the selected row. The row
+// width depends only on the device names, never on the selected status or the
+// length of an error, so the menu cannot shift as the cursor moves.
+func renderDeviceMenu(options []deviceMenuOption, cursor int) string {
+	nameWidth := 0
+	for _, opt := range options {
+		nameWidth = max(nameWidth, lipgloss.Width(opt.name))
+	}
+
+	helperWidth := 0
+	for _, opt := range options {
+		if opt.needsPin {
+			helperWidth = lipgloss.Width(devicePinHelper)
+			break
+		}
+	}
+	// Drop the helper column when it would push the row past 80 cells.
+	if 2+nameWidth+1+deviceStatusWidth+1+helperWidth > 80 {
+		helperWidth = 0
+	}
+
+	var b strings.Builder
+	for i, opt := range options {
+		marker := "  "
+		style := styles.UnselectedItemStyle
+		if i == cursor {
+			marker = "▶ "
+			style = styles.SelectedItemStyle
+		}
+
+		name := opt.name + strings.Repeat(" ", nameWidth-lipgloss.Width(opt.name))
+		status := opt.status + strings.Repeat(" ", deviceStatusWidth-lipgloss.Width(opt.status))
+
+		b.WriteString(style.Render(marker + name))
+		b.WriteString(" " + status)
+		if helperWidth > 0 {
+			helper := ""
+			if i == cursor && opt.needsPin {
+				helper = styles.DimText.Render(devicePinHelper)
+			}
+			b.WriteString(" " + helper + strings.Repeat(" ", helperWidth-lipgloss.Width(helper)))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// hardwareDeviceChoices turns detected devices into menu rows. Statuses are
+// part of the row instead of helper text so every device's state stays
+// visible while the cursor moves.
+func hardwareDeviceChoices(devices []wallet.HardwareDevice) []deviceMenuOption {
+	options := make([]deviceMenuOption, len(devices))
 	for i, device := range devices {
 		name := string(device.Type)
 		if device.Model != "" {
@@ -68,21 +133,34 @@ func hardwareDeviceChoices(devices []wallet.HardwareDevice) []choiceOption {
 			fp = fp[:8]
 		}
 
-		var details []string
-		if device.NeedsPin {
-			details = append(details, "⚠ needs PIN — unlock device first")
-		}
-		if device.NeedsPass {
-			details = append(details, "needs passphrase")
-		}
-		if device.Error != "" {
-			details = append(details, strings.Join(strings.Fields(device.Error), " "))
+		var status string
+		switch {
+		case device.Error != "":
+			errorText := strings.Join(strings.Fields(device.Error), " ")
+			status = styles.ErrorText.Render(truncateDisplay(errorText, deviceStatusWidth))
+		case device.NeedsPin && device.NeedsPass:
+			status = styles.WarningText.Render("⚠ needs PIN") + " " +
+				styles.DimText.Render("· (needs passphrase)")
+		case device.NeedsPin:
+			status = styles.WarningText.Render("⚠ needs PIN")
+		case device.NeedsPass:
+			status = styles.DimText.Render("(needs passphrase)")
 		}
 
-		options[i] = choiceOption{
-			name: fmt.Sprintf("%s [%s]", name, fp),
-			desc: strings.Join(details, " · "),
+		options[i] = deviceMenuOption{
+			name:     truncateDisplay(fmt.Sprintf("%s [%s]", name, fp), deviceNameMaxWidth),
+			status:   status,
+			needsPin: device.NeedsPin,
 		}
 	}
 	return options
+}
+
+// truncateDisplay keeps s within width terminal cells and marks the cut with
+// an ellipsis. ansi.Truncate measures cell width, so wide runes stay safe.
+func truncateDisplay(s string, width int) string {
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	return ansi.Truncate(s, width, "…")
 }

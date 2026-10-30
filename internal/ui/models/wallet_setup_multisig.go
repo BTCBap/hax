@@ -407,7 +407,7 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 		content.WriteString(styles.DimText.Render("Press 'r' to retry or 'esc' to go back.") + "\n")
 	} else {
 		content.WriteString(styles.NormalText.Render("Connected devices:") + "\n\n")
-		content.WriteString(renderChoiceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
+		content.WriteString(renderDeviceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
 	}
 
 	instructions := styles.DimText.Render(

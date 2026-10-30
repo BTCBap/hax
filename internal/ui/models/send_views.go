@@ -79,10 +79,12 @@ func (m SendModel) View() string {
 	return content
 }
 
-// sendFinalHint is the primary action on the last step before signing. Its
-// width reserves the hint column so later hint items keep the same position
-// after the label morphs from "continue".
-const sendFinalHint = "enter confirm & broadcast"
+// sendFinalHintDesc is the primary action on the last step before signing.
+// Its width reserves the hint column so later hint items keep the same
+// position after the label morphs from "continue".
+const sendFinalHintDesc = "confirm & sign"
+
+const sendFinalHint = "enter " + sendFinalHintDesc
 
 var sendPrimaryHintWidth = lipgloss.Width(sendFinalHint)
 
@@ -764,7 +766,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 
 	// Unified help - all wallet types go to Sign & Broadcast
 	help := renderSendHelp(
-		styles.HK("enter", "confirm & broadcast"), true,
+		styles.HK("enter", sendFinalHintDesc), true,
 		styles.HK("v", "flow"),
 		styles.HK("esc", "change fee"),
 	)

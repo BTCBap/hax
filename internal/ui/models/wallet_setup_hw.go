@@ -156,7 +156,7 @@ func (m WalletSetupModel) viewHardwareWalletConnect() string {
 		content.WriteString(m.renderDeviceTroubleshooting())
 	} else {
 		content.WriteString(styles.SuccessText.Render(fmt.Sprintf("Found %d device(s):", len(m.hwiDevices))) + "\n\n")
-		content.WriteString(renderChoiceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
+		content.WriteString(renderDeviceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
 	}
 
 	help := styles.RenderHelp(

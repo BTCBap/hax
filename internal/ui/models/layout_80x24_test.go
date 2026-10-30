@@ -4,10 +4,28 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/BTCBap/hax/internal/wallet"
 )
+
+// hwiDevicesForLayout mixes every device status, including an error long
+// enough to need truncation, so the 80-column checks exercise the widest rows.
+func hwiDevicesForLayout() []wallet.HardwareDevice {
+	return []wallet.HardwareDevice{
+		{Type: "trezor", Model: "Trezor One", Fingerprint: "abcd1234", NeedsPin: true},
+		{Type: "ledger", Model: "Ledger Nano X", Fingerprint: "deadbeef1234", NeedsPass: true},
+		{
+			Type:        "coldcard",
+			Model:       "Coldcard Mk4",
+			Fingerprint: "cafebabe",
+			Error: "Could not connect to device: the user did not confirm the request " +
+				"on the device screen before the transport closed unexpectedly",
+		},
+		{Type: "bitbox", Model: "BitBox02", Fingerprint: "12345678"},
+	}
+}
 
 // TestViews_FitIn80Columns renders each top-level view, with empty and with
 // awkward data, in an 80×24 terminal and fails if any line is wider than 80.
@@ -18,8 +36,15 @@ func TestViews_FitIn80Columns(t *testing.T) {
 		"dashboard": func(w *MockWalletManager) tea.Model { return NewMainDashboardModel(w, nil) },
 		"receive":   func(w *MockWalletManager) tea.Model { return NewReceiveModel(w) },
 		"send":      func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
-		"feebump":   func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
-		"history":   func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
+		"send_hwi_devices": func(w *MockWalletManager) tea.Model {
+			m := NewSendModel(w, 0, nil)
+			m.showPSBTExport = true
+			m.showHWIDevices = true
+			m.hwiDevices = hwiDevicesForLayout()
+			return m
+		},
+		"feebump": func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
+		"history": func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
 		"history_speedup": func(w *MockWalletManager) tea.Model {
 			return newSpeedUpHistoryLayout(w, false)
 		},
@@ -127,8 +152,22 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.backupExportPath = "~/.hax/test-wallet_backup.json"
 			return m
 		},
-		"help":       func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
-		"setup":      func(w *MockWalletManager) tea.Model { return NewWalletSetupModel(w, nil) },
+		"help":  func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
+		"setup": func(w *MockWalletManager) tea.Model { return NewWalletSetupModel(w, nil) },
+		"setup_hwi_devices": func(w *MockWalletManager) tea.Model {
+			m := NewWalletSetupModel(w, nil)
+			m.step = StepHardwareWalletConnect
+			m.hwiDevices = hwiDevicesForLayout()
+			return m
+		},
+		"setup_multisig_hwi_devices": func(w *MockWalletManager) tea.Model {
+			m := NewWalletSetupModel(w, nil)
+			m.isMultisig = true
+			m.step = StepMultisigEnterCosigners
+			m.showHWIDevices = true
+			m.hwiDevices = hwiDevicesForLayout()
+			return m
+		},
 		"connection": func(*MockWalletManager) tea.Model { return NewConnectionSetupModel(nil, false) },
 	}
 	mocks := map[string]func() *MockWalletManager{"empty": NewMockWalletManager, "hostile": hostileMock}
