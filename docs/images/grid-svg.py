@@ -6,11 +6,13 @@ the font advance decide where glyphs land. Glyphs absent from the embedded
 JetBrains Mono fall back to another font, so every following glyph on that row
 shifts and box borders drift. The terminal itself places these glyphs on fixed
 cells, so pin each character to an absolute x here, before Chrome screenshots
-the SVG. Background <rect>s written by freeze are snapped to the same grid and
-to the exact cell height, so they stay under their glyphs rather than drifting
-and overhanging the next row. Block-element glyphs are replaced by cell-sized
-<rect>s as well, because the font's block glyphs are taller than freeze's row
-pitch and otherwise notch and overlap neighbouring rows.
+the SVG. Background <rect>s written by freeze are snapped to the same grid, and
+their top is placed at freeze's own cell top (text y minus
+FREEZE_RECT_TO_TEXT_Y) with the full row pitch as height, so text descenders
+sit inside the background rather than poking out below it. Block-element glyphs
+are replaced by cell-sized <rect>s on that same cell, because the font's block
+glyphs are taller than freeze's row pitch and otherwise notch and overlap
+neighbouring rows.
 """
 import sys
 import unicodedata
@@ -68,6 +70,11 @@ def x_positions(text, start_x, start_col, cell_width):
         positions.append((ch, f"{start_x + col * cell_width:.2f}px"))
         col += char_width(ch)
     return positions, col
+
+
+def cell_top(text_y, font_size):
+    """Top of the terminal cell whose row baseline is at text_y."""
+    return text_y - FREEZE_RECT_TO_TEXT_Y * font_size / DEFAULT_FONT_SIZE
 
 
 def cell_pitch(rows):
@@ -166,12 +173,12 @@ def snap(path):
                 row_y = min(
                     row_ys, key=lambda y: abs(y - (rect_y + FREEZE_RECT_TO_TEXT_Y))
                 )
-                el.set("y", f"{row_y - pitch:.2f}px")
+                el.set("y", f"{cell_top(row_y, font_size):.2f}px")
                 el.set("height", f"{pitch:.2f}px")
 
     parents = {child: parent for parent in root.iter() for child in parent}
     for el in texts:
-        cell_top = length(el.get("y", "0")) - pitch
+        cell_top_y = cell_top(length(el.get("y", "0")), font_size)
         start_x = length(el.get("x", "0"))
         start_col = 0
         rects = []
@@ -184,7 +191,7 @@ def snap(path):
             tspan.set("x", " ".join(x for _, x in positions))
             fill = inherited_fill(tspan, parents)
             tspan.text, found = replace_blocks(
-                text, positions, cell_top, pitch, cell_width, fill
+                text, positions, cell_top_y, pitch, cell_width, fill
             )
             rects.extend(found)
         if not tspans and el.text:
@@ -192,7 +199,7 @@ def snap(path):
             el.set("x", " ".join(x for _, x in positions))
             fill = inherited_fill(el, parents)
             el.text, rects = replace_blocks(
-                el.text, positions, cell_top, pitch, cell_width, fill
+                el.text, positions, cell_top_y, pitch, cell_width, fill
             )
         if rects:
             parent = parents[el]
