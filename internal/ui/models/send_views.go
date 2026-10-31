@@ -167,7 +167,7 @@ func (m SendModel) viewAddressInput() string {
 	instruction := styles.NormalText.Render("Enter the recipient's address or a bitcoin: payment URI:")
 
 	// Hint about import option
-	importHint := styles.DimText.Render("Or press 'i' to import an existing PSBT")
+	importHint := styles.DimText.Render("Or press 'i' to import a PSBT, or paste one")
 
 	help := renderSendHelp(
 		styles.HK("enter", "continue"), false,

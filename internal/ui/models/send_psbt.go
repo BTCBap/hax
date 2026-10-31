@@ -357,6 +357,16 @@ type fileInfo struct {
 }
 
 func (m *SendModel) handleFileBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A pasted PSBT is imported directly; the browser stays open on failure.
+	if msg.Paste {
+		ok, cmd := m.startPSBTImport(string(msg.Runes))
+		if !ok {
+			return m, nil
+		}
+		m.showFileBrowser = false
+		return m, cmd
+	}
+
 	switch msg.String() {
 	case "up", "k":
 		if m.fileBrowserCursor > 0 {
@@ -396,6 +406,20 @@ func (m *SendModel) handleFileBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.psbtFileInput.SetValue("")
 		m.psbtFileInput.Focus()
 		return m, textinput.Blink
+
+	case "ctrl+v":
+		// Paste from clipboard, importing PSBT text directly.
+		clipboardContent, err := clipboardRead()
+		if err != nil {
+			m.err = fmt.Errorf("clipboard paste failed: %v", err)
+			return m, nil
+		}
+		ok, cmd := m.startPSBTImport(clipboardContent)
+		if !ok {
+			return m, nil
+		}
+		m.showFileBrowser = false
+		return m, cmd
 
 	case "r", "R":
 		// Refresh file list
@@ -645,7 +669,11 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 		case "saved":
 			statusIndicator = styles.SuccessBoxStyle.Render("✓ Saved to: " + m.psbtFilePath)
 		case "imported":
-			statusIndicator = styles.SuccessBoxStyle.Render("✓ Imported from: " + m.psbtFilePath)
+			if m.psbtFilePath == "" {
+				statusIndicator = styles.SuccessBoxStyle.Render("✓ PSBT imported")
+			} else {
+				statusIndicator = styles.SuccessBoxStyle.Render("✓ Imported from: " + m.psbtFilePath)
+			}
 		case "signed":
 			statusIndicator = styles.SuccessBoxStyle.Render("✓ Signed!")
 		case "copied":
@@ -681,7 +709,7 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 		styles.HK("q", "QR"),
 		styles.HK("f", "save"),
 		styles.HK("i", "import"),
-		styles.HK("u", "UR"),
+		styles.HK("u", "paste PSBT"),
 		styles.HK("v", "flow"),
 	)
 	if m.psbtSigsAdded >= m.psbtSigsTotal {
@@ -816,10 +844,10 @@ func (m SendModel) viewQRFormatMenu() string {
 }
 
 func (m SendModel) viewURInput() string {
-	header := styles.TitleStyle.Render("📥 Import Signed PSBT via UR")
-	subtitle := styles.SubtitleStyle.Render("Paste the UR string from your hardware wallet")
+	header := styles.TitleStyle.Render("📥 Import Signed PSBT")
+	subtitle := styles.SubtitleStyle.Render("Paste the signed PSBT from your hardware wallet")
 
-	hint := styles.DimText.Render("(Paste the ur:crypto-psbt/... string from your device)")
+	hint := styles.DimText.Render("(base64, hex or ur:crypto-psbt/...)")
 
 	help := styles.RenderHelp(
 		styles.HK("enter", "import"),
@@ -869,7 +897,7 @@ func (m SendModel) viewFileInput() string {
 
 func (m SendModel) viewFileBrowser() string {
 	header := styles.TitleStyle.Render("📂 Import PSBT")
-	subtitle := styles.SubtitleStyle.Render("Select a PSBT file to import")
+	subtitle := styles.SubtitleStyle.Render("Select a PSBT file, or paste one")
 
 	var content strings.Builder
 
@@ -902,17 +930,22 @@ func (m SendModel) viewFileBrowser() string {
 		}
 	}
 
-	help := styles.RenderHelp(
+	help := styles.RenderHelpWrapped(m.width,
 		styles.HK("↑/↓", "navigate"),
 		styles.HK("enter", "select"),
 		styles.HK("p", "manual path"),
+		styles.HK("ctrl+v", "paste PSBT"),
 		styles.HK("r", "refresh"),
 		styles.HK("esc", "back"),
 	)
 
-	return header + "\n" + subtitle + "\n\n" +
+	view := header + "\n" + subtitle + "\n\n" +
 		content.String() + "\n\n" +
 		help
+	if m.err != nil {
+		view += "\n\n" + styles.RenderErrorBox("⚠ "+m.err.Error(), m.width)
+	}
+	return view
 }
 
 func (m SendModel) viewRawHexExport() string {
