@@ -4,14 +4,24 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-31
+
 ### Added
-- One-line installers for macOS and Linux (`install.sh`) and Windows (`install.ps1`), with SHA-256 verification, optional cosign verification of the checksum manifest, PATH setup, and uninstall.
-- `Hax.app` launcher in macOS release archives, `.deb` and `.rpm` packages for Linux, and an optional Start Menu shortcut on Windows.
+- One-line installers for macOS and Linux (`install.sh`) and Windows (`install.ps1`), with SHA-256 verification, optional cosign verification of the checksum manifest, PATH setup, and uninstall (#52).
+- `Hax.app` launcher in macOS release archives, `.deb` and `.rpm` packages for Linux, and an optional Start Menu shortcut on Windows (#52).
 - Windows builds wait for Enter after an error when started from Explorer, so the error stays visible.
+- Send accepts a pasted PSBT, including at the address step, and imports it directly instead of treating it as an address or file path.
+- A typed PSBT file path can be entered manually in Send, not only chosen in the file browser.
 
 ### Changed
+- Upgraded to Bubble Tea, Bubbles and Lip Gloss v2.
+- v1.5 design pass: composite alerts and trays, a Sankey-style transaction flow diagram, a hardware wallet picker, a centered Settings descriptor, adaptive light and dark colors, OSC52 copy, and a terminal progress bar (#49, including the visual design and transaction flow work from #50).
 - README install instructions now cover the one-line installers, package downloads, and the unsigned macOS app.
 - The macOS and Linux installer now asks for your password when `/usr/local/bin` needs administrator rights and a terminal is available, and falls back to `~/.local/bin` when sudo is unavailable or declined. `--no-sudo` skips the prompt, and sudo calls no longer hang when there is no terminal.
+- Updated `btcec` to v2.5.1 (#51).
+
+### Fixed
+- Receive address navigation uses the arrow keys and stops at the gap limit. The `n` key no longer generates a new address (#48).
 
 ## [1.4.0] - 2026-10-30
 

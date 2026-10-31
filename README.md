@@ -134,7 +134,7 @@ Each release publishes archives for Linux, macOS, and Windows, plus `checksums.t
 Verify before running:
 
 ```bash
-VERSION=v1.4.0   # the release you downloaded
+VERSION=v1.5.0   # the release you downloaded
 # 1. Verify the checksum manifest was signed by this repo's release workflow
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
