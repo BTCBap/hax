@@ -55,7 +55,6 @@ type WalletService interface {
 	GetMnemonic() (string, error)
 
 	// Addresses
-	GetNewAddress(accountIndex uint32) (string, error)
 	GetCurrentReceiveAddress(accountIndex uint32) (string, string, uint32, error)
 	GetCurrentChangeAddress(accountIndex uint32) (string, string, uint32, error)
 	GetAddressByIndex(accountIndex, addressIndex uint32) (string, string, error)

@@ -2,12 +2,14 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -142,29 +144,250 @@ func TestReceive_Left_ClampsAtZero(t *testing.T) {
 	}
 }
 
-func TestReceive_N_GeneratesNewAddress(t *testing.T) {
-	m, mock := newTestReceive(t)
-	mock.GetNewAddressFn = func(uint32) (string, error) {
-		return "tb1q_brand_new", nil
-	}
-	mock.GetCurrentReceiveAddrFn = func(uint32) (string, string, uint32, error) {
-		return "tb1q_brand_new", "m/84'/1'/0'/0/1", 1, nil
-	}
-	m.selectedAddress = "tb1q_old"
+// receiveAddressAt returns an address of fixed length for an index. The length
+// is fixed so layout tests can compare renders across indexes.
+func receiveAddressAt(index uint32) string {
+	return fmt.Sprintf("tb1q%037d", index)
+}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+func receivePathAt(index uint32) string {
+	return fmt.Sprintf("m/84'/1'/0'/0/%d", index)
+}
+
+func TestReceive_Right_LoadsNextAddress(t *testing.T) {
+	m, mock := newTestReceive(t)
+	m.currentIndex = 3
+	m.firstUnusedIndex = 3
+	m.selectedAddress = receiveAddressAt(3)
+	m.derivationPath = receivePathAt(3)
+
+	var gotAccount, gotIndex uint32
+	mock.GetAddressByIndexFn = func(account, index uint32) (string, string, error) {
+		gotAccount, gotIndex = account, index
+		return receiveAddressAt(index), receivePathAt(index), nil
+	}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	loading := model.(ReceiveModel)
+	if !loading.generatingNew {
+		t.Fatal("right should mark the model as loading")
+	}
+
+	msg, ok := findMsgOfType[AddressGeneratedMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("right should load the next address")
+	}
+	if gotAccount != 0 || gotIndex != 4 {
+		t.Fatalf("GetAddressByIndex called with account %d index %d, want account 0 index 4", gotAccount, gotIndex)
+	}
+
+	model, _ = loading.Update(msg)
+	updated := model.(ReceiveModel)
+	if updated.currentIndex != 4 {
+		t.Fatalf("currentIndex = %d, want 4", updated.currentIndex)
+	}
+	if updated.selectedAddress != receiveAddressAt(4) {
+		t.Fatalf("selectedAddress = %q, want %q", updated.selectedAddress, receiveAddressAt(4))
+	}
+	if updated.derivationPath != receivePathAt(4) {
+		t.Fatalf("derivationPath = %q, want %q", updated.derivationPath, receivePathAt(4))
+	}
+
+	updated.revealProgress = 1.0
+	plain := stripANSI(updated.View())
+	wants := []string{
+		"Address #4",
+		receivePathAt(4),
+		stripANSI(ui.FormatAddress(receiveAddressAt(4), 0)),
+	}
+	for _, want := range wants {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("view is missing %q:\n%s", want, plain)
+		}
+	}
+}
+
+func TestReceive_Left_LoadsPreviousAddress(t *testing.T) {
+	m, mock := newTestReceive(t)
+	m.currentIndex = 4
+	m.firstUnusedIndex = 4
+	m.selectedAddress = receiveAddressAt(4)
+	m.derivationPath = receivePathAt(4)
+
+	mock.GetAddressByIndexFn = func(_, index uint32) (string, string, error) {
+		return receiveAddressAt(index), receivePathAt(index), nil
+	}
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	loading := model.(ReceiveModel)
+	if !loading.generatingNew {
+		t.Fatal("left should mark the model as loading")
+	}
+
+	msg, ok := findMsgOfType[AddressGeneratedMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("left should load the previous address")
+	}
+	if msg.Index != 3 {
+		t.Fatalf("loaded index %d, want 3", msg.Index)
+	}
+
+	model, _ = loading.Update(msg)
+	updated := model.(ReceiveModel)
+	if updated.currentIndex != 3 {
+		t.Fatalf("currentIndex = %d, want 3", updated.currentIndex)
+	}
+	if updated.selectedAddress != receiveAddressAt(3) {
+		t.Fatalf("selectedAddress = %q, want %q", updated.selectedAddress, receiveAddressAt(3))
+	}
+	if updated.derivationPath != receivePathAt(3) {
+		t.Fatalf("derivationPath = %q, want %q", updated.derivationPath, receivePathAt(3))
+	}
+
+	updated.revealProgress = 1.0
+	plain := stripANSI(updated.View())
+	if !strings.Contains(plain, "Address #3") || !strings.Contains(plain, receivePathAt(3)) {
+		t.Fatalf("view does not show address #3:\n%s", plain)
+	}
+}
+
+func TestReceive_NonArrowKeysDoNotNavigate(t *testing.T) {
+	for _, key := range []string{"h", "l", "n"} {
+		t.Run(key, func(t *testing.T) {
+			m, mock := newTestReceive(t)
+			m.currentIndex = 3
+			m.firstUnusedIndex = 3
+			m.selectedAddress = receiveAddressAt(3)
+
+			loaded := false
+			mock.GetAddressByIndexFn = func(_, index uint32) (string, string, error) {
+				loaded = true
+				return receiveAddressAt(index), receivePathAt(index), nil
+			}
+
+			model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			updated := model.(ReceiveModel)
+			if updated.generatingNew {
+				t.Fatalf("%q should not start a load", key)
+			}
+			if containsMsgOfType[AddressGeneratedMsg](collectMsgs(cmd)) {
+				t.Fatalf("%q produced an AddressGeneratedMsg", key)
+			}
+			if loaded {
+				t.Fatalf("%q called GetAddressByIndex", key)
+			}
+		})
+	}
+}
+
+func TestReceive_Right_IgnoredWhileLoading(t *testing.T) {
+	m, _ := newTestReceive(t)
+	m.currentIndex = 3
+	m.firstUnusedIndex = 3
+	m.generatingNew = true
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	updated := model.(ReceiveModel)
 	if !updated.generatingNew {
-		t.Error("expected generatingNew=true after 'n'")
+		t.Fatal("right while loading should keep generatingNew true")
+	}
+	if containsMsgOfType[AddressGeneratedMsg](collectMsgs(cmd)) {
+		t.Fatal("right while loading should not start another load")
+	}
+}
+
+func TestReceive_Right_StopsAtGapLimit(t *testing.T) {
+	m, mock := newTestReceive(t)
+	m.firstUnusedIndex = 5
+	lastIndex := m.firstUnusedIndex + uint32(wallet.AddressGapLimit) - 1
+	m.currentIndex = lastIndex
+	mock.GetAddressByIndexFn = func(_, index uint32) (string, string, error) {
+		return receiveAddressAt(index), receivePathAt(index), nil
 	}
 
-	msgs := collectMsgs(cmd)
-	addr, found := findMsgOfType[AddressGeneratedMsg](msgs)
-	if !found {
-		t.Fatal("'n' should produce an AddressGeneratedMsg")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	updated := model.(ReceiveModel)
+	if updated.generatingNew {
+		t.Fatal("right at the gap cap should not start a load")
 	}
-	if addr.Address != "tb1q_brand_new" {
-		t.Errorf("expected tb1q_brand_new, got %s", addr.Address)
+	if containsMsgOfType[AddressGeneratedMsg](collectMsgs(cmd)) {
+		t.Fatal("right at the gap cap should not load an address")
+	}
+
+	updated.currentIndex = lastIndex - 1
+	_, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRight})
+	msg, ok := findMsgOfType[AddressGeneratedMsg](collectMsgs(cmd))
+	if !ok {
+		t.Fatal("right one below the gap cap should load the last allowed address")
+	}
+	if msg.Index != lastIndex {
+		t.Fatalf("loaded index %d, want %d", msg.Index, lastIndex)
+	}
+}
+
+func TestReceive_Init_SetsFirstUnusedIndex(t *testing.T) {
+	m, mock := newTestReceive(t)
+	mock.GetCurrentReceiveAddrFn = func(uint32) (string, string, uint32, error) {
+		return receiveAddressAt(7), receivePathAt(7), 7, nil
+	}
+
+	msg, ok := findMsgOfType[AddressGeneratedMsg](collectMsgs(m.Init()))
+	if !ok {
+		t.Fatal("Init should load the next unused address")
+	}
+	if !msg.NextUnused {
+		t.Fatal("loadAddresses result should be marked NextUnused")
+	}
+
+	model, _ := m.Update(msg)
+	updated := model.(ReceiveModel)
+	if updated.firstUnusedIndex != 7 {
+		t.Fatalf("firstUnusedIndex = %d, want 7", updated.firstUnusedIndex)
+	}
+}
+
+func TestReceive_View_StableAcrossAddressIndexes(t *testing.T) {
+	mock := NewMockWalletManager()
+	mock.GetAddressByIndexFn = func(_, index uint32) (string, string, error) {
+		return receiveAddressAt(index), receivePathAt(index), nil
+	}
+
+	base := NewReceiveModel(mock)
+	base.width = 100
+	base.height = 40
+	base.viewport.Width = 96
+	base.viewport.Height = 30
+
+	var wantLines, wantHintLine, wantBorderLine int
+	for i, index := range []uint32{0, 1, 9, 10} {
+		m := base
+		model, _ := m.Update(AddressGeneratedMsg{
+			Address: receiveAddressAt(index),
+			Path:    receivePathAt(index),
+			Index:   index,
+		})
+		m = model.(ReceiveModel)
+		m.revealProgress = 1.0
+
+		view := m.View()
+		lines := requireLineCount(t, view)
+		hint := requireTextPosition(t, view, "c copy")
+		border := requireTextPosition(t, view, "╭")
+
+		if i == 0 {
+			wantLines, wantHintLine, wantBorderLine = lines, hint.line, border.line
+		} else {
+			if lines != wantLines {
+				t.Fatalf("index %d rendered %d lines, want %d", index, lines, wantLines)
+			}
+			if hint.line != wantHintLine {
+				t.Fatalf("index %d moved the hint from line %d to %d", index, wantHintLine, hint.line)
+			}
+			if border.line != wantBorderLine {
+				t.Fatalf("index %d moved the QR box top from line %d to %d", index, wantBorderLine, border.line)
+			}
+		}
+		assertWithinTerminal(t, view, 100, 40)
 	}
 }
 
@@ -455,7 +678,7 @@ func TestReceive_VerifyModeOuterHintRow(t *testing.T) {
 		if got := strings.Count(plain, "v retry • esc back"); got != 1 {
 			t.Fatalf("state %d: hint appears %d times, want once:\n%s", tc.state, got, plain)
 		}
-		if strings.Contains(plain, "←/→ navigate") || strings.Contains(plain, "v verify on device") {
+		if strings.Contains(plain, "←/→ address") || strings.Contains(plain, "v verify on device") {
 			t.Fatalf("state %d: list hints still shown in verify mode:\n%s", tc.state, plain)
 		}
 
