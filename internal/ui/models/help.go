@@ -252,9 +252,8 @@ func (m HelpModel) renderKeyboardShortcuts() string {
 	lines = append(lines, "")
 	lines = append(lines, styles.SectionSubheaderStyle.Render("  Receive"))
 	lines = append(lines, m.shortcut("esc/q", "Back"))
-	lines = append(lines, m.shortcut("n", "Generate new address"))
 	lines = append(lines, m.shortcut("c", "Copy address to clipboard"))
-	lines = append(lines, m.shortcut("\u2190/\u2192", "Navigate addresses"))
+	lines = append(lines, m.shortcut("\u2190/\u2192", "Previous / next address"))
 	if m.walletMode() == helpWalletHardware {
 		lines = append(lines, m.shortcut("v", "Verify address on hardware device"))
 	}

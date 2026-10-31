@@ -32,8 +32,8 @@ Help  0%
 │                                                                                                  │
 │    Receive                                                                                       │
 │      esc/q       Back                                                                            │
-│      n           Generate new address                                                            │
 │      c           Copy address to clipboard                                                       │
+│      ←/→         Previous / next address                                                         │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ↑/↓ scroll • esc back

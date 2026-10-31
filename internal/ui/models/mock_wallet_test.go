@@ -55,7 +55,6 @@ type MockWalletManager struct {
 	GetMnemonicFn          func() (string, error)
 
 	// Addresses
-	GetNewAddressFn           func(uint32) (string, error)
 	GetCurrentReceiveAddrFn   func(uint32) (string, string, uint32, error)
 	GetCurrentChangeAddrFn    func(uint32) (string, string, uint32, error)
 	GetAddressByIndexFn       func(uint32, uint32) (string, string, error)
@@ -367,13 +366,6 @@ func (m *MockWalletManager) GetMnemonic() (string, error) {
 }
 
 // --- Addresses ---
-
-func (m *MockWalletManager) GetNewAddress(accountIndex uint32) (string, error) {
-	if m.GetNewAddressFn != nil {
-		return m.GetNewAddressFn(accountIndex)
-	}
-	return "tb1q_mock_new_address", nil
-}
 
 func (m *MockWalletManager) GetCurrentReceiveAddress(accountIndex uint32) (string, string, uint32, error) {
 	if m.GetCurrentReceiveAddrFn != nil {

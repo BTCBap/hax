@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/base64"
 	"fmt"
 	"math"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
-	"github.com/BTCBap/hax/internal/ur"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/atotto/clipboard"
 )
@@ -33,6 +31,15 @@ func (m *SendModel) handleAddressInputSpecial(msg tea.KeyPressMsg) (bool, tea.Cm
 		// Paste from clipboard
 		clipboardContent, err := clipboard.ReadAll()
 		if err == nil && clipboardContent != "" {
+			if looksLikePSBTText(clipboardContent) {
+				ok, cmd := m.startPSBTImport(clipboardContent)
+				if !ok {
+					return true, nil
+				}
+				m.fileBrowserForStep = "step1"
+				m.addressInput.SetValue("")
+				return true, cmd
+			}
 			m.addressInput.SetValue(clipboardContent)
 		} else if err != nil {
 			m.err = fmt.Errorf("clipboard paste failed: %v", err)
@@ -603,33 +610,45 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyPressMsg) (screenModel, tea.Cm
 	return m, nil
 }
 
+func (m *SendModel) handleFileInputKey(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		// Execute the file operation
+		path := strings.TrimSpace(m.psbtFileInput.Value())
+		if path == "" {
+			if m.fileInputMode != "export" {
+				// Import needs a real path; the default is a new save name.
+				return m, nil
+			}
+			path = getDefaultPSBTPath()
+		}
+		m.loading = true
+		if m.fileInputMode == "export" {
+			return m, m.savePSBTToFile(path)
+		} else {
+			return m, m.loadPSBTFromFile(path)
+		}
+	case "esc":
+		// Cancel file input
+		m.showFileInput = false
+		m.psbtFileInput.SetValue("")
+		if m.fileInputFromBrowser {
+			m.showFileBrowser = true
+		}
+		m.fileInputFromBrowser = false
+		return m, nil
+	default:
+		// Pass to text input
+		var cmd tea.Cmd
+		m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
+		return m, cmd
+	}
+}
+
 func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	// Handle file path input mode (for save/load PSBT)
 	if m.showFileInput {
-		switch msg.String() {
-		case "enter":
-			// Execute the file operation
-			path := m.psbtFileInput.Value()
-			if path == "" {
-				path = getDefaultPSBTPath()
-			}
-			m.loading = true
-			if m.fileInputMode == "export" {
-				return m, m.savePSBTToFile(path)
-			} else {
-				return m, m.loadPSBTFromFile(path)
-			}
-		case "esc":
-			// Cancel file input
-			m.showFileInput = false
-			m.psbtFileInput.SetValue("")
-			return m, nil
-		default:
-			// Pass to text input
-			var cmd tea.Cmd
-			m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
-			return m, cmd
-		}
+		return m.handleFileInputKey(msg)
 	}
 
 	// Handle HWI device selection
@@ -735,7 +754,7 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Handle UR paste input overlay
+	// Handle PSBT paste input overlay
 	if m.showURInput {
 		switch msg.String() {
 		case "enter":
@@ -743,14 +762,13 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 			if urStr == "" {
 				return m, nil
 			}
-			psbtBytes, err := ur.DecodePSBTFromUR(urStr)
+			b64, err := decodePSBTText(urStr)
 			if err != nil {
-				m.psbtExportErr = fmt.Errorf("invalid UR: %v", err)
+				m.psbtExportErr = err
 				m.showURInput = false
 				return m, nil
 			}
 			// Import the decoded PSBT
-			b64 := base64.StdEncoding.EncodeToString(psbtBytes)
 			result, err := m.walletManager.ImportPSBTFromBase64(b64)
 			if err != nil {
 				m.psbtExportErr = fmt.Errorf("PSBT import failed: %v", err)
@@ -795,6 +813,7 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 				return m, nil
 			}
 			m.showFileInput = true
+			m.fileInputFromBrowser = false
 			m.fileInputMode = "export"
 			m.psbtFileInput.SetValue(getDefaultPSBTPath())
 			m.psbtFileInput.Focus()
@@ -927,12 +946,12 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 			m.psbtExportErr = nil
 			return m, nil
 		case "u", "U":
-			// Paste UR string (signed PSBT from hardware wallet)
+			// Paste a signed PSBT (base64, hex or UR) from a hardware wallet
 			m.showURInput = true
 			m.urInput = newTextInput()
-			m.urInput.Placeholder = "ur:crypto-psbt/..."
+			m.urInput.Placeholder = "cHNidP8… or ur:crypto-psbt/…"
 			m.urInput.SetWidth(60)
-			m.urInput.CharLimit = 10000
+			m.urInput.CharLimit = maxPastedPSBTLen
 			m.urInput.Focus()
 			m.psbtExportErr = nil
 			return m, textinput.Blink

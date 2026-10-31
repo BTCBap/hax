@@ -151,10 +151,11 @@ type SendModel struct {
 	txFlow *TxFlowView
 
 	// Hardware wallet / file-based PSBT support
-	psbtFilePath  string          // Path where PSBT was saved/loaded
-	psbtFileInput textinput.Model // Input for file path
-	showFileInput bool            // Whether showing file path input
-	fileInputMode string          // "export" or "import"
+	psbtFilePath         string          // Path where PSBT was saved/loaded
+	psbtFileInput        textinput.Model // Input for file path
+	showFileInput        bool            // Whether showing file path input
+	fileInputFromBrowser bool            // Whether file input was opened from the file browser
+	fileInputMode        string          // "export" or "import"
 
 	// HWI (Hardware Wallet Interface) support
 	hwiDevices       []wallet.HardwareDevice // Detected hardware wallets
@@ -817,14 +818,41 @@ func (m SendModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	case tea.PasteMsg:
 		var cmd tea.Cmd
 		switch {
+		case m.showFileBrowser:
+			// A pasted PSBT is imported directly; the browser stays open on failure.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.showFileBrowser = false
+			cmds = append(cmds, pasteCmd)
+		case m.showFileInput && m.fileInputMode == "import" && looksLikePSBTText(msg.Content):
+			// Import pasted PSBT text instead of treating it as a file path.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.showFileInput = false
+			m.fileInputFromBrowser = false
+			cmds = append(cmds, pasteCmd)
 		case m.showURInput:
-			m.urInput, cmd = m.urInput.Update(msg)
+			m.urInput, cmd = m.urInput.Update(tea.PasteMsg{Content: stripPSBTWhitespace(msg.Content)})
 		case m.showFileInput:
 			m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
 		case m.highFeePending > 0:
 			m.highFeeInput, cmd = m.highFeeInput.Update(msg)
 		case m.step == SendStepFee && m.editingCustom:
 			m.customFeeInput, cmd = m.customFeeInput.Update(msg)
+		case m.step == SendStepAddress && looksLikePSBTText(msg.Content):
+			// A pasted PSBT would otherwise be truncated by the address input's
+			// CharLimit and rejected as an address, so import it directly.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.fileBrowserForStep = "step1"
+			m.addressInput.SetValue("")
+			cmds = append(cmds, pasteCmd)
 		case m.step == SendStepAddress:
 			m.addressInput, cmd = m.addressInput.Update(msg)
 		case m.step == SendStepAmount:
@@ -844,6 +872,11 @@ func (m SendModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		// Handle file browser if open
 		if m.showFileBrowser {
 			return m.handleFileBrowser(msg)
+		}
+
+		// Handle file path input if open
+		if m.showFileInput {
+			return m.handleFileInputKey(msg)
 		}
 
 		// Global keys

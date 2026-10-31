@@ -10,6 +10,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
+	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/charmbracelet/harmonica"
 )
 
@@ -20,12 +21,15 @@ type ReceiveModel struct {
 	walletManager   WalletService
 	selectedAddress string
 	derivationPath  string
-	currentIndex    uint32      // Current address index being viewed
-	addressBalance  api.Satoshi // Balance of current address
-	generatingNew   bool
-	showCopied      bool
-	copiedTime      time.Time
-	err             error
+	currentIndex    uint32 // Current address index being viewed
+	// firstUnusedIndex is the wallet's next unused receive index. Address
+	// navigation stops at the gap limit below it.
+	firstUnusedIndex uint32
+	addressBalance   api.Satoshi // Balance of current address
+	generatingNew    bool
+	showCopied       bool
+	copiedTime       time.Time
+	err              error
 
 	// Hardware wallet address verification
 	verify AddressVerifyView
@@ -54,6 +58,9 @@ type AddressGeneratedMsg struct {
 	Index   uint32
 	Balance api.Satoshi
 	Err     error
+	// NextUnused marks the result of loadAddresses, whose index is the
+	// wallet's next unused receive index.
+	NextUnused bool
 }
 
 // HWIVerifyMsg carries the result of hardware wallet address verification.
@@ -111,11 +118,12 @@ func (m ReceiveModel) loadAddresses() tea.Cmd {
 		}
 
 		return AddressGeneratedMsg{
-			Address: addr,
-			Path:    path,
-			Index:   index,
-			Balance: 0, // Unused addresses have 0 balance by definition
-			Err:     nil,
+			Address:    addr,
+			Path:       path,
+			Index:      index,
+			Balance:    0, // Unused addresses have 0 balance by definition
+			Err:        nil,
+			NextUnused: true,
 		}
 	}
 }
@@ -191,6 +199,9 @@ func (m ReceiveModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		if msg.Err != nil {
 			m.err = msg.Err
 		} else {
+			if msg.NextUnused {
+				m.firstUnusedIndex = msg.Index
+			}
 			if msg.Address != m.selectedAddress || msg.Path != m.derivationPath {
 				m.verify.Reset(msg.Address, msg.Path)
 			}
@@ -292,35 +303,30 @@ func (m ReceiveModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 			m.isActive = false
 			return m, Navigate(StateMainDashboard)
 
-		case "left", "h":
+		case "left":
 			// Navigate to previous address
+			if m.generatingNew {
+				break
+			}
 			if m.currentIndex > 0 {
 				m.generatingNew = true
 				m.revealProgress = 0.0
 				cmds = append(cmds, m.loadAddressByIndex(m.currentIndex-1))
 			}
 
-		case "right", "l":
-			// Navigate to next address
-			m.generatingNew = true
-			m.revealProgress = 0.0
-			cmds = append(cmds, m.loadAddressByIndex(m.currentIndex+1))
+		case "right":
+			// Navigate to next address, up to the gap limit.
+			if m.generatingNew {
+				break
+			}
+			next := m.currentIndex + 1
+			lastIndex := m.firstUnusedIndex + uint32(wallet.AddressGapLimit) - 1
+			if next <= lastIndex {
+				m.generatingNew = true
+				m.revealProgress = 0.0
+				cmds = append(cmds, m.loadAddressByIndex(next))
+			}
 
-		case "n":
-			// Generate NEW address (increments the index)
-			m.generatingNew = true
-			m.revealProgress = 0.0
-			cmds = append(cmds, func() tea.Msg {
-				addr, err := m.walletManager.GetNewAddress(0)
-				if err != nil {
-					return AddressGeneratedMsg{Address: "", Path: "", Index: 0, Balance: 0, Err: err}
-				}
-				_, path, index, pathErr := m.walletManager.GetCurrentReceiveAddress(0)
-				if pathErr != nil {
-					return AddressGeneratedMsg{Address: addr, Path: "", Index: m.currentIndex + 1, Balance: 0, Err: nil}
-				}
-				return AddressGeneratedMsg{Address: addr, Path: path, Index: index, Balance: 0, Err: nil}
-			})
 		case "c":
 			if m.selectedAddress != "" {
 				cmd, err := copyToClipboard(m.selectedAddress)
@@ -468,8 +474,7 @@ func (m ReceiveModel) renderAnimatedHelp() string {
 	}
 
 	items := []styles.HelpItem{
-		styles.HK("←/→", "navigate"),
-		styles.HK("n", "new"),
+		styles.HK("←/→", "address"),
 		styles.HK("c", "copy"),
 	}
 

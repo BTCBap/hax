@@ -202,9 +202,8 @@ func TestHelpMatchesReceiveFooterShortcuts(t *testing.T) {
 	softwareHelp := stripANSI(NewHelpModel(software).renderHelpContent())
 	softwareFooter := stripANSI(NewReceiveModel(software).renderAnimatedHelp())
 
-	assertFooterAndHelpShortcut(t, softwareFooter, softwareHelp, "n", "Generate new address")
 	assertFooterAndHelpShortcut(t, softwareFooter, softwareHelp, "c", "Copy address to clipboard")
-	assertFooterAndHelpShortcut(t, softwareFooter, softwareHelp, "←/→", "Navigate addresses")
+	assertFooterAndHelpShortcut(t, softwareFooter, softwareHelp, "←/→", "Previous / next address")
 	assertFooterAndHelpShortcut(t, softwareFooter, softwareHelp, "esc", "Go back / Cancel")
 
 	hardware := NewMockWalletManager()
