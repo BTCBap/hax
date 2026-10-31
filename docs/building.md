@@ -4,7 +4,7 @@ Build hax from a checkout when you want to test a branch or inspect the code you
 
 ## Requirements
 
-- Go 1.26.9 or newer. `go.mod` currently declares Go 1.26.10.
+- Go 1.26.10 or newer. `go.mod` currently declares Go 1.26.10.
 - `make`
 - A Unicode-capable terminal
 
