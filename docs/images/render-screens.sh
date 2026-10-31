@@ -17,6 +17,8 @@ HAX_SCREENSHOT_DIR="$tmp" go test ./internal/ui/models -tags screenshots -run Te
 # these settings, so they look identical.
 render_png() {
   local name=$1 outdir=$2 W H
+  # freeze ignores SGR 7, so resolve reverse video to explicit colors first.
+  python3 docs/images/ansi-reverse.py "$tmp/$name.ansi"
   freeze --language ansi --window=false --theme catppuccin-mocha --padding 24 \
     --font.size 15 --output "$tmp/$name.svg" "$tmp/$name.ansi" </dev/null >/dev/null
   python3 docs/images/grid-svg.py "$tmp/$name.svg"
