@@ -175,6 +175,10 @@ func (m UnlockModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+	case ThemeChangedMsg:
+		m.spinner = styles.NewStandardSpinner()
+		m.passwordInput.SetStyles(textInputStyles())
+
 	case WalletListMsg:
 		if msg.Err != nil {
 			m.err = msg.Err

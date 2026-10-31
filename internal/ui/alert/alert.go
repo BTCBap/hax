@@ -11,8 +11,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/harmonica"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
-	"github.com/muesli/reflow/ansi"
+
+	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
 // Alert type keys
@@ -28,11 +31,8 @@ const (
 	FadeOutDuration = 500 * time.Millisecond
 )
 
-// Colors
-var (
-	backColor, _ = colorful.Hex("#000000")
-	baseStyle    = lipgloss.NewStyle()
-)
+// baseStyle carries the interpolated alert foreground.
+var baseStyle = lipgloss.NewStyle()
 
 // AlertDefinition defines a custom alert type
 type AlertDefinition struct {
@@ -57,6 +57,7 @@ type alert struct {
 }
 
 func (n *alert) render() string {
+	backColor, _ := colorful.Hex(styles.Hex(styles.AlertBackdrop))
 	newColor := backColor.BlendLab(n.foreColor, n.curLerpStep)
 	lipColor := lipgloss.Color(newColor.Hex())
 	newStyle := baseStyle.Foreground(lipColor)
@@ -183,31 +184,21 @@ func (m AlertModel) Render(content string) string {
 	if visibleLines < 0 {
 		visibleLines = 0
 	}
-
-	var builder strings.Builder
-
-	for i := 0; i < contentHeight; i++ {
-		if i > 0 {
-			builder.WriteByte('\n')
-		}
-
-		if i >= visibleLines {
-			// Beyond revealed notification lines — show content
-			builder.WriteString(contentLines[i])
-		} else {
-			notifLine := notifLines[i]
-			builder.WriteString(notifLine)
-
-			notifLen := ansi.PrintableRuneWidth(notifLine)
-			if notifLen < len(contentLines[i]) {
-				// Add remaining content after notification
-				remaining := cutLeft(contentLines[i], notifLen)
-				builder.WriteString(remaining)
-			}
-		}
+	if visibleLines == 0 {
+		return content
 	}
 
-	return builder.String()
+	width := 0
+	for _, line := range contentLines {
+		width = max(width, ansi.StringWidth(line))
+	}
+	for _, line := range notifLines[:visibleLines] {
+		width = max(width, ansi.StringWidth(line))
+	}
+
+	overlay := strings.Join(notifLines[:visibleLines], "\n")
+	return ui.Composite(content, width, contentHeight,
+		ui.Overlay{Content: overlay}.TopLeft())
 }
 
 // NewAlertCmd creates a command to show an alert
@@ -258,54 +249,21 @@ func (m *AlertModel) registerDefaults() {
 	m.RegisterNewAlertType(AlertDefinition{
 		Key:       InfoKey,
 		Prefix:    "(i)",
-		ForeColor: "#00FF00",
+		ForeColor: styles.Hex(styles.AlertInfo),
 	})
 	m.RegisterNewAlertType(AlertDefinition{
 		Key:       WarnKey,
 		Prefix:    "(!)",
-		ForeColor: "#FFFF00",
+		ForeColor: styles.Hex(styles.AlertWarn),
 	})
 	m.RegisterNewAlertType(AlertDefinition{
 		Key:       ErrorKey,
 		Prefix:    "[!!]",
-		ForeColor: "#FF0000",
+		ForeColor: styles.Hex(styles.AlertError),
 	})
 	m.RegisterNewAlertType(AlertDefinition{
 		Key:       DebugKey,
 		Prefix:    "(?)",
-		ForeColor: "#FF00FF",
+		ForeColor: styles.Hex(styles.AlertDebug),
 	})
-}
-
-// cutLeft removes n characters from the left of a string, handling ANSI codes
-func cutLeft(s string, n int) string {
-	if n <= 0 {
-		return s
-	}
-
-	var result strings.Builder
-	width := 0
-	inEscape := false
-
-	for _, r := range s {
-		if r == '\x1b' {
-			inEscape = true
-			result.WriteRune(r)
-			continue
-		}
-		if inEscape {
-			result.WriteRune(r)
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inEscape = false
-			}
-			continue
-		}
-
-		width++
-		if width > n {
-			result.WriteRune(r)
-		}
-	}
-
-	return result.String()
 }

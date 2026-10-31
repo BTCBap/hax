@@ -73,6 +73,10 @@ type StealthToggledMsg struct {
 	On bool
 }
 
+// ThemeChangedMsg tells screens that the palette changed, so models that cache
+// styles at construction can rebuild them.
+type ThemeChangedMsg struct{}
+
 // screenModel is the interface each child screen implements. Its View still
 // returns a plain string; RootModel wraps that content in a tea.View.
 type screenModel interface {
@@ -212,21 +216,7 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 		}
 	}
 
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeNewTx,
-		ForeColor: "#B5EAD7",
-		Prefix:    "⚡",
-	})
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeNewBlock,
-		ForeColor: "#87CEEB",
-		Prefix:    "🧱",
-	})
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeError,
-		ForeColor: "#FFB3BA",
-		Prefix:    "⚠",
-	})
+	registerAlertTypes(alertModel)
 
 	vp := viewport.New()
 	vp.MouseWheelEnabled = true
@@ -251,6 +241,26 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 	}
 }
 
+// registerAlertTypes points root's notification types at the current palette.
+// It runs again when the terminal background changes.
+func registerAlertTypes(alertModel *alert.AlertModel) {
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeNewTx,
+		ForeColor: styles.Hex(styles.AlertNewTx),
+		Prefix:    "⚡",
+	})
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeNewBlock,
+		ForeColor: styles.Hex(styles.AlertNewBlock),
+		Prefix:    "🧱",
+	})
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeError,
+		ForeColor: styles.Hex(styles.AlertTxError),
+		Prefix:    "⚠",
+	})
+}
+
 // Init initializes the root model
 func (m RootModel) Init() tea.Cmd {
 	var cmds []tea.Cmd
@@ -261,6 +271,8 @@ func (m RootModel) Init() tea.Cmd {
 		cmds = append(cmds, m.splashModel.Init())
 	}
 	cmds = append(cmds, scheduleIdleCheck())
+	// Keep the dark palette when the terminal does not answer.
+	cmds = append(cmds, tea.RequestBackgroundColor)
 
 	return tea.Batch(cmds...)
 }
@@ -310,6 +322,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.contentViewport.SetWidth(msg.Width)
 		m.contentViewport.SetHeight(msg.Height)
+	case tea.BackgroundColorMsg:
+		styles.SetDarkBackground(msg.IsDark())
+		cmds = append(cmds, m.refreshTheme())
 	case BackendChosenMsg:
 		return m, m.applySavedBackend(msg.Then)
 	case ChooseServerMsg:
@@ -732,6 +747,38 @@ func (m *RootModel) broadcastStealth() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// refreshTheme rebuilds styles cached at construction time in every live
+// screen. Screens that read styles in View need no other work.
+func (m *RootModel) refreshTheme() tea.Cmd {
+	registerAlertTypes(&m.alertModel)
+	msg := ThemeChangedMsg{}
+	var cmds []tea.Cmd
+	update := func(model *screenModel) {
+		if *model == nil {
+			return
+		}
+		updated, cmd := (*model).Update(msg)
+		*model = updated
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	update(&m.splashModel)
+	update(&m.connectionSetupModel)
+	update(&m.walletSetupModel)
+	update(&m.unlockModel)
+	update(&m.mainDashboardModel)
+	update(&m.receiveModel)
+	update(&m.sendModel)
+	update(&m.transactionHistoryModel)
+	update(&m.addressesModel)
+	update(&m.utxosModel)
+	update(&m.feesModel)
+	update(&m.settingsModel)
+	update(&m.helpModel)
+	return tea.Batch(cmds...)
+}
+
 // persistStealth writes the preference to the config file when one exists.
 func persistStealth(configManager *config.ConfigManager, on bool) tea.Cmd {
 	if configManager == nil {
@@ -816,12 +863,40 @@ func (m *RootModel) setActiveModel(state AppState, model screenModel) {
 	}
 }
 
+// terminalProgress returns the native terminal progress bar for the active
+// screen. It is nil when the screen has no step-accurate percentage, and it
+// uses the error state when the setup flow reports a failure.
+func (m RootModel) terminalProgress() *tea.ProgressBar {
+	if m.state != StateWalletSetup {
+		return nil
+	}
+	var setup *WalletSetupModel
+	switch model := m.walletSetupModel.(type) {
+	case WalletSetupModel:
+		setup = &model
+	case *WalletSetupModel:
+		setup = model
+	default:
+		return nil
+	}
+	if setup == nil || !setup.showProgressBar() {
+		return nil
+	}
+	state := tea.ProgressBarDefault
+	if setup.err != nil {
+		state = tea.ProgressBarError
+	}
+	percent := int(setup.getStepProgress()*100 + 0.5)
+	return tea.NewProgressBar(state, percent)
+}
+
 // View renders the active screen
 func (m RootModel) View() tea.View {
 	content := m.renderContent()
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	v.ProgressBar = m.terminalProgress()
 	return v
 }
 

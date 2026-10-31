@@ -173,17 +173,22 @@ type HWIInstallCheckMsg struct {
 	Err     error
 }
 
-func NewWalletSetupModel(walletManager WalletService, configManager *config.ConfigManager) WalletSetupModel {
-
-	// Create progress bar with neon orange gradient. The built-in percentage
-	// is variable width, so the view renders its own fixed-width field.
-	prog := progress.New(
+// newWalletSetupProgressBar builds the step bar with the current palette.
+func newWalletSetupProgressBar() progress.Model {
+	// The built-in percentage is variable width, so the view renders its own
+	// fixed-width field.
+	return progress.New(
 		progress.WithColors(styles.NeonOrange, styles.BitcoinGold),
 		progress.WithScaled(true),
 		progress.WithWidth(walletSetupProgressBarWidth),
 		progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock),
 		progress.WithoutPercentage(),
 	)
+}
+
+func NewWalletSetupModel(walletManager WalletService, configManager *config.ConfigManager) WalletSetupModel {
+
+	prog := newWalletSetupProgressBar()
 
 	// Create input fields
 	nameInput := newTextInput()
@@ -324,6 +329,28 @@ func (m WalletSetupModel) CapturesTextInput() bool {
 		m.multisigCurrentXpub.Focused() || m.multisigCosignerSeed.Focused()
 }
 
+// refreshTheme rebuilds the styles this model caches at construction.
+func (m *WalletSetupModel) refreshTheme() {
+	m.spinner = styles.NewStandardSpinner()
+	m.progressBar = newWalletSetupProgressBar()
+	inputStyles := textInputStyles()
+	for _, input := range []*textinput.Model{
+		&m.backupInput,
+		&m.nameInput,
+		&m.passwordInput,
+		&m.confirmPasswordInput,
+		&m.passphraseInput,
+		&m.confirmPassphraseInput,
+		&m.mnemonicInput,
+		&m.customPathInput,
+		&m.descriptorInput,
+		&m.multisigCurrentXpub,
+		&m.multisigCosignerSeed,
+	} {
+		input.SetStyles(inputStyles)
+	}
+}
+
 func (m WalletSetupModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	previousFlow := m.currentFlow()
 	previousStep, _, _ := m.flowStepNumber()
@@ -344,6 +371,9 @@ func (m WalletSetupModel) update(msg tea.Msg) (screenModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+	case ThemeChangedMsg:
+		m.refreshTheme()
 
 	case spinner.TickMsg:
 		if m.hwiLoading || m.hwiVerifying {

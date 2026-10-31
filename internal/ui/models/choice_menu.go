@@ -71,6 +71,13 @@ type deviceMenuOption struct {
 // width depends only on the device names, never on the selected status or the
 // length of an error, so the menu cannot shift as the cursor moves.
 func renderDeviceMenu(options []deviceMenuOption, cursor int) string {
+	return renderDeviceMenuFit(options, cursor, 80)
+}
+
+// renderDeviceMenuFit is renderDeviceMenu constrained to maxWidth cells.
+// A narrow frame shrinks the status column, keeping the selected row's helper
+// and the "…" that marks a truncated error, so rows stay on one line.
+func renderDeviceMenuFit(options []deviceMenuOption, cursor, maxWidth int) string {
 	nameWidth := 0
 	for _, opt := range options {
 		nameWidth = max(nameWidth, lipgloss.Width(opt.name))
@@ -83,10 +90,14 @@ func renderDeviceMenu(options []deviceMenuOption, cursor int) string {
 			break
 		}
 	}
-	// Drop the helper column when it would push the row past 80 cells.
-	if 2+nameWidth+1+deviceStatusWidth+1+helperWidth > 80 {
+	if maxWidth <= 0 {
+		maxWidth = 80
+	}
+	// Drop the helper column when it leaves no room for a status column.
+	if 2+nameWidth+1+1+helperWidth > maxWidth {
 		helperWidth = 0
 	}
+	statusWidth := min(deviceStatusWidth, max(0, maxWidth-(2+nameWidth+1+1+helperWidth)))
 
 	var b strings.Builder
 	for i, opt := range options {
@@ -98,7 +109,11 @@ func renderDeviceMenu(options []deviceMenuOption, cursor int) string {
 		}
 
 		name := opt.name + strings.Repeat(" ", nameWidth-lipgloss.Width(opt.name))
-		status := opt.status + strings.Repeat(" ", deviceStatusWidth-lipgloss.Width(opt.status))
+		statusText := opt.status
+		if lipgloss.Width(statusText) > statusWidth {
+			statusText = ansi.Truncate(statusText, statusWidth, "…")
+		}
+		status := statusText + strings.Repeat(" ", max(0, statusWidth-lipgloss.Width(statusText)))
 
 		b.WriteString(style.Render(marker + name))
 		b.WriteString(" " + status)

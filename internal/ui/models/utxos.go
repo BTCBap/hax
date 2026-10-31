@@ -282,11 +282,12 @@ func (m UTXOsModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 			if idx >= 0 && idx < len(m.utxos) {
 				utxo := m.utxos[idx]
 				outpoint := fmt.Sprintf("%s:%d", utxo.TxID, utxo.Vout)
-				if err := copyToClipboard(outpoint); err == nil {
+				cmd, err := copyToClipboard(outpoint)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copyMsg = "OUTPOINT COPIED!"
 					m.copiedTime = time.Now()
-					cmds = append(cmds, tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
+					cmds = append(cmds, cmd, tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
 						return TickMsg(t)
 					}))
 				}

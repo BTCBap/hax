@@ -156,7 +156,8 @@ func (m WalletSetupModel) viewHardwareWalletConnect() string {
 		content.WriteString(m.renderDeviceTroubleshooting())
 	} else {
 		content.WriteString(styles.SuccessText.Render(fmt.Sprintf("Found %d device(s):", len(m.hwiDevices))) + "\n\n")
-		content.WriteString(renderDeviceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
+		content.WriteString(renderDeviceMenuFit(hardwareDeviceChoices(m.hwiDevices),
+			m.selectedHWDevice, panelContentWidth(m.width)))
 	}
 
 	help := styles.RenderHelp(
@@ -166,7 +167,8 @@ func (m WalletSetupModel) viewHardwareWalletConnect() string {
 		styles.HK("esc", "back"),
 	)
 
-	return styles.CenterHorizontal(title+"\n\n"+content.String()+"\n"+help, m.width)
+	block := title + "\n\n" + content.String() + "\n" + help
+	return centeredPanel(block, m.width, m.height)
 }
 
 // renderDeviceTroubleshooting returns common troubleshooting hints for device connection

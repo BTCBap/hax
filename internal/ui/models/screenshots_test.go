@@ -27,6 +27,7 @@ import (
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -49,12 +50,10 @@ var docsScreens = map[string]bool{"txflow": true, "verify": true, "psbt_inspect"
 // panel in the README image.
 const docsPSBTInspectHeight = 48
 
-// docsTxFlowHeight is the smallest terminal height at which the batch send
-// keeps the spacer rows between all four rows on each side: the send header
-// takes five rows and the flow needs seven diagram rows (2*4-1) plus its own
-// header, detail block, and hint. Smaller heights drop the gaps and the bus
-// reads as a boxed ladder in the README image.
-const docsTxFlowHeight = 20
+// docsTxFlowHeight gives the README image enough diagram rows for the
+// sub-cell ribbons to curve gently between four outputs and two inputs. At 20
+// rows the curves are too steep and read as staircases.
+const docsTxFlowHeight = 28
 
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("HAX_SCREENSHOT_DIR")
@@ -97,35 +96,35 @@ var addressScreenLayout = map[string]struct {
 	addrs  []addressExpectation
 }{
 	"txflow": {
-		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 110, 63, 88, 0, 71, 38, 85, 32},
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 68, 110, 68, 110, 68, 84, 0, 71, 38, 85, 32},
 		addrs: []addressExpectation{
-			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 27},
 			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"txflow_many": {
-		widths: []int{110, 0, 48, 48, 48, 48, 110, 63, 110, 63, 110, 63, 110, 63, 88, 48, 48, 48, 48, 0, 69, 37, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{110, 0, 0, 0, 0, 0, 68, 68, 68, 68, 68, 110, 68, 110, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 62, 0, 0, 0, 0, 0, 69, 37, 84, 32},
 		addrs: []addressExpectation{
-			{txFlowAddr(0), 25},
+			{txFlowAddr(0), 27},
 			{txFlowAddr(0), ansi.StringWidth(txFlowAddr(0))},
-			{txFlowAddr(1), 25},
+			{txFlowAddr(1), 27},
 		},
 	},
 	"txflow_send": {
-		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 88, 0, 71, 38, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 0, 0, 0, 68, 68, 68, 68, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 62, 0, 0, 0, 0, 71, 38, 85, 32},
 		addrs: []addressExpectation{
-			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 27},
 			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"txflow_history": {
-		widths: []int{22, 110, 0, 110, 63, 110, 63, 88, 0, 51, 40, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{22, 110, 0, 0, 0, 0, 0, 68, 68, 68, 68, 68, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 68, 68, 62, 0, 0, 0, 0, 51, 40, 26, 32},
 		addrs: []addressExpectation{
-			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 25},
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 27},
 			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 42},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"psbt_inspect": {
@@ -375,6 +374,15 @@ func renderScreens(t *testing.T, w, h int) []renderedScreen {
 	d.balance, d.balanceLoaded, d.loading = balance, true, false
 	screens = append(screens, renderedScreen{"dashboard", d.View()})
 
+	lightView := func() string {
+		styles.SetDarkBackground(false)
+		defer styles.SetDarkBackground(true)
+		light := sized(NewMainDashboardModel(mock, nil), w, h)
+		light.balance, light.balanceLoaded, light.loading = balance, true, false
+		return light.View()
+	}()
+	screens = append(screens, renderedScreen{"dashboard_light", lightView})
+
 	dStealth := d
 	dStealth.stealth = true
 	screens = append(screens, renderedScreen{"dashboard_stealth", dStealth.View()})
@@ -620,6 +628,14 @@ func renderScreens(t *testing.T, w, h int) []renderedScreen {
 	// are laid out together.
 	screens = append(screens, renderedScreen{"txflow_many", TxFlowView{
 		Flow: txFlowFixture(9, 4), Width: w, Height: h,
+	}.View()})
+
+	// The visualizer at the two other supported terminal sizes.
+	screens = append(screens, renderedScreen{"txflow_80", TxFlowView{
+		Flow: txFlowExample(), Width: 80, Height: 24,
+	}.View()})
+	screens = append(screens, renderedScreen{"txflow_120", TxFlowView{
+		Flow: txFlowExample(), Width: 120, Height: 40,
 	}.View()})
 
 	hp := sized(NewHelpModel(nil), w, h)
