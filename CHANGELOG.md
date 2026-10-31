@@ -4,6 +4,14 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ## [Unreleased]
 
+### Added
+- One-line installers for macOS and Linux (`install.sh`) and Windows (`install.ps1`), with SHA-256 verification, optional cosign verification of the checksum manifest, PATH setup, and uninstall.
+- `Hax.app` launcher in macOS release archives, `.deb` and `.rpm` packages for Linux, and an optional Start Menu shortcut on Windows.
+- Windows builds wait for Enter after an error when started from Explorer, so the error stays visible.
+
+### Changed
+- README install instructions now cover the one-line installers, package downloads, and the unsigned macOS app.
+
 ## [1.4.0] - 2026-10-30
 
 ### Added
