@@ -151,10 +151,11 @@ type SendModel struct {
 	txFlow *TxFlowView
 
 	// Hardware wallet / file-based PSBT support
-	psbtFilePath  string          // Path where PSBT was saved/loaded
-	psbtFileInput textinput.Model // Input for file path
-	showFileInput bool            // Whether showing file path input
-	fileInputMode string          // "export" or "import"
+	psbtFilePath         string          // Path where PSBT was saved/loaded
+	psbtFileInput        textinput.Model // Input for file path
+	showFileInput        bool            // Whether showing file path input
+	fileInputFromBrowser bool            // Whether file input was opened from the file browser
+	fileInputMode        string          // "export" or "import"
 
 	// HWI (Hardware Wallet Interface) support
 	hwiDevices       []wallet.HardwareDevice // Detected hardware wallets
@@ -823,6 +824,11 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle file browser if open
 		if m.showFileBrowser {
 			return m.handleFileBrowser(msg)
+		}
+
+		// Handle file path input if open
+		if m.showFileInput {
+			return m.handleFileInputKey(msg)
 		}
 
 		// Global keys

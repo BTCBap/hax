@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/base64"
 	"fmt"
 	"math"
 	"strconv"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/BTCBap/hax/internal/api"
-	"github.com/BTCBap/hax/internal/ur"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -28,11 +26,32 @@ func (m *SendModel) handleTxFlowKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleAddressInputSpecial handles special keys for address input
 // Returns (true, cmd) if key was handled, (false, nil) if input should handle it
 func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
+	// A pasted PSBT would otherwise be truncated by the address input's
+	// CharLimit and rejected as an address, so import it directly.
+	if msg.Paste && looksLikePSBTText(string(msg.Runes)) {
+		ok, cmd := m.startPSBTImport(string(msg.Runes))
+		if !ok {
+			return true, nil
+		}
+		m.fileBrowserForStep = "step1"
+		m.addressInput.SetValue("")
+		return true, cmd
+	}
+
 	switch msg.String() {
 	case "ctrl+v":
 		// Paste from clipboard
 		clipboardContent, err := clipboard.ReadAll()
 		if err == nil && clipboardContent != "" {
+			if looksLikePSBTText(clipboardContent) {
+				ok, cmd := m.startPSBTImport(clipboardContent)
+				if !ok {
+					return true, nil
+				}
+				m.fileBrowserForStep = "step1"
+				m.addressInput.SetValue("")
+				return true, cmd
+			}
 			m.addressInput.SetValue(clipboardContent)
 		} else if err != nil {
 			m.err = fmt.Errorf("clipboard paste failed: %v", err)
@@ -603,33 +622,56 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *SendModel) handleFileInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Import pasted PSBT text instead of treating it as a file path.
+	if m.fileInputMode == "import" && msg.Paste && looksLikePSBTText(string(msg.Runes)) {
+		ok, cmd := m.startPSBTImport(string(msg.Runes))
+		if !ok {
+			return m, nil
+		}
+		m.showFileInput = false
+		m.fileInputFromBrowser = false
+		return m, cmd
+	}
+
+	switch msg.String() {
+	case "enter":
+		// Execute the file operation
+		path := strings.TrimSpace(m.psbtFileInput.Value())
+		if path == "" {
+			if m.fileInputMode != "export" {
+				// Import needs a real path; the default is a new save name.
+				return m, nil
+			}
+			path = getDefaultPSBTPath()
+		}
+		m.loading = true
+		if m.fileInputMode == "export" {
+			return m, m.savePSBTToFile(path)
+		} else {
+			return m, m.loadPSBTFromFile(path)
+		}
+	case "esc":
+		// Cancel file input
+		m.showFileInput = false
+		m.psbtFileInput.SetValue("")
+		if m.fileInputFromBrowser {
+			m.showFileBrowser = true
+		}
+		m.fileInputFromBrowser = false
+		return m, nil
+	default:
+		// Pass to text input
+		var cmd tea.Cmd
+		m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
+		return m, cmd
+	}
+}
+
 func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle file path input mode (for save/load PSBT)
 	if m.showFileInput {
-		switch msg.String() {
-		case "enter":
-			// Execute the file operation
-			path := m.psbtFileInput.Value()
-			if path == "" {
-				path = getDefaultPSBTPath()
-			}
-			m.loading = true
-			if m.fileInputMode == "export" {
-				return m, m.savePSBTToFile(path)
-			} else {
-				return m, m.loadPSBTFromFile(path)
-			}
-		case "esc":
-			// Cancel file input
-			m.showFileInput = false
-			m.psbtFileInput.SetValue("")
-			return m, nil
-		default:
-			// Pass to text input
-			var cmd tea.Cmd
-			m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
-			return m, cmd
-		}
+		return m.handleFileInputKey(msg)
 	}
 
 	// Handle HWI device selection
@@ -735,22 +777,27 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Handle UR paste input overlay
+	// Handle PSBT paste input overlay
 	if m.showURInput {
+		if msg.Paste {
+			cleaned := stripPSBTWhitespace(string(msg.Runes))
+			var urCmd tea.Cmd
+			m.urInput, urCmd = m.urInput.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(cleaned), Paste: true})
+			return m, urCmd
+		}
 		switch msg.String() {
 		case "enter":
 			urStr := strings.TrimSpace(m.urInput.Value())
 			if urStr == "" {
 				return m, nil
 			}
-			psbtBytes, err := ur.DecodePSBTFromUR(urStr)
+			b64, err := decodePSBTText(urStr)
 			if err != nil {
-				m.psbtExportErr = fmt.Errorf("invalid UR: %v", err)
+				m.psbtExportErr = err
 				m.showURInput = false
 				return m, nil
 			}
 			// Import the decoded PSBT
-			b64 := base64.StdEncoding.EncodeToString(psbtBytes)
 			result, err := m.walletManager.ImportPSBTFromBase64(b64)
 			if err != nil {
 				m.psbtExportErr = fmt.Errorf("PSBT import failed: %v", err)
@@ -795,6 +842,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.showFileInput = true
+			m.fileInputFromBrowser = false
 			m.fileInputMode = "export"
 			m.psbtFileInput.SetValue(getDefaultPSBTPath())
 			m.psbtFileInput.Focus()
@@ -927,12 +975,12 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.psbtExportErr = nil
 			return m, nil
 		case "u", "U":
-			// Paste UR string (signed PSBT from hardware wallet)
+			// Paste a signed PSBT (base64, hex or UR) from a hardware wallet
 			m.showURInput = true
 			m.urInput = textinput.New()
-			m.urInput.Placeholder = "ur:crypto-psbt/..."
+			m.urInput.Placeholder = "cHNidP8… or ur:crypto-psbt/…"
 			m.urInput.Width = 60
-			m.urInput.CharLimit = 10000
+			m.urInput.CharLimit = maxPastedPSBTLen
 			m.urInput.Focus()
 			m.psbtExportErr = nil
 			return m, textinput.Blink
