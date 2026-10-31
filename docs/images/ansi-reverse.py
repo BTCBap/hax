@@ -6,7 +6,10 @@ shows the real terminal background. Real terminals swap the current foreground
 and background when they draw it, but freeze ignores SGR 7 and renders the
 foreground as-is. Rewrite each SGR sequence in place with the swapped colors
 already applied, keeping the text bytes untouched, so freeze sees explicit
-colors and the screenshot matches a terminal.
+colors and the screenshot matches a terminal. When a rewrite would drop an
+explicit background back to the terminal default, emit a full reset followed by
+the still-active attributes and explicit foreground, because freeze ignores a
+bare SGR 49.
 """
 import argparse
 import re
@@ -18,6 +21,16 @@ SGR_RE = re.compile(rb"\x1b\[([0-9;]*)m")
 
 # A color is ("rgb", r, g, b) or ("idx", n); None means the terminal default.
 Color = tuple
+
+# Off codes and the non-colour attributes they disable.
+OFF_CODES = {
+    22: (1, 2),
+    23: (3,),
+    24: (4, 21),
+    25: (5, 6),
+    28: (8,),
+    29: (9,),
+}
 
 
 def parse_hex(value):
@@ -36,11 +49,19 @@ def color_code(channel, color):
     return f"{channel};5;{color[1]}"
 
 
+def is_color(p):
+    return 30 <= p <= 49 or p in (58, 59) or 90 <= p <= 107
+
+
 def rewrite_sgr(match, state, theme_bg, theme_fg):
     params = [int(p) for p in match.group(1).split(b";") if p] or [0]
     others = []
     reset = False
-    fg, bg, reverse = state
+    fg, bg, reverse, active = state
+    active = list(active)
+    # The previous sequence always left an explicit background when reversed,
+    # since a missing background is filled in with the theme foreground.
+    had_explicit_bg = reverse or bg is not None
     i = 0
     while i < len(params):
         p = params[i]
@@ -48,6 +69,7 @@ def rewrite_sgr(match, state, theme_bg, theme_fg):
             reset = True
             fg, bg, reverse = None, None, False
             others = []
+            active = []
             i += 1
         elif p == 7:
             reverse = True
@@ -76,19 +98,35 @@ def rewrite_sgr(match, state, theme_bg, theme_fg):
                 fg = color
             else:
                 bg = color
+        elif p in OFF_CODES:
+            for code in OFF_CODES[p]:
+                if code in active:
+                    active.remove(code)
+            others.append(p)
+            i += 1
         else:
             others.append(p)
+            if not is_color(p) and p not in active:
+                active.append(p)
             i += 1
 
     out = ["0"] if reset else []
-    out.extend(str(p) for p in others)
-    if reverse:
-        out.append(color_code(38, bg or theme_bg))
-        out.append(color_code(48, fg or theme_fg))
+    if not reset and had_explicit_bg and not reverse and bg is None:
+        # freeze ignores SGR 49 on its own, so start from a full reset and
+        # re-apply the attributes and foreground that remain in effect.
+        out = ["0"]
+        out.extend(str(p) for p in active)
+        if fg is not None:
+            out.append(color_code(38, fg))
     else:
-        out.append(color_code(38, fg) if fg else "39")
-        out.append(color_code(48, bg) if bg else "49")
-    return ("\x1b[" + ";".join(out) + "m").encode(), (fg, bg, reverse)
+        out.extend(str(p) for p in others)
+        if reverse:
+            out.append(color_code(38, bg or theme_bg))
+            out.append(color_code(48, fg or theme_fg))
+        else:
+            out.append(color_code(38, fg) if fg else "39")
+            out.append(color_code(48, bg) if bg else "49")
+    return ("\x1b[" + ";".join(out) + "m").encode(), (fg, bg, reverse, tuple(active))
 
 
 def main():
@@ -103,7 +141,7 @@ def main():
     with open(args.path, "rb") as f:
         data = f.read()
 
-    state = (None, None, False)
+    state = (None, None, False, ())
 
     def replace(match):
         nonlocal state
