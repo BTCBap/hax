@@ -11,6 +11,7 @@ This is a lightweight project changelog, not a strict release ledger.
 
 ### Changed
 - README install instructions now cover the one-line installers, package downloads, and the unsigned macOS app.
+- The macOS and Linux installer now asks for your password when `/usr/local/bin` needs administrator rights and a terminal is available, and falls back to `~/.local/bin` when sudo is unavailable or declined. `--no-sudo` skips the prompt, and sudo calls no longer hang when there is no terminal.
 
 ## [1.4.0] - 2026-10-30
 

@@ -34,7 +34,7 @@ In Terminal:
 curl -fsSL https://raw.githubusercontent.com/BTCBap/hax/main/install.sh | sh
 ```
 
-Then type `hax` and press Enter. The installer uses `/usr/local/bin` when it can, uses sudo for it when allowed, otherwise installs to `~/.local/bin`, and clears the macOS quarantine flag from the binary.
+Then type `hax` and press Enter. The installer uses `/usr/local/bin` when it can. If that directory needs administrator rights, the installer asks for your password with sudo, so you may see a password prompt; pass `--no-sudo` to install to `~/.local/bin` instead. It clears the macOS quarantine flag from the binary.
 
 Alternatively, download the macOS archive for Apple Silicon or Intel from the [releases page](https://github.com/BTCBap/hax/releases/latest), double-click it to extract, then right-click `Hax.app`, choose Open, and choose Open again. macOS warns that the app is from an unidentified developer because it is unsigned. On newer macOS versions you can also allow it in System Settings > Privacy & Security > Open Anyway. After that, double-click `Hax.app` to start hax in Terminal. `Hax.app` is included starting with v1.5.0.
 
@@ -56,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/BTCBap/hax/main/install.sh | sh
 
 Then type `hax` and press Enter.
 
-The installer uses `/usr/local/bin` if it is writable, uses sudo for `/usr/local/bin` when that is allowed, and otherwise installs to `~/.local/bin`. If it uses `~/.local/bin`, it prints the lines to add to bash, zsh, or fish, and you need to open a new terminal.
+The installer uses `/usr/local/bin` if it is writable. Otherwise it asks for your password with sudo to install there, so you may see a password prompt; if sudo or a terminal is unavailable, it installs to `~/.local/bin`. Pass `--no-sudo` to skip the password prompt and install to `~/.local/bin` when you have no administrator rights. If it uses `~/.local/bin`, it prints the lines to add to bash, zsh, or fish, and you need to open a new terminal.
 
 Useful options:
 

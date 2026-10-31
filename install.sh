@@ -11,6 +11,12 @@
 #   HAX_INSTALL_DIR  directory to install hax into
 #   HAX_NO_SUDO=1    always use ~/.local/bin instead of /usr/local/bin
 #   HAX_DESKTOP=1    install a Linux desktop entry (same as --desktop)
+#   HAX_SYSTEM_DIR   system install directory (default /usr/local/bin; advanced)
+#
+# Without HAX_INSTALL_DIR the installer uses /usr/local/bin when it is
+# writable. Otherwise, with sudo and a terminal, it asks for your password;
+# without a terminal it tries passwordless sudo. If that does not work it
+# installs to ~/.local/bin.
 #
 # The script only writes the hax binary, an optional desktop entry, and
 # shell PATH advice. It never reads or changes wallet data in ~/.hax.
@@ -55,9 +61,14 @@ Environment:
   HAX_INSTALL_DIR  Directory to install hax into
   HAX_NO_SUDO=1    Same as --no-sudo
   HAX_DESKTOP=1    Same as --desktop
+  HAX_SYSTEM_DIR   System install directory (default /usr/local/bin; advanced)
 
-Without HAX_INSTALL_DIR the installer uses /usr/local/bin when it can,
-then sudo for /usr/local/bin when allowed, then ~/.local/bin.
+Without HAX_INSTALL_DIR the installer uses /usr/local/bin when it is
+writable. Otherwise, when sudo and a terminal are available, it asks for
+your password to install there; otherwise it tries passwordless sudo. If
+neither works it installs to ~/.local/bin and prints PATH advice. Use
+--no-sudo to install to ~/.local/bin without asking for administrator
+rights.
 
 Download first if you want to read the script:
   curl -fsSLO ${RAW_URL}/install.sh
@@ -263,12 +274,43 @@ verify_signature() {
 # Install directory selection
 # ---------------------------------------------------------------------------
 
-sudo_is_allowed() {
-	command -v sudo >/dev/null 2>&1 || return 1
-	if [ -t 0 ]; then
-		return 0
+system_dir=${HAX_SYSTEM_DIR:-/usr/local/bin}
+have_tty=0
+
+# A controlling terminal is needed both to ask sudo for a password and to
+# read one. /dev/tty works under `curl | sh`, where stdin is the pipe.
+detect_tty() {
+	if ( : </dev/tty >/dev/tty ) 2>/dev/null; then
+		have_tty=1
 	fi
-	sudo -n true 2>/dev/null
+}
+
+tty_say() {
+	if [ "$have_tty" -eq 1 ]; then
+		printf '%s\n' "$*" >/dev/tty
+	else
+		printf '%s\n' "$*" >&2
+	fi
+}
+
+# can_install_without_sudo DIR
+can_install_without_sudo() {
+	check_dir=$1
+	while [ ! -e "$check_dir" ] && [ "$check_dir" != "/" ] && [ "$check_dir" != "." ]; do
+		check_dir=$(dirname "$check_dir")
+	done
+	[ -d "$check_dir" ] && [ -w "$check_dir" ]
+}
+
+run_sudo() {
+	if [ "$have_tty" -eq 1 ]; then
+		# The redirect is intentional: sudo gets the terminal as stdin, not
+		# the script's stdin, which can be the pipe for `curl | sh`.
+		# shellcheck disable=SC2024
+		sudo "$@" </dev/tty
+	else
+		sudo -n "$@"
+	fi
 }
 
 choose_install_dir() {
@@ -284,15 +326,31 @@ choose_install_dir() {
 		return
 	fi
 
-	if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-		install_dir=/usr/local/bin
+	if can_install_without_sudo "$system_dir"; then
+		install_dir=$system_dir
 		return
 	fi
 
-	if [ -d /usr/local/bin ] && sudo_is_allowed; then
-		install_dir=/usr/local/bin
-		use_sudo=1
-		return
+	if command -v sudo >/dev/null 2>&1; then
+		if [ "$have_tty" -eq 1 ]; then
+			tty_say "hax: installing to $system_dir needs administrator rights; sudo will ask for your password (use --no-sudo to install to ~/.local/bin instead)."
+			# sudo reads the password from the terminal, which also works
+			# under `curl | sh` where stdin is the pipe.
+			# shellcheck disable=SC2024
+			if sudo -v </dev/tty; then
+				install_dir=$system_dir
+				use_sudo=1
+				return
+			fi
+			tty_say "hax: sudo was not granted; installing to $HOME/.local/bin instead."
+			install_dir="$HOME/.local/bin"
+			return
+		fi
+		if sudo -n true 2>/dev/null; then
+			install_dir=$system_dir
+			use_sudo=1
+			return
+		fi
 	fi
 
 	install_dir="$HOME/.local/bin"
@@ -307,7 +365,7 @@ prepare_install_dir() {
 	fi
 
 	if [ "$use_sudo" -eq 1 ]; then
-		sudo mkdir -p "$install_dir"
+		run_sudo mkdir -p "$install_dir" || die "could not create $install_dir"
 	else
 		mkdir -p "$install_dir"
 	fi
@@ -340,9 +398,9 @@ install_binary() {
 	# existing running binary is never left half written.
 	tmp_target="$install_dir/.hax.tmp.$$"
 	if [ "$use_sudo" -eq 1 ]; then
-		sudo install -m 0755 "$extract_dir/hax" "$tmp_target" ||
+		run_sudo install -m 0755 "$extract_dir/hax" "$tmp_target" ||
 			die "could not write $tmp_target"
-		sudo mv -f "$tmp_target" "$target" || die "could not replace $target"
+		run_sudo mv -f "$tmp_target" "$target" || die "could not replace $target"
 	else
 		install -m 0755 "$extract_dir/hax" "$tmp_target" ||
 			die "could not write $tmp_target"
@@ -415,8 +473,11 @@ remove_installed_file() {
 	remove_parent=$(dirname "$remove_target")
 	if [ -w "$remove_parent" ]; then
 		rm -f "$remove_target"
-	elif command -v sudo >/dev/null 2>&1 && { [ -t 0 ] || sudo -n true 2>/dev/null; }; then
-		sudo rm -f "$remove_target"
+	elif command -v sudo >/dev/null 2>&1; then
+		run_sudo rm -f "$remove_target" || {
+			warn "cannot remove $remove_target (permission denied); remove it manually"
+			return
+		}
 	else
 		warn "cannot remove $remove_target (permission denied); remove it manually"
 		return
@@ -429,7 +490,7 @@ uninstall_hax() {
 	say "Wallet data in $HOME/.hax is not touched."
 
 	seen=""
-	for dir in "$install_dir_env" /usr/local/bin "$HOME/.local/bin"; do
+	for dir in "$install_dir_env" "$system_dir" "$HOME/.local/bin"; do
 		[ -n "$dir" ] || continue
 		case " $seen " in
 		*" $dir "*) continue ;;
@@ -450,6 +511,8 @@ uninstall_hax() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+detect_tty
 
 if [ "$want_uninstall" -eq 1 ]; then
 	uninstall_hax
