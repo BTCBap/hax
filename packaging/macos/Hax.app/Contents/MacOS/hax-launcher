@@ -1,0 +1,56 @@
+#!/bin/sh
+# Hax.app launcher.
+#
+# The app is a thin wrapper around the hax terminal binary. It first looks
+# for hax next to Hax.app (the extracted release archive), then on PATH.
+# Terminal is opened with osascript because hax is a full-screen TUI and
+# cannot run inside the Finder process.
+
+set -eu
+
+script_dir=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd) || exit 1
+app_dir=$(CDPATH='' cd -P -- "$script_dir/../.." && pwd) || exit 1
+bundle_parent=$(dirname -- "$app_dir")
+
+hax_path=""
+
+# 1. Same folder as Hax.app, which is where the release archive puts both.
+for candidate in "$bundle_parent/hax" "$bundle_parent/Hax"; do
+	if [ -x "$candidate" ]; then
+		hax_path=$candidate
+		break
+	fi
+done
+
+# 2. PATH as seen by Finder is minimal, so add the usual install locations.
+if [ -z "$hax_path" ]; then
+	PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH"
+	export PATH
+	if command -v hax >/dev/null 2>&1; then
+		hax_path=$(command -v hax)
+	fi
+fi
+
+if [ -n "$hax_path" ]; then
+	# Pass the path as an argument so spaces and quotes stay intact. The
+	# AppleScript "quoted form" adds shell quoting for Terminal.
+	osascript - "$hax_path" <<'APPLESCRIPT'
+on run argv
+	set haxPath to item 1 of argv
+	set haxCommand to quoted form of haxPath
+	tell application "Terminal"
+		activate
+		do script haxCommand
+	end tell
+end run
+APPLESCRIPT
+	exit 0
+fi
+
+# 3. Nothing found: explain how to install it.
+osascript <<'APPLESCRIPT'
+set messageText to "hax was not found." & return & return & "Install it from Terminal with:" & return & "curl -fsSL https://raw.githubusercontent.com/BTCBap/hax/main/install.sh | sh" & return & return & "Then run: hax" & return & "More: https://github.com/BTCBap/hax#install"
+display dialog messageText with title "Hax" buttons {"OK"} default button "OK" with icon caution
+APPLESCRIPT
+
+exit 1

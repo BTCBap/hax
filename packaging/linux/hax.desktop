@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=hax
+Comment=Terminal Bitcoin wallet
+Exec=hax
+Terminal=true
+Categories=Finance;Utility;
