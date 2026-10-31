@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestWaitForNotification_StopsWhenBackendChanges(t *testing.T) {
@@ -79,7 +79,7 @@ func TestUnlock_ChooseServerCarriesWalletNetwork(t *testing.T) {
 	m := NewUnlockModel(nil)
 	m.passwordInput.Focus()
 	m.err = &wallet.NetworkMismatchError{WalletNetwork: wallet.NetworkMainnet, Detail: "x"}
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	msg, ok := cmd().(ChooseServerMsg)
 	if !ok || msg.Network != wallet.NetworkMainnet {
 		t.Fatalf("got %#v, want ChooseServerMsg for mainnet", msg)

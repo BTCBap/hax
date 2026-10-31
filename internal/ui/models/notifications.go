@@ -1,11 +1,11 @@
 package models
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/ui/alert"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // BalanceChangeMsg is sent after calculating total wallet balance change

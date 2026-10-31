@@ -7,10 +7,10 @@ import (
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type HelpModel struct {
@@ -40,7 +40,7 @@ const (
 )
 
 func NewHelpModel(wallet WalletService) HelpModel {
-	vp := viewport.New(80, 20)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	vp.MouseWheelDelta = 1
 
 	model := HelpModel{
@@ -70,7 +70,7 @@ func (m HelpModel) animateTick() tea.Cmd {
 	})
 }
 
-func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m HelpModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -93,8 +93,8 @@ func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if contentWidth < 20 {
 			contentWidth = 20
 		}
-		m.viewport.Width = contentWidth
-		m.viewport.Height = msg.Height - 8
+		m.viewport.SetWidth(contentWidth)
+		m.viewport.SetHeight(msg.Height - 8)
 		m.viewport.SetContent(m.renderHelpContent())
 
 	case TickMsg:
@@ -112,7 +112,7 @@ func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q", "?":
 			m.isActive = false
@@ -132,7 +132,7 @@ func (m HelpModel) View() string {
 	header := styles.ScreenHeaderStyle.Render("Help")
 
 	scrollInfo := ""
-	if m.viewport.TotalLineCount() > m.viewport.Height {
+	if m.viewport.TotalLineCount() > m.viewport.Height() {
 		scrollPct := int(m.viewport.ScrollPercent() * 100)
 		scrollInfo = styles.ScrollIndicatorStyle.Render(fmt.Sprintf("  %d%%", scrollPct))
 	}
@@ -145,7 +145,7 @@ func (m HelpModel) View() string {
 	if boxWidth < 24 {
 		boxWidth = 24
 	}
-	viewportStyle = viewportStyle.Width(boxWidth)
+	viewportStyle = viewportStyle.Width(boxWidth + 2)
 
 	content := viewportStyle.Render(m.viewport.View())
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -108,7 +108,7 @@ func TestRegression_ExportLabelsNoLabels(t *testing.T) {
 	m.updateTableData()
 
 	// Press 'E' to export labels — should not panic
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	model, _ := m.Update(keyRune('E'))
 	updated := model.(TransactionHistoryModel)
 
 	// Should show error, not crash
@@ -131,7 +131,7 @@ func TestRegression_ExportLabelsWithNilTransactions(t *testing.T) {
 	m.isActive = true
 
 	// Press 'E' — should not panic even with nil transactions
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	model, _ := m.Update(keyRune('E'))
 	updated := model.(TransactionHistoryModel)
 
 	if updated.err == nil {
@@ -153,7 +153,7 @@ func TestRegression_KoinlyExportWithNilTransactions(t *testing.T) {
 	m.isActive = true
 
 	// Press 'K' — should not panic with nil transactions
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}})
+	model, _ := m.Update(keyRune('K'))
 	updated := model.(TransactionHistoryModel)
 
 	if updated.err == nil {
@@ -175,7 +175,7 @@ func TestRegression_EscWhileLoadingHistory(t *testing.T) {
 	m.isActive = true
 
 	// Press ESC while loading
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 
 	// Must navigate back to dashboard, not get stuck
 	assertNavigatesTo(t, cmd, StateMainDashboard)
@@ -190,7 +190,7 @@ func TestRegression_QWhileLoadingHistory(t *testing.T) {
 	m.isActive = true
 
 	// Press 'q' while loading
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(keyRune('q'))
 
 	// Must navigate back to dashboard
 	assertNavigatesTo(t, cmd, StateMainDashboard)
@@ -208,7 +208,7 @@ func TestRegression_EscWhileLoadingHistory_NotInEditOrSearchMode(t *testing.T) {
 	m.editMode = false
 	m.searchMode = false
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -229,7 +229,7 @@ func TestRegression_EscDuringHistorySearchMode(t *testing.T) {
 	m.searchInput.SetValue("test query")
 
 	// ESC in search mode should exit search, not navigate away
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, cmd := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(TransactionHistoryModel)
 
 	if updated.searchMode {
@@ -287,7 +287,7 @@ func TestRegression_HistoryTransitionFromLoadingToLoaded(t *testing.T) {
 	}
 
 	// ESC should still work after transitioning from loading to loaded
-	_, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := updated.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 

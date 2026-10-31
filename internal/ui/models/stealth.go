@@ -3,8 +3,8 @@ package models
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const (

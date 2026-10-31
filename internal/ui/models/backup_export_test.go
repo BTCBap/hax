@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 const settingsTestBackup = `{"format":"haxwallet-backup","descriptor":"wpkh(tpub...)"}`
@@ -166,7 +166,7 @@ func TestSettings_BackupExportOptionsKeepLayout(t *testing.T) {
 		confirm.width, confirm.height = 80, 24
 		confirm.openBackupExport()
 		confirm.backupTray.cursor = cursor
-		confirm.backupTray, _ = confirm.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		confirm.backupTray, _ = confirm.backupTray.Update(keyCode(tea.KeyEnter))
 		view := confirm.View()
 		if got := requireLineCount(t, view); got != wantLines {
 			t.Fatalf("confirm for cursor %d has %d lines, want %d", cursor, got, wantLines)
@@ -195,7 +195,7 @@ func TestSettings_BackupExportStagesKeepLineCount(t *testing.T) {
 			assertFits(t, choose, size.w)
 
 			m.backupExportStage = backupExportStageConfirm
-			m.backupTray, _ = m.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m.backupTray, _ = m.backupTray.Update(keyCode(tea.KeyEnter))
 			confirm := m.View()
 			if got := requireLineCount(t, confirm); got != want {
 				t.Fatalf("confirm has %d lines, want %d", got, want)

@@ -9,10 +9,10 @@ import (
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/styles"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // ConnectionSetupStep represents the current step in connection setup
@@ -123,32 +123,32 @@ type BackendChosenMsg struct{ Then AppState }
 func NewConnectionSetupModel(configManager *config.ConfigManager, returnToSettings bool) ConnectionSetupModel {
 	s := styles.NewStandardSpinner()
 
-	hostInput := textinput.New()
+	hostInput := newTextInput()
 	hostInput.Placeholder = "hostname or IP"
 	hostInput.CharLimit = 100
-	hostInput.Width = 30
+	hostInput.SetWidth(30)
 
-	portInput := textinput.New()
+	portInput := newTextInput()
 	portInput.Placeholder = "port"
 	portInput.CharLimit = 5
-	portInput.Width = 10
+	portInput.SetWidth(10)
 
-	userInput := textinput.New()
+	userInput := newTextInput()
 	userInput.Placeholder = "username"
 	userInput.CharLimit = 50
-	userInput.Width = 20
+	userInput.SetWidth(20)
 
-	passInput := textinput.New()
+	passInput := newTextInput()
 	passInput.Placeholder = "password"
 	passInput.EchoMode = textinput.EchoPassword
 	passInput.CharLimit = 100
-	passInput.Width = 20
+	passInput.SetWidth(20)
 
-	torPortInput := textinput.New()
+	torPortInput := newTextInput()
 	torPortInput.Placeholder = "9050"
 	torPortInput.SetValue("9050")
 	torPortInput.CharLimit = 5
-	torPortInput.Width = 10
+	torPortInput.SetWidth(10)
 
 	var recentServers []backend.SavedServer
 	if configManager != nil {
@@ -186,7 +186,7 @@ func (m ConnectionSetupModel) CapturesTextInput() bool {
 		m.torPortInput.Focused()
 }
 
-func (m ConnectionSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -215,7 +215,7 @@ func (m ConnectionSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Error
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -296,7 +296,7 @@ func (m ConnectionSetupModel) customServerIndex() int {
 	return len(servers) + len(m.recentServers)
 }
 
-func (m ConnectionSetupModel) handleChooseBackend(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) handleChooseBackend(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -322,7 +322,7 @@ func (m ConnectionSetupModel) handleChooseBackend(msg tea.KeyMsg) (tea.Model, te
 	return m, nil
 }
 
-func (m ConnectionSetupModel) handleConfigureElectrum(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) handleConfigureElectrum(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	maxIndex := m.customServerIndex()
 
 	switch msg.String() {
@@ -428,7 +428,7 @@ func (m ConnectionSetupModel) handleConfigureElectrum(msg tea.KeyMsg) (tea.Model
 	return m, nil
 }
 
-func (m ConnectionSetupModel) handleConfigureRPC(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) handleConfigureRPC(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		if m.hostInput.Focused() {
@@ -469,7 +469,7 @@ func (m ConnectionSetupModel) handleConfigureRPC(msg tea.KeyMsg) (tea.Model, tea
 	return m, nil
 }
 
-func (m ConnectionSetupModel) handleTestConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) handleTestConnection(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		switch m.buttonState {
@@ -490,7 +490,7 @@ func (m ConnectionSetupModel) handleTestConnection(msg tea.KeyMsg) (tea.Model, t
 	return m, nil
 }
 
-func (m ConnectionSetupModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m ConnectionSetupModel) handleComplete(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		if m.returnToSettings {
@@ -964,7 +964,7 @@ func (m ConnectionSetupModel) viewTestConnection() string {
 	serverInfo := ""
 	if serverInfoBody != "" {
 		contentWidth := max(lipgloss.Width(title), lipgloss.Width(info), lipgloss.Width(button), lipgloss.Width(help))
-		serverInfo = "\n\n" + styles.InfoBoxStyle.MarginBottom(0).Width(contentWidth).Render(serverInfoBody)
+		serverInfo = "\n\n" + styles.InfoBoxStyle.MarginBottom(0).Width(contentWidth+2).Render(serverInfoBody)
 	}
 
 	return styles.CenterHorizontal(title+"\n\n"+info+"\n\n"+button+"\n\n"+help+serverInfo, m.width)

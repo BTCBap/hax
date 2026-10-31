@@ -6,10 +6,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
@@ -71,7 +69,7 @@ func TestAddresses_VerifyOnDeviceMismatch(t *testing.T) {
 	}}
 	m.updateTable()
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, cmd := m.Update(keyRunes("v"))
 	waiting := model.(AddressesModel)
 	if !waiting.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
@@ -121,7 +119,7 @@ func TestAddresses_VerifyModeReplacesDetailAndRestores(t *testing.T) {
 		t.Fatalf("idle addresses view is missing the list:\n%s", stripANSI(before))
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, _ := m.Update(keyRunes("v"))
 	m = model.(AddressesModel)
 	if !m.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
@@ -138,7 +136,7 @@ func TestAddresses_VerifyModeReplacesDetailAndRestores(t *testing.T) {
 	}
 	assertWithinTerminal(t, m.View(), 80, 24)
 
-	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ = m.Update(keyCode(tea.KeyEsc))
 	restored := model.(AddressesModel)
 	if restored.verify.Active() {
 		t.Fatal("esc should leave verify mode")
@@ -201,7 +199,7 @@ func TestAddresses_VerifyModeLineCountStable(t *testing.T) {
 // carries the retry/back keys on the same row in every panel state.
 func TestAddresses_VerifyModeOuterHintRow(t *testing.T) {
 	m, _ := newHardwareAddresses(t, 80, 24)
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, _ := m.Update(keyRunes("v"))
 	m = model.(AddressesModel)
 	if !m.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
@@ -244,10 +242,6 @@ func TestAddresses_VerifyModeOuterHintRow(t *testing.T) {
 }
 
 func TestAddressTableAddressFormatting(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-
 	const address = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"
 	m := NewAddressesModel(NewMockWalletManager(), nil)
 	m.width = 110

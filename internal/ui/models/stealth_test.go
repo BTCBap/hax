@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -137,13 +137,13 @@ func TestStealthToggleKeepsLayoutStable(t *testing.T) {
 	cases := []struct {
 		name   string
 		labels []string
-		build  func() tea.Model
+		build  func() screenModel
 	}{
-		{"dashboard", []string{"Balance:", "Recent Activity"}, func() tea.Model { return stealthDashboard() }},
-		{"history", []string{"Amount"}, func() tea.Model { return stealthHistory() }},
-		{"utxos", []string{"coins", "mempool ", "frozen ", "Value"}, func() tea.Model { return stealthUTXOs() }},
-		{"addresses", []string{"Balance"}, func() tea.Model { return stealthAddresses() }},
-		{"receive", []string{"Balance:"}, func() tea.Model { return stealthReceive() }},
+		{"dashboard", []string{"Balance:", "Recent Activity"}, func() screenModel { return stealthDashboard() }},
+		{"history", []string{"Amount"}, func() screenModel { return stealthHistory() }},
+		{"utxos", []string{"coins", "mempool ", "frozen ", "Value"}, func() screenModel { return stealthUTXOs() }},
+		{"addresses", []string{"Balance"}, func() screenModel { return stealthAddresses() }},
+		{"receive", []string{"Balance:"}, func() screenModel { return stealthReceive() }},
 	}
 	sizes := []struct {
 		name string
@@ -188,11 +188,11 @@ func TestPassphraseBadgeKeepsLayoutStable(t *testing.T) {
 	}{{"80x24", 80, 24}, {"120x40", 120, 40}} {
 		t.Run("dashboard/"+size.name, func(t *testing.T) {
 			mock := stealthTestMock()
-			off, _ := tea.Model(NewMainDashboardModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			off, _ := screenModel(NewMainDashboardModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
 			before := off.View()
 
 			mock.HasPassphraseFn = func() bool { return true }
-			on, _ := tea.Model(NewMainDashboardModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			on, _ := screenModel(NewMainDashboardModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
 			after := on.View()
 
 			assertBadgeStable(t, before, after, []string{"Balance:", "Recent Activity"}, "+ passphrase")
@@ -200,11 +200,11 @@ func TestPassphraseBadgeKeepsLayoutStable(t *testing.T) {
 		})
 		t.Run("settings/"+size.name, func(t *testing.T) {
 			mock := stealthTestMock()
-			off, _ := tea.Model(NewSettingsModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			off, _ := screenModel(NewSettingsModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
 			before := off.View()
 
 			mock.HasPassphraseFn = func() bool { return true }
-			on, _ := tea.Model(NewSettingsModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			on, _ := screenModel(NewSettingsModel(mock, nil)).Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
 			after := on.View()
 
 			assertBadgeStable(t, before, after, []string{"Wallet Name:", "Type:"}, "+ passphrase")
@@ -235,20 +235,20 @@ func TestStealthExceptionsShowRealAmounts(t *testing.T) {
 	cases := []struct {
 		name  string
 		want  string
-		build func(t *testing.T) tea.Model
+		build func(t *testing.T) screenModel
 	}{
-		{"send-review", "BTC", func(t *testing.T) tea.Model {
+		{"send-review", "BTC", func(t *testing.T) screenModel {
 			return newSendReviewFlowModel(t, 80, 40)
 		}},
-		{"psbt-inspector", "BTC", func(t *testing.T) tea.Model {
+		{"psbt-inspector", "BTC", func(t *testing.T) screenModel {
 			return newPSBTInspectorFlowModel(t, 80, 40)
 		}},
-		{"fee-bump", "282 sats", func(t *testing.T) tea.Model {
+		{"fee-bump", "282 sats", func(t *testing.T) screenModel {
 			m, _, _ := newBumpTest(t, bumpInfo())
 			m, _ = update(t, m, m.analyzeFeeBump()())
 			return m
 		}},
-		{"visualizer", "0.00100000 BTC", func(t *testing.T) tea.Model {
+		{"visualizer", "0.00100000 BTC", func(t *testing.T) screenModel {
 			m := newHistoryFlowModel(t, 100, 30)
 			return txFlowTestUpdate(t, m, txFlowTestKey("v"))
 		}},

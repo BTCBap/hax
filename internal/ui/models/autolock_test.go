@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -75,7 +75,7 @@ func TestAutoLock_DoesNotFire(t *testing.T) {
 
 func TestAutoLock_InputResetsTimer(t *testing.T) {
 	r, locked := idleRoot(StateMainDashboard)
-	out, _ := r.Update(tea.KeyMsg{Type: tea.KeyDown})
+	out, _ := r.Update(keyCode(tea.KeyDown))
 	_, _ = out.(RootModel).Update(idleCheckMsg(time.Now()))
 	if *locked {
 		t.Fatal("key press should reset the idle timer")
@@ -100,19 +100,19 @@ func TestRetrust_PromptCancelAndAccept(t *testing.T) {
 	if v := m.View(); !strings.Contains(v, "Server key changed") || !strings.Contains(v, "re-trust") {
 		t.Fatalf("banner missing:\n%s", v)
 	}
-	shiftT := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("T")}
+	shiftT := keyRunes("T")
 	out, _ := m.Update(shiftT)
 	m = out.(MainDashboardModel)
 	if m.retrustPrompt == nil || !strings.Contains(m.View(), "Trust the new key") {
 		t.Fatal("prompt not shown")
 	}
-	out, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	out, _ = m.Update(keyRunes("n"))
 	m = out.(MainDashboardModel)
 	if m.retrustPrompt != nil || trusted != nil {
 		t.Fatal("non-y key must cancel without trusting")
 	}
 	out, _ = m.Update(shiftT)
-	out, cmd := out.(MainDashboardModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	out, cmd := out.(MainDashboardModel).Update(keyRunes("y"))
 	m = out.(MainDashboardModel)
 	if trusted == nil || trusted.Server != "electrum.example:50002" || cmd == nil {
 		t.Fatalf("trust not applied: %+v", trusted)
@@ -121,7 +121,7 @@ func TestRetrust_PromptCancelAndAccept(t *testing.T) {
 	// A failure is surfaced, not swallowed.
 	trustPresentedKey = func(*backend.PinMismatchError) error { return errors.New("disk full") }
 	out, _ = m.Update(shiftT)
-	out, _ = out.(MainDashboardModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	out, _ = out.(MainDashboardModel).Update(keyRunes("y"))
 	if !strings.Contains(out.(MainDashboardModel).View(), "disk full") {
 		t.Fatal("trust error not shown")
 	}

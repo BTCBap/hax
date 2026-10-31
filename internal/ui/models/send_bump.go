@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type bumpMethod int
@@ -224,7 +224,7 @@ func (m SendModel) renderBumpSummary(boxWidth int) string {
 		if m.err == nil {
 			rows = append(rows, styles.DimText.Render(m.spinner.View()+" Looking it up..."))
 		}
-		return styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(rows, "\n"))
+		return styles.InfoBoxStyle.Width(boxWidth + 2).Render(strings.Join(rows, "\n"))
 	}
 	rows = append(rows, renderRow("Pays now:", fmt.Sprintf("%d sats · %s sat/vB · %d vB",
 		info.Fee, formatFeeRate(roundRate(info.FeeRate)), info.VSize)))
@@ -248,7 +248,7 @@ func (m SendModel) renderBumpSummary(boxWidth int) string {
 		rows = append(rows, renderRow(label, "at least "+
 			formatFeeRate(roundUpRate(m.bumpMinRate()))+" sat/vB"))
 	}
-	return styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(rows, "\n"))
+	return styles.InfoBoxStyle.Width(boxWidth + 2).Render(strings.Join(rows, "\n"))
 }
 
 // bumpFeeAt estimates what speeding up costs at rate, for the fee menu.

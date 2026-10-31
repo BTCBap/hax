@@ -5,8 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
 )
 
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -16,10 +15,6 @@ func stripFormatANSI(s string) string {
 }
 
 func TestFormatAddress(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	const (
 		p2wpkh = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
 		p2wsh  = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"

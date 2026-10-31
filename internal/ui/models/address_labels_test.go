@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func labelledAccounts(labels map[string]string) func() []wallet.AccountData {
@@ -25,19 +25,19 @@ func TestAddresses_EditLabel(t *testing.T) {
 	var saved [2]string
 	mock.SetAddressLabelFn = func(a, l string) error { saved = [2]string{a, l}; labels[a] = l; return nil }
 
-	m := tea.Model(NewAddressesModel(mock, nil))
+	m := screenModel(NewAddressesModel(mock, nil))
 	m, _ = m.Update(AddressesInitMsg{})
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	if !strings.Contains(stripANSI(m.View()), "No label · press e to add one") {
 		t.Fatal("empty label hint missing")
 	}
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m, _ = m.Update(keyRune('e'))
 	for _, r := range "rent" {
-		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m, _ = m.Update(keyRune(r))
 	}
 	// While editing, letters go to the input, not to shortcuts.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(keyRune('q'))
+	m, _ = m.Update(keyCode(tea.KeyEnter))
 	if saved != [2]string{"tb1q_our_addr", "rentq"} {
 		t.Fatalf("saved %v", saved)
 	}
@@ -51,7 +51,7 @@ func TestAddresses_EditLabel(t *testing.T) {
 func TestAddresses_LabelColumnWhenWide(t *testing.T) {
 	mock := NewMockWalletManager()
 	mock.GetAccountsFn = labelledAccounts(map[string]string{"tb1q_our_addr": "cold\x1b[31m storage"})
-	m := tea.Model(NewAddressesModel(mock, nil))
+	m := screenModel(NewAddressesModel(mock, nil))
 	m, _ = m.Update(AddressesInitMsg{})
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	view := m.View()

@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/muesli/termenv"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/version"
@@ -19,7 +18,6 @@ import (
 func TestMain(m *testing.M) {
 	// Force ASCII color profile for deterministic golden file output.
 	// Without this, ANSI escape codes vary between local and CI environments.
-	lipgloss.SetColorProfile(termenv.Ascii)
 	// Pin the local zone so rendered timestamps match on every machine.
 	time.Local = time.UTC
 	// Pin the version so a release bump doesn't change the snapshots.
@@ -40,7 +38,7 @@ func TestGolden_Splash(t *testing.T) {
 	m.frame = 0
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Help(t *testing.T) {
@@ -50,12 +48,12 @@ func TestGolden_Help(t *testing.T) {
 	// Settle animation for deterministic output
 	m.fadeIn = 1.0
 	// Update viewport dimensions to match
-	m.viewport.Width = 96
-	m.viewport.Height = 32
+	m.viewport.SetWidth(96)
+	m.viewport.SetHeight(32)
 	m.viewport.SetContent(m.renderHelpContent())
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Dashboard(t *testing.T) {
@@ -80,7 +78,7 @@ func TestGolden_Dashboard(t *testing.T) {
 	m.loading = false
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Dashboard_Multisig(t *testing.T) {
@@ -109,7 +107,7 @@ func TestGolden_Dashboard_Multisig(t *testing.T) {
 	m.loading = false
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Unlock_PasswordEntry(t *testing.T) {
@@ -124,7 +122,7 @@ func TestGolden_Unlock_PasswordEntry(t *testing.T) {
 	m.walletList = []string{"my-wallet"}
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Unlock_WalletSelection(t *testing.T) {
@@ -143,7 +141,7 @@ func TestGolden_Unlock_WalletSelection(t *testing.T) {
 	m.passwordInput.Blur()
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_History_WithTransactions(t *testing.T) {
@@ -185,7 +183,7 @@ func TestGolden_History_WithTransactions(t *testing.T) {
 	m.updateTableData()
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }
 
 func TestGolden_Receive_WithAddress(t *testing.T) {
@@ -207,5 +205,5 @@ func TestGolden_Receive_WithAddress(t *testing.T) {
 	m.revealProgress = 1.0 // Skip animation
 
 	out := m.View()
-	teatest.RequireEqualOutput(t, []byte(out))
+	teatest.RequireEqualOutput(t, []byte(ansi.Strip(out)))
 }

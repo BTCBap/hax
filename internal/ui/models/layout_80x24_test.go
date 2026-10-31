@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/wallet"
@@ -30,29 +30,29 @@ func hwiDevicesForLayout() []wallet.HardwareDevice {
 // TestViews_FitIn80Columns renders each top-level view, with empty and with
 // awkward data, in an 80×24 terminal and fails if any line is wider than 80.
 func TestViews_FitIn80Columns(t *testing.T) {
-	builders := map[string]func(*MockWalletManager) tea.Model{
-		"splash":    func(*MockWalletManager) tea.Model { return NewSplashModel() },
-		"unlock":    func(w *MockWalletManager) tea.Model { return NewUnlockModel(w) },
-		"dashboard": func(w *MockWalletManager) tea.Model { return NewMainDashboardModel(w, nil) },
-		"receive":   func(w *MockWalletManager) tea.Model { return NewReceiveModel(w) },
-		"send":      func(w *MockWalletManager) tea.Model { return NewSendModel(w, 0, nil) },
-		"send_hwi_devices": func(w *MockWalletManager) tea.Model {
+	builders := map[string]func(*MockWalletManager) screenModel{
+		"splash":    func(*MockWalletManager) screenModel { return NewSplashModel() },
+		"unlock":    func(w *MockWalletManager) screenModel { return NewUnlockModel(w) },
+		"dashboard": func(w *MockWalletManager) screenModel { return NewMainDashboardModel(w, nil) },
+		"receive":   func(w *MockWalletManager) screenModel { return NewReceiveModel(w) },
+		"send":      func(w *MockWalletManager) screenModel { return NewSendModel(w, 0, nil) },
+		"send_hwi_devices": func(w *MockWalletManager) screenModel {
 			m := NewSendModel(w, 0, nil)
 			m.showPSBTExport = true
 			m.showHWIDevices = true
 			m.hwiDevices = hwiDevicesForLayout()
 			return m
 		},
-		"feebump": func(w *MockWalletManager) tea.Model { return NewFeeBumpModel(w, "ab12", 0, nil) },
-		"history": func(w *MockWalletManager) tea.Model { return NewTransactionHistoryModel(w) },
-		"history_speedup": func(w *MockWalletManager) tea.Model {
+		"feebump": func(w *MockWalletManager) screenModel { return NewFeeBumpModel(w, "ab12", 0, nil) },
+		"history": func(w *MockWalletManager) screenModel { return NewTransactionHistoryModel(w) },
+		"history_speedup": func(w *MockWalletManager) screenModel {
 			return newSpeedUpHistoryLayout(w, false)
 		},
-		"history_speedup_confirm": func(w *MockWalletManager) tea.Model {
+		"history_speedup_confirm": func(w *MockWalletManager) screenModel {
 			return newSpeedUpHistoryLayout(w, true)
 		},
-		"addresses": func(w *MockWalletManager) tea.Model { return NewAddressesModel(w, nil) },
-		"receive_hwi": func(w *MockWalletManager) tea.Model {
+		"addresses": func(w *MockWalletManager) screenModel { return NewAddressesModel(w, nil) },
+		"receive_hwi": func(w *MockWalletManager) screenModel {
 			w.IsHardwareWalletFn = func() bool { return true }
 			w.IsMultisigFn = func() bool { return false }
 			r := NewReceiveModel(w)
@@ -64,7 +64,7 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			r.verify.DeviceAddress = verifyTestDevice
 			return r
 		},
-		"addresses_hwi": func(w *MockWalletManager) tea.Model {
+		"addresses_hwi": func(w *MockWalletManager) screenModel {
 			w.IsHardwareWalletFn = func() bool { return true }
 			w.IsMultisigFn = func() bool { return false }
 			a := NewAddressesModel(w, nil)
@@ -79,44 +79,44 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			a.verify.DeviceAddress = verifyTestDevice
 			return a
 		},
-		"utxos": func(w *MockWalletManager) tea.Model { return NewUTXOsModel(w, nil) },
-		"fees":  func(w *MockWalletManager) tea.Model { return NewFeesModel(w, nil) },
-		"utxos_stealth": func(*MockWalletManager) tea.Model {
+		"utxos": func(w *MockWalletManager) screenModel { return NewUTXOsModel(w, nil) },
+		"fees":  func(w *MockWalletManager) screenModel { return NewFeesModel(w, nil) },
+		"utxos_stealth": func(*MockWalletManager) screenModel {
 			m := stealthUTXOs()
 			m.stealth = true
 			m.sortAndUpdateTable()
 			return m
 		},
-		"addresses_stealth": func(*MockWalletManager) tea.Model {
+		"addresses_stealth": func(*MockWalletManager) screenModel {
 			m := stealthAddresses()
 			m.stealth = true
 			m.updateTable()
 			return m
 		},
-		"receive_stealth": func(*MockWalletManager) tea.Model {
+		"receive_stealth": func(*MockWalletManager) screenModel {
 			m := stealthReceive()
 			m.stealth = true
 			return m
 		},
-		"history_stealth": func(*MockWalletManager) tea.Model {
+		"history_stealth": func(*MockWalletManager) screenModel {
 			m := stealthHistory()
 			m.stealth = true
 			m.updateTableData()
 			return m
 		},
-		"dashboard_stealth": func(*MockWalletManager) tea.Model {
+		"dashboard_stealth": func(*MockWalletManager) screenModel {
 			m := stealthDashboard()
 			m.stealth = true
 			return m
 		},
-		"settings": func(w *MockWalletManager) tea.Model { return NewSettingsModel(w, nil) },
-		"settings_labels_import": func(w *MockWalletManager) tea.Model {
+		"settings": func(w *MockWalletManager) screenModel { return NewSettingsModel(w, nil) },
+		"settings_labels_import": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.openLabelImport()
 			m.labelImportPath.SetValue("")
 			return m
 		},
-		"settings_labels_import_preview": func(w *MockWalletManager) tea.Model {
+		"settings_labels_import_preview": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.showLabelImport = true
 			m.labelImportStage = labelImportStagePreview
@@ -124,7 +124,7 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.labelImportPath.SetValue("~/.hax/test-wallet_labels_bip329.jsonl")
 			return m
 		},
-		"settings_labels_import_result": func(w *MockWalletManager) tea.Model {
+		"settings_labels_import_result": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.showLabelImport = true
 			m.labelImportStage = labelImportStageResult
@@ -132,19 +132,19 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.labelImportPath.SetValue("~/.hax/test-wallet_labels_bip329.jsonl")
 			return m
 		},
-		"settings_backup_export": func(w *MockWalletManager) tea.Model {
+		"settings_backup_export": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.openBackupExport()
 			return m
 		},
-		"settings_backup_export_confirm": func(w *MockWalletManager) tea.Model {
+		"settings_backup_export_confirm": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.openBackupExport()
-			m.backupTray, _ = m.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m.backupTray, _ = m.backupTray.Update(keyCode(tea.KeyEnter))
 			m.backupExportStage = backupExportStageConfirm
 			return m
 		},
-		"settings_backup_export_result": func(w *MockWalletManager) tea.Model {
+		"settings_backup_export_result": func(w *MockWalletManager) screenModel {
 			m := NewSettingsModel(w, nil)
 			m.openBackupExport()
 			m.backupExportStage = backupExportStageResult
@@ -152,15 +152,15 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.backupExportPath = "~/.hax/test-wallet_backup.json"
 			return m
 		},
-		"help":  func(w *MockWalletManager) tea.Model { return NewHelpModel(w) },
-		"setup": func(w *MockWalletManager) tea.Model { return NewWalletSetupModel(w, nil) },
-		"setup_hwi_devices": func(w *MockWalletManager) tea.Model {
+		"help":  func(w *MockWalletManager) screenModel { return NewHelpModel(w) },
+		"setup": func(w *MockWalletManager) screenModel { return NewWalletSetupModel(w, nil) },
+		"setup_hwi_devices": func(w *MockWalletManager) screenModel {
 			m := NewWalletSetupModel(w, nil)
 			m.step = StepHardwareWalletConnect
 			m.hwiDevices = hwiDevicesForLayout()
 			return m
 		},
-		"setup_multisig_hwi_devices": func(w *MockWalletManager) tea.Model {
+		"setup_multisig_hwi_devices": func(w *MockWalletManager) screenModel {
 			m := NewWalletSetupModel(w, nil)
 			m.isMultisig = true
 			m.step = StepMultisigEnterCosigners
@@ -168,7 +168,7 @@ func TestViews_FitIn80Columns(t *testing.T) {
 			m.hwiDevices = hwiDevicesForLayout()
 			return m
 		},
-		"connection": func(*MockWalletManager) tea.Model { return NewConnectionSetupModel(nil, false) },
+		"connection": func(*MockWalletManager) screenModel { return NewConnectionSetupModel(nil, false) },
 	}
 	mocks := map[string]func() *MockWalletManager{"empty": NewMockWalletManager, "hostile": hostileMock}
 	for name, build := range builders {
@@ -187,15 +187,15 @@ func TestViews_FitIn80Columns(t *testing.T) {
 func TestTxFlowEntryViewsFit(t *testing.T) {
 	tests := []struct {
 		name  string
-		build func(t *testing.T, width, height int) tea.Model
+		build func(t *testing.T, width, height int) screenModel
 	}{
-		{"send-review", func(t *testing.T, width, height int) tea.Model {
+		{"send-review", func(t *testing.T, width, height int) screenModel {
 			return txFlowTestUpdate(t, newSendReviewFlowModel(t, width, height), txFlowTestKey("v"))
 		}},
-		{"psbt-inspector", func(t *testing.T, width, height int) tea.Model {
+		{"psbt-inspector", func(t *testing.T, width, height int) screenModel {
 			return txFlowTestUpdate(t, newPSBTInspectorFlowModel(t, width, height), txFlowTestKey("v"))
 		}},
-		{"history", func(t *testing.T, width, height int) tea.Model {
+		{"history", func(t *testing.T, width, height int) screenModel {
 			return txFlowTestUpdate(t, newHistoryFlowModel(t, width, height), txFlowTestKey("v"))
 		}},
 	}

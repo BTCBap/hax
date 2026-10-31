@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/ui/styles"
@@ -33,7 +33,7 @@ func shortFingerprint(fp string) string {
 
 // handleRetrustKey handles the confirmation prompt. Accepting requires an
 // explicit "y"; any other key cancels so a stray keypress can't trust a key.
-func (m MainDashboardModel) handleRetrustKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m MainDashboardModel) handleRetrustKey(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	pe := m.retrustPrompt
 	if msg.String() != "y" {
 		m.retrustPrompt = nil
@@ -59,7 +59,7 @@ func (m MainDashboardModel) renderRetrustPanel(state wallet.WalletStateSnapshot)
 		width = 30
 	}
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ErrorText.GetForeground()).Padding(0, 1).Width(width - 2)
+		BorderForeground(styles.ErrorText.GetForeground()).Padding(0, 1).Width(width)
 
 	if pe := m.retrustPrompt; pe != nil {
 		body := styles.ErrorText.Render("Trust the new key for "+pe.Server+"?") + "\n\n" +

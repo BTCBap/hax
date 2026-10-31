@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // ─── Constructor ────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ func TestUnlock_CtrlC_Quits(t *testing.T) {
 	// Focus password input to test password input key handling
 	m.passwordInput.Focus()
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("expected a command from ctrl+c")
 	}
@@ -198,7 +198,7 @@ func TestUnlock_Esc_SingleWallet_Quits(t *testing.T) {
 	m.walletList = []string{"mywallet"} // single wallet
 	m.passwordInput.Focus()
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	if cmd == nil {
 		t.Fatal("expected a command from esc")
 	}
@@ -212,7 +212,7 @@ func TestUnlock_Enter_EmptyPassword(t *testing.T) {
 	m := NewUnlockModel(nil)
 	m.passwordInput.Focus()
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(UnlockModel)
 
 	if updated.err == nil {
@@ -232,7 +232,7 @@ func TestUnlock_WalletSelection_Navigation(t *testing.T) {
 	m.passwordInput.Blur() // Wallet selection mode
 
 	// Down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := model.(*UnlockModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1, got %d", updated.cursor)
@@ -242,21 +242,21 @@ func TestUnlock_WalletSelection_Navigation(t *testing.T) {
 	}
 
 	// Down again
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = model.(*UnlockModel)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor=2, got %d", updated.cursor)
 	}
 
 	// Clamp at end
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = model.(*UnlockModel)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor clamped at 2, got %d", updated.cursor)
 	}
 
 	// Up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = model.(*UnlockModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 after up, got %d", updated.cursor)
@@ -269,14 +269,14 @@ func TestUnlock_WalletSelection_VimKeys(t *testing.T) {
 	m.passwordInput.Blur()
 
 	// j for down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model, _ := m.Update(keyRune('j'))
 	updated := model.(*UnlockModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 with 'j', got %d", updated.cursor)
 	}
 
 	// k for up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model, _ = updated.Update(keyRune('k'))
 	updated = model.(*UnlockModel)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0 with 'k', got %d", updated.cursor)
@@ -289,7 +289,7 @@ func TestUnlock_WalletSelection_Enter(t *testing.T) {
 	m.selectedWallet = 1
 	m.passwordInput.Blur()
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(*UnlockModel)
 
 	if updated.walletName != "wallet2" {
@@ -306,7 +306,7 @@ func TestUnlock_WalletSelection_Esc_Quits(t *testing.T) {
 	m.walletList = []string{"wallet1", "wallet2"}
 	m.passwordInput.Blur()
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(keyRune('q'))
 	if cmd == nil {
 		t.Fatal("expected quit command")
 	}
@@ -321,7 +321,7 @@ func TestUnlock_MultipleWallets_EscFromPassword_GoesBack(t *testing.T) {
 	m.walletList = []string{"wallet1", "wallet2"}
 	m.passwordInput.Focus()
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(UnlockModel)
 
 	if updated.passwordInput.Focused() {

@@ -6,21 +6,21 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
-func settingsKey(s string) tea.KeyMsg {
+func settingsKey(s string) tea.KeyPressMsg {
 	switch s {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return keyCode(tea.KeyEnter)
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return keyCode(tea.KeyEsc)
 	default:
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+		return keyRunes(s)
 	}
 }
 
-func settingsUpdate(t *testing.T, m SettingsModel, key tea.KeyMsg) SettingsModel {
+func settingsUpdate(t *testing.T, m SettingsModel, key tea.KeyPressMsg) SettingsModel {
 	t.Helper()
 	model, _ := m.Update(key)
 	updated, ok := model.(SettingsModel)

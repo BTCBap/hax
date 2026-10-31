@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/atotto/clipboard"
 )
 
@@ -21,13 +22,18 @@ var (
 	clipboardVal string
 )
 
-// copyToClipboard writes text and schedules a best-effort clear after
-// clipboardClearTimeout. The clear only happens while the clipboard still
-// contains the value hax wrote, so later user copies are left alone.
-func copyToClipboard(text string) error {
-	if err := clipboardWrite(text); err != nil {
-		return err
+// copyToClipboard writes text to the system clipboard and returns an OSC 52
+// command so the copy also works over SSH and in terminals without a supported
+// system clipboard. The clear timer only runs when the local clipboard write
+// succeeded. The returned error is the local clipboard error; a non-nil
+// command means the copy can still reach the terminal.
+func copyToClipboard(text string) (tea.Cmd, error) {
+	cmd := tea.SetClipboard(text)
+	err := clipboardWrite(text)
+	if err != nil {
+		return cmd, err
 	}
+
 	clipboardMu.Lock()
 	clipboardVal = text
 	clipboardMu.Unlock()
@@ -36,7 +42,7 @@ func copyToClipboard(text string) error {
 		time.Sleep(clipboardClearTimeout)
 		clearClipboard()
 	}()
-	return nil
+	return cmd, nil
 }
 
 // clearClipboard clears the clipboard if it still holds a value hax copied.

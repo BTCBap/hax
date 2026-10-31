@@ -2,20 +2,21 @@ package models
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -146,7 +147,7 @@ func fetchBalance(wm WalletService) tea.Cmd {
 	}
 }
 
-func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m MainDashboardModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -166,6 +167,9 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+	case ThemeChangedMsg:
+		m.spinner = styles.NewStandardSpinner()
 
 	case RefreshBalanceMsg:
 		m.loading = true
@@ -234,7 +238,7 @@ func (m MainDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursorVel = 0
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.retrustPrompt != nil {
 			return m.handleRetrustKey(msg)
 		}
@@ -506,10 +510,10 @@ func (m MainDashboardModel) viewGrid() string {
 		lipgloss.Height(feeText),
 		lipgloss.Height(menuText),
 	)
-	walletInfoBox := styles.BoxStyle.MarginBottom(0).Width(colWidth).Height(uniformContentHeight).Render(walletInfoContent)
-	recentActivityBox := styles.InfoBoxStyle.MarginBottom(0).Width(colWidth).Height(uniformContentHeight).Render(recentActivityText)
-	feeBox := styles.FeeBoxStyle.Width(colWidth).Height(uniformContentHeight).Render(feeText)
-	menuBox := styles.MenuBoxStyle.Width(colWidth).Height(uniformContentHeight).Render(menuText)
+	walletInfoBox := styles.BoxStyle.MarginBottom(0).Width(colWidth + 2).Height(uniformContentHeight + 2).Render(walletInfoContent)
+	recentActivityBox := styles.InfoBoxStyle.MarginBottom(0).Width(colWidth + 2).Height(uniformContentHeight + 2).Render(recentActivityText)
+	feeBox := styles.FeeBoxStyle.Width(colWidth + 2).Height(uniformContentHeight + 2).Render(feeText)
+	menuBox := styles.MenuBoxStyle.Width(colWidth + 2).Height(uniformContentHeight + 2).Render(menuText)
 
 	// --- Layout ---
 	if singleColumn {
@@ -746,14 +750,14 @@ func scriptTypeDisplayName(st wallet.ScriptType) string {
 
 // breathingDotStyle returns a lipgloss style with a pulsing brightness for status dots.
 // Uses a slow sine wave (3-second cycle) to blend between a dim and bright variant.
-func (m MainDashboardModel) breathingDotStyle(baseColor lipgloss.Color) lipgloss.Style {
+func (m MainDashboardModel) breathingDotStyle(baseColor color.Color) lipgloss.Style {
 	// 5 FPS tick with a 30-frame cycle => ~6 seconds per pulse.
 	// Keep it smooth but visibly noticeable.
 	phase := 2 * math.Pi * float64(m.pulseFrame%30) / 30.0
 	raw := 0.5 + 0.5*math.Sin(phase)
 	brightness := 0.25 + 0.75*math.Pow(raw, 0.65)
-	brightColor, _ := colorful.Hex(string(baseColor))
-	mutedColor, _ := colorful.Hex(string(styles.TextMuted))
+	brightColor, _ := colorful.MakeColor(baseColor)
+	mutedColor, _ := colorful.MakeColor(styles.TextMuted)
 	mutedBase := brightColor.BlendLab(mutedColor, 0.55)
 	blended := mutedBase.BlendLab(brightColor, brightness)
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(blended.Hex()))

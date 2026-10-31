@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -17,11 +17,11 @@ const (
 	txFlowTestReceive  = "tb1qreceive000000000000000000000000000000"
 )
 
-func txFlowTestKey(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+func txFlowTestKey(s string) tea.KeyPressMsg {
+	return keyRunes(s)
 }
 
-func txFlowTestUpdate(t *testing.T, m tea.Model, msg tea.Msg) tea.Model {
+func txFlowTestUpdate(t *testing.T, m screenModel, msg tea.Msg) screenModel {
 	t.Helper()
 	updated, _ := m.Update(msg)
 	return updated
@@ -137,7 +137,7 @@ func TestSendReview_VisualizerRoundTrip(t *testing.T) {
 	opened := asSendModel(t, txFlowTestUpdate(t, m, txFlowTestKey("v")))
 	assertTxFlowVisible(t, opened.View())
 
-	closed := asSendModel(t, txFlowTestUpdate(t, opened, tea.KeyMsg{Type: tea.KeyEsc}))
+	closed := asSendModel(t, txFlowTestUpdate(t, opened, keyCode(tea.KeyEsc)))
 	if got, want := closed.View(), before; got != want {
 		t.Fatalf("review view changed after closing the visualizer:\nwant:\n%s\ngot:\n%s", want, got)
 	}
@@ -150,7 +150,7 @@ func TestPSBTInspector_VisualizerRoundTrip(t *testing.T) {
 	opened := asSendModel(t, txFlowTestUpdate(t, m, txFlowTestKey("v")))
 	assertTxFlowVisible(t, opened.View())
 
-	closed := asSendModel(t, txFlowTestUpdate(t, opened, tea.KeyMsg{Type: tea.KeyEsc}))
+	closed := asSendModel(t, txFlowTestUpdate(t, opened, keyCode(tea.KeyEsc)))
 	if got, want := closed.View(), before; got != want {
 		t.Fatalf("PSBT inspector view changed after closing the visualizer:\nwant:\n%s\ngot:\n%s", want, got)
 	}
@@ -163,7 +163,7 @@ func TestHistory_VisualizerRoundTrip(t *testing.T) {
 	opened := txFlowTestUpdate(t, m, txFlowTestKey("v")).(TransactionHistoryModel)
 	assertTxFlowVisible(t, opened.View())
 
-	closed := txFlowTestUpdate(t, opened, tea.KeyMsg{Type: tea.KeyEsc}).(TransactionHistoryModel)
+	closed := txFlowTestUpdate(t, opened, keyCode(tea.KeyEsc)).(TransactionHistoryModel)
 	if got, want := closed.View(), before; got != want {
 		t.Fatalf("history view changed after closing the visualizer:\nwant:\n%s\ngot:\n%s", want, got)
 	}

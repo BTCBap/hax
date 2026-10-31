@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -45,7 +45,7 @@ func TestDashboard_ShowsReconnectingAndKeepsBalance(t *testing.T) {
 			NextReconnectAt:  time.Now().Add(4 * time.Second),
 		}
 	}
-	m := tea.Model(NewMainDashboardModel(mock, nil))
+	m := screenModel(NewMainDashboardModel(mock, nil))
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, "Reconnecting in") || !strings.Contains(view, "(attempt 2)") {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -108,7 +108,7 @@ func TestDashboard_KeyNavigation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			m, _ := newTestDashboard(t)
-			_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tt.key)})
+			_, cmd := m.Update(keyRunes(tt.key))
 			assertNavigatesTo(t, cmd, tt.target)
 		})
 	}
@@ -118,21 +118,21 @@ func TestDashboard_ArrowNavigation(t *testing.T) {
 	m, _ := newTestDashboard(t)
 
 	// Start at 0, go down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := model.(MainDashboardModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 after down, got %d", updated.cursor)
 	}
 
 	// Go up back to 0
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = model.(MainDashboardModel)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0 after up, got %d", updated.cursor)
 	}
 
 	// Up at 0 stays at 0
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = model.(MainDashboardModel)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0 (clamped), got %d", updated.cursor)
@@ -143,17 +143,17 @@ func TestDashboard_EnterSelectsMenuItem(t *testing.T) {
 	m, _ := newTestDashboard(t)
 
 	// Move cursor to item 2 (History)
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
+	model, _ = model.Update(keyCode(tea.KeyDown))
 
 	// Press enter
-	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := model.Update(keyCode(tea.KeyEnter))
 	assertNavigatesTo(t, cmd, StateTransactionHistory)
 }
 
 func TestDashboard_Quit(t *testing.T) {
 	m, _ := newTestDashboard(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	_, cmd := m.Update(keyRunes("q"))
 	if cmd == nil {
 		t.Fatal("expected a quit command")
 	}

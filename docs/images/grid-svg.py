@@ -6,7 +6,13 @@ the font advance decide where glyphs land. Glyphs absent from the embedded
 JetBrains Mono fall back to another font, so every following glyph on that row
 shifts and box borders drift. The terminal itself places these glyphs on fixed
 cells, so pin each character to an absolute x here, before Chrome screenshots
-the SVG.
+the SVG. Background <rect>s written by freeze are snapped to the same grid, and
+their top is placed at freeze's own cell top (text y minus
+FREEZE_RECT_TO_TEXT_Y) with the full row pitch as height, so text descenders
+sit inside the background rather than poking out below it. Block-element glyphs
+are replaced by cell-sized <rect>s on that same cell, because the font's block
+glyphs are taller than freeze's row pitch and otherwise notch and overlap
+neighbouring rows.
 """
 import sys
 import unicodedata
@@ -15,7 +21,26 @@ import xml.etree.ElementTree as ET
 SVG_NS = "http://www.w3.org/2000/svg"
 # JetBrains Mono advance width is 600/1000 em.
 ADVANCE_EM = 0.6
+# freeze positions background rects on its own narrower cell width (500/840 em).
+FREEZE_ADVANCE_EM = 0.5952381
 DEFAULT_FONT_SIZE = 15.0
+DEFAULT_PITCH = 18.0
+# freeze's background rect top to the row's text y.
+FREEZE_RECT_TO_TEXT_Y = 14.76
+# Lower blocks: k eighths of the cell, measured from the bottom.
+LOWER_BLOCKS = {
+    "\u2581": 1,
+    "\u2582": 2,
+    "\u2583": 3,
+    "\u2584": 4,
+    "\u2585": 5,
+    "\u2586": 6,
+    "\u2587": 7,
+    "\u2588": 8,
+}
+UPPER_HALF = "\u2580"
+UPPER_EIGHTH = "\u2594"
+BLOCK_CHARS = set(LOWER_BLOCKS) | {UPPER_HALF, UPPER_EIGHTH}
 
 
 def local_name(tag):
@@ -39,12 +64,69 @@ def char_width(ch):
 
 
 def x_positions(text, start_x, start_col, cell_width):
-    xs = []
+    positions = []
     col = start_col
     for ch in text:
-        xs.append(f"{start_x + col * cell_width:.2f}px")
+        positions.append((ch, f"{start_x + col * cell_width:.2f}px"))
         col += char_width(ch)
-    return xs, col
+    return positions, col
+
+
+def cell_top(text_y, font_size):
+    """Top of the terminal cell whose row baseline is at text_y."""
+    return text_y - FREEZE_RECT_TO_TEXT_Y * font_size / DEFAULT_FONT_SIZE
+
+
+def cell_pitch(rows):
+    ys = sorted({length(el.get("y", "0")) for el in rows})
+    diffs = [b - a for a, b in zip(ys, ys[1:]) if b > a]
+    return min(diffs) if diffs else DEFAULT_PITCH
+
+
+def inherited_fill(el, parents):
+    while el is not None:
+        fill = el.get("fill")
+        if fill:
+            return fill
+        el = parents.get(el)
+    return None
+
+
+def block_geometry(ch, cell_top, pitch):
+    """Top y and height of a block glyph's cell-exact rect."""
+    k = LOWER_BLOCKS.get(ch)
+    if k is not None:
+        return cell_top + pitch * (8 - k) / 8.0, pitch * k / 8.0
+    if ch == UPPER_HALF:
+        return cell_top, pitch / 2.0
+    return cell_top, pitch / 8.0
+
+
+def block_rect(ch, x, cell_top, pitch, cell_width, fill):
+    y, height = block_geometry(ch, cell_top, pitch)
+    rect = ET.Element("rect")
+    rect.set("x", x)
+    rect.set("y", f"{y:.2f}px")
+    rect.set("width", f"{cell_width:.2f}px")
+    rect.set("height", f"{height:.2f}px")
+    # Chrome antialiases cell-exact edges into hairline seams between cells.
+    rect.set("shape-rendering", "crispEdges")
+    if fill:
+        rect.set("fill", fill)
+    return rect
+
+
+def replace_blocks(text, positions, cell_top, pitch, cell_width, fill):
+    """Return the text with block glyphs spaced out, plus their rects."""
+    chars = []
+    rects = []
+    for ch, x in positions:
+        if ch in BLOCK_CHARS:
+            rects.append(block_rect(ch, x, cell_top, pitch, cell_width, fill))
+            chars.append(" ")
+        else:
+            chars.append(ch)
+    return "".join(chars), rects
 
 
 def snap(path):
@@ -58,21 +140,72 @@ def snap(path):
             break
     cell_width = font_size * ADVANCE_EM
 
-    for el in root.iter():
-        if local_name(el.tag) != "text":
-            continue
+    texts = [el for el in root.iter() if local_name(el.tag) == "text"]
+    pitch = cell_pitch(texts)
+
+    text_start_x = None
+    for el in texts:
+        text_start_x = length(el.get("x", "0"))
+        break
+
+    if text_start_x is not None:
+        freeze_cw = font_size * FREEZE_ADVANCE_EM
+        row_ys = [length(el.get("y", "0")) for el in texts]
+        for el in root.iter():
+            if local_name(el.tag) != "rect":
+                continue
+            x = el.get("x")
+            width = el.get("width")
+            if not (el.get("fill") and x and width and width.endswith("px")):
+                continue
+            if el.get("height") is None or el.get("y") is None:
+                continue
+            xv = length(x)
+            if xv < text_start_x - 1:
+                continue
+            col = round((xv - text_start_x) / freeze_cw)
+            cells = max(1, round(length(width) / freeze_cw - 0.5))
+            el.set("x", f"{text_start_x + col * cell_width:.2f}px")
+            el.set("width", f"{cells * cell_width:.2f}px")
+            el.set("shape-rendering", "crispEdges")
+            if row_ys:
+                rect_y = length(el.get("y"))
+                row_y = min(
+                    row_ys, key=lambda y: abs(y - (rect_y + FREEZE_RECT_TO_TEXT_Y))
+                )
+                el.set("y", f"{cell_top(row_y, font_size):.2f}px")
+                el.set("height", f"{pitch:.2f}px")
+
+    parents = {child: parent for parent in root.iter() for child in parent}
+    for el in texts:
+        cell_top_y = cell_top(length(el.get("y", "0")), font_size)
         start_x = length(el.get("x", "0"))
         start_col = 0
+        rects = []
         tspans = [child for child in el if local_name(child.tag) == "tspan"]
         for tspan in tspans:
             text = tspan.text or ""
             if not text:
                 continue
-            xs, start_col = x_positions(text, start_x, start_col, cell_width)
-            tspan.set("x", " ".join(xs))
+            positions, start_col = x_positions(text, start_x, start_col, cell_width)
+            tspan.set("x", " ".join(x for _, x in positions))
+            fill = inherited_fill(tspan, parents)
+            tspan.text, found = replace_blocks(
+                text, positions, cell_top_y, pitch, cell_width, fill
+            )
+            rects.extend(found)
         if not tspans and el.text:
-            xs, start_col = x_positions(el.text, start_x, start_col, cell_width)
-            el.set("x", " ".join(xs))
+            positions, start_col = x_positions(el.text, start_x, start_col, cell_width)
+            el.set("x", " ".join(x for _, x in positions))
+            fill = inherited_fill(el, parents)
+            el.text, rects = replace_blocks(
+                el.text, positions, cell_top_y, pitch, cell_width, fill
+            )
+        if rects:
+            parent = parents[el]
+            index = list(parent).index(el)
+            for offset, rect in enumerate(rects):
+                parent.insert(index + offset, rect)
 
     ET.register_namespace("", SVG_NS)
     with open(path, "w", encoding="utf-8") as f:
