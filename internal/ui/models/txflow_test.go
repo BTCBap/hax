@@ -359,15 +359,21 @@ func TestTxFlow_TrunkThicknessFollowsValue(t *testing.T) {
 	if thickness[0] < thickness[1] || thickness[1] < thickness[2] {
 		t.Fatalf("thickness is not monotonic in value: %v", thickness)
 	}
-	if thickness[3] != 1 {
-		t.Fatalf("unknown value got %d pixels, want 1", thickness[3])
+	if thickness[3] != flowMinRibbon {
+		t.Fatalf("unknown value got %d sub-pixels, want the minimum %d", thickness[3], flowMinRibbon)
+	}
+	if thickness[0] != flowMaxRibbon {
+		t.Fatalf("dominant value got %d sub-pixels, want the cap %d", thickness[0], flowMaxRibbon)
 	}
 	sum := 0
 	for _, n := range thickness {
+		if n > flowMaxRibbon {
+			t.Fatalf("ribbon thickness %d exceeds the cap %d: %v", n, flowMaxRibbon, thickness)
+		}
 		sum += n
 	}
-	if sum != 40 {
-		t.Fatalf("thickness sum = %d, want the full trunk span 40", sum)
+	if sum > 40 {
+		t.Fatalf("thickness sum = %d, want at most the trunk span 40", sum)
 	}
 
 	// Rendered trunk slices keep the same ordering.
@@ -408,7 +414,8 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 		if want := flowTrunkPixels(len(in), len(out), rows); inLayout.trunkPx != want {
 			t.Fatalf("trunk budget = %d, want %d", inLayout.trunkPx, want)
 		}
-		minimum, maximum := max(len(in), len(out)), 2*rows-2
+		minimum := max(len(in), len(out)) * flowMinRibbon
+		maximum := flowSub*rows - flowSub
 		if maximum < minimum {
 			maximum = minimum
 		}
@@ -427,8 +434,8 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 			for _, px := range layout.slices {
 				sum += px
 			}
-			if sum != layout.trunkPx {
-				t.Errorf("%s slices sum to %d px, want the trunk budget %d", name, sum, layout.trunkPx)
+			if sum > layout.trunkPx {
+				t.Errorf("%s slices sum to %d px, want at most the trunk budget %d", name, sum, layout.trunkPx)
 			}
 			seenRows := make(map[int]bool, n)
 			for i, entry := range layout.entries {
@@ -450,9 +457,9 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 					t.Errorf("%s aggregate entry has %d rows, want 1", name, layout.heights[i])
 				}
 				edge := layout.edgeThickness(i)
-				if edge < 1 || edge > layout.slices[i] || edge > 2*layout.heights[i] {
+				if edge < 1 || edge > layout.slices[i] || edge > flowSub*layout.heights[i] {
 					t.Errorf("%s entry %d edge = %d, want 1..min(%d, %d)",
-						name, i, edge, layout.slices[i], 2*layout.heights[i])
+						name, i, edge, layout.slices[i], flowSub*layout.heights[i])
 				}
 				if layout.gap > 0 && edge != layout.slices[i] {
 					t.Errorf("%s entry %d edge %d != slice %d without a cap",
@@ -463,8 +470,8 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 						name, i, edge, layout.slices[i]-1)
 				}
 				center := layout.edgeCenter(i)
-				slotTop := float64(2 * layout.tops[i])
-				slotBottom := float64(2 * (layout.tops[i] + layout.heights[i]))
+				slotTop := float64(flowSub * layout.tops[i])
+				slotBottom := float64(flowSub * (layout.tops[i] + layout.heights[i]))
 				half := float64(edge) / 2
 				if center-half < slotTop-1e-9 || center+half > slotBottom+1e-9 {
 					t.Errorf("%s entry %d edge span %.1f..%.1f escapes slot %.1f..%.1f",
@@ -480,8 +487,14 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 				}
 				total += slices[i].thickness
 			}
-			if len(slices) > 0 && slices[0].top != rows-total/2 {
-				t.Errorf("%s trunk stack top = %d, want %d", name, slices[0].top, rows-total/2)
+			if len(slices) > 0 {
+				wantTop := rows*flowSub/2 - total/2
+				if wantTop < 0 {
+					wantTop = 0
+				}
+				if slices[0].top != wantTop {
+					t.Errorf("%s trunk stack top = %d, want %d", name, slices[0].top, wantTop)
+				}
 			}
 			for i := range layout.entries {
 				for j := range layout.entries {
@@ -510,6 +523,40 @@ func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
 				assertLayout(t, v, v.diagramRows())
 			}
 		})
+	}
+}
+
+// TestTxFlow_TrunkSidesMeetEvenly guards the Sankey meeting point: per-ribbon
+// caps can leave one side much thinner than the other, so the taller side is
+// re-allocated down to meet it.
+func TestTxFlow_TrunkSidesMeetEvenly(t *testing.T) {
+	const rows = 20
+	flow := TxFlow{
+		Fee: 141, FeeKnown: true, FeeRate: 1, VSize: 141,
+		Inputs: []TxFlowItem{
+			{Address: "bc1qin", Value: 700_000, ValueKnown: true, Kind: KindOwnInput},
+		},
+		Outputs: []TxFlowItem{
+			{Address: "bc1qpay", Value: 100_000, ValueKnown: true, Kind: KindExternal},
+			{Address: "bc1qchg", Value: 599_859, ValueKnown: true, Kind: KindChange},
+		},
+	}
+	v := TxFlowView{Flow: flow, Width: 80, Height: rows + 7}
+	in, out := v.flowEntries(FlowInput, rows), v.flowEntries(FlowOutput, rows)
+	if len(in) != 1 || len(out) != 3 {
+		t.Fatalf("entries = %d in, %d out, want 1 and 3", len(in), len(out))
+	}
+	inLayout, outLayout := flowDiagramLayouts(in, out, rows)
+	inSum, outSum := flowHeightsTotal(inLayout.slices), flowHeightsTotal(outLayout.slices)
+	if inSum <= 0 || outSum <= 0 {
+		t.Fatalf("side slice sums = %d and %d, want both positive", inSum, outSum)
+	}
+	diff := inSum - outSum
+	if diff < 0 {
+		diff = -diff
+	}
+	if limit := flowMinRibbon * max(len(in), len(out)); diff > limit {
+		t.Fatalf("side slice sums differ by %d: %d and %d (limit %d)", diff, inSum, outSum, limit)
 	}
 }
 
@@ -736,7 +783,7 @@ func TestTxFlow_SelectedBandUsesAccent(t *testing.T) {
 }
 
 func TestTxFlow_EmptyCanvasCellsHaveNoBackground(t *testing.T) {
-	canvas := newFlowPixelCanvas(6, 4)
+	canvas := newFlowPixelCanvas(6, flowSub)
 	lines := canvas.cells().lines()
 	for i, line := range lines {
 		if line != strings.Repeat(" ", 6) {
@@ -747,21 +794,42 @@ func TestTxFlow_EmptyCanvasCellsHaveNoBackground(t *testing.T) {
 		}
 	}
 
-	// A single half pixel uses a foreground only; two different colors put
-	// the bottom tone in the background.
+	// A single sub-pixel uses a foreground only; two different colors put
+	// the bottom tone in the background. The renderer may pick any block
+	// glyph that approximates the filled part of the cell.
 	canvas.set(0, 0, styles.TxFlowBand)
 	line := canvas.cells().lines()[0]
-	if !strings.Contains(line, "▀") {
-		t.Fatalf("canvas row does not use a half block: %q", line)
+	if !strings.ContainsAny(ansi.Strip(line), "▁▂▃▄▅▆▇█▀▔") {
+		t.Fatalf("canvas row does not use a block glyph: %q", line)
 	}
 	if strings.Contains(line, "48;2;") {
-		t.Fatalf("single-color half block emitted a background: %q", line)
+		t.Fatalf("single-color partial cell emitted a background: %q", line)
 	}
 
-	canvas.set(0, 1, styles.TxFlowChange)
+	canvas.set(0, 0, styles.TxFlowBand)
+	canvas.set(0, 1, styles.TxFlowBand)
+	canvas.set(0, 2, styles.TxFlowBand)
+	canvas.set(0, 3, styles.TxFlowBand)
+	canvas.set(0, 4, styles.TxFlowChange)
+	canvas.set(0, 5, styles.TxFlowChange)
+	canvas.set(0, 6, styles.TxFlowChange)
+	canvas.set(0, 7, styles.TxFlowChange)
 	line = canvas.cells().lines()[0]
 	if !strings.Contains(line, "48;2;") {
-		t.Fatalf("two-color half block did not use a background: %q", line)
+		t.Fatalf("two-color cell did not use a background: %q", line)
+	}
+}
+
+// TestTxFlow_MidCellRibbonIsNotDropped guards a thin ribbon that only
+// crosses the middle sub-rows of a text cell: neither half has a colour
+// majority, so an empty cover would win on mismatch and drop the cell.
+func TestTxFlow_MidCellRibbonIsNotDropped(t *testing.T) {
+	canvas := newFlowPixelCanvas(1, flowSub)
+	canvas.set(0, 3, styles.TxFlowBand)
+	canvas.set(0, 4, styles.TxFlowBand)
+	line := canvas.cells().lines()[0]
+	if strings.TrimSpace(ansi.Strip(line)) == "" {
+		t.Fatalf("mid-cell ribbon rendered a blank cell: %q", line)
 	}
 }
 
@@ -809,18 +877,24 @@ func TestTxFlow_FeeRibbonColumnsTouch(t *testing.T) {
 		t.Fatal("fee entry missing from the output layout")
 	}
 	thickness := outLayout.edgeThickness(fee)
-	if thickness != 1 {
-		t.Fatalf("fee edge thickness = %d, want a thin one-pixel band", thickness)
+	if thickness > flowMinRibbon*2 {
+		t.Fatalf("fee edge thickness = %d, want a thin band of at most %d", thickness, flowMinRibbon*2)
+	}
+	for i := range outLayout.entries {
+		if i != fee && outLayout.edgeThickness(i) < thickness {
+			t.Fatalf("fee edge thickness = %d is not the thinnest; entry %d is %d",
+				thickness, i, outLayout.edgeThickness(i))
+		}
 	}
 
-	canvas := newFlowPixelCanvas(canvasW, rows*2)
+	canvas := newFlowPixelCanvas(canvasW, rows*flowSub)
 	trunkCenter := float64(slices[fee].top) + float64(thickness)/2
 	flowDrawBand(canvas, trunkRight, canvasW-1, trunkCenter, float64(thickness), outLayout.edgeCenter(fee), float64(thickness), false, styles.TxFlowFee)
 
 	columnPixels := func(x int) []int {
 		var ys []int
 		for y := 0; y < canvas.h; y++ {
-			if pixel := canvas.pixels[y*canvasW+x]; pixel.hasTop || pixel.hasBottom {
+			if pixel := canvas.pixels[y*canvasW+x]; pixel.set {
 				ys = append(ys, y)
 			}
 		}
@@ -847,5 +921,26 @@ func TestTxFlow_FeeRibbonColumnsTouch(t *testing.T) {
 			t.Fatalf("column %d does not touch column %d: rows %v vs %v", x, x-1, current, previous)
 		}
 		previous = current
+	}
+}
+
+// TestFlowDrawBandDashPeriod pins dashed bands to three drawn columns and
+// one skipped column: shorter runs break into isolated dots on steep
+// sections.
+func TestFlowDrawBandDashPeriod(t *testing.T) {
+	canvas := newFlowPixelCanvas(12, flowSub)
+	flowDrawBand(canvas, 0, 11, float64(flowSub)/2, 1, float64(flowSub)/2, 1, true, styles.TxFlowBand)
+
+	pattern := make([]byte, canvas.w)
+	for x := 0; x < canvas.w; x++ {
+		pattern[x] = '.'
+		for y := 0; y < canvas.h; y++ {
+			if canvas.pixels[y*canvas.w+x].set {
+				pattern[x] = '#'
+			}
+		}
+	}
+	if got, want := string(pattern), "###.###.###."; got != want {
+		t.Fatalf("dash pattern = %q, want %q", got, want)
 	}
 }
