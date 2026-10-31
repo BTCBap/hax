@@ -6,6 +6,7 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TrayStage is the step of a two-stage tray flow.
@@ -304,12 +305,15 @@ func (t Tray) renderSummaryRow(row TraySummaryRow) string {
 }
 
 // padCell truncates text to width and pads it with spaces so following
-// columns start at the same x on every row.
+// columns start at the same x on every row. The width is measured in visible
+// cells, so styled text such as a formatted address is not cut short.
 func padCell(text string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	text = truncateRunes(text, width, "…")
+	if ansi.StringWidth(text) > width {
+		text = ansi.Truncate(text, width, "…")
+	}
 	if pad := width - lipgloss.Width(text); pad > 0 {
 		text += strings.Repeat(" ", pad)
 	}

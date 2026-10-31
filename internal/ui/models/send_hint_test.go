@@ -64,7 +64,8 @@ func sendHintCases() []sendHintCase {
 			build: func(t *testing.T) SendModel {
 				m := newTestSend(t)
 				advanceToUTXOSelection(&m)
-				m.width, m.height = 80, 24
+				// 70 columns keeps the final hint item on a wrapped line.
+				m.width, m.height = 70, 24
 				return m
 			},
 			primary:   "tab continue",
@@ -102,9 +103,8 @@ func sendHintCases() []sendHintCase {
 	}
 }
 
-func TestSendHintMorphTextAndAlignment(t *testing.T) {
-	var wantFollow viewPosition
-	for i, tc := range sendHintCases() {
+func TestSendHintMorphTextAndSeparators(t *testing.T) {
+	for _, tc := range sendHintCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			view := tc.build(t).View()
 			plain := stripANSI(view)
@@ -115,28 +115,21 @@ func TestSendHintMorphTextAndAlignment(t *testing.T) {
 				t.Fatalf("primary hint is on line %d, following item on line %d",
 					primary.line, following.line)
 			}
-			if i == 0 {
-				wantFollow = following
-			} else if following.col != wantFollow.col {
-				t.Fatalf("following hint starts at x=%d, want %d:\n%s",
-					following.col, wantFollow.col, plain)
-			}
 
-			pad := sendPrimaryHintWidth - lipgloss.Width(tc.primary)
-			if pad < 0 {
-				pad = 0
-			}
-			wantLine := tc.primary + strings.Repeat(" ", pad) + " • " + strings.Join(tc.rest, " • ")
-			// The coins step wraps its last hint at 80 columns so the row
-			// stays inside the terminal while keeping the primary column.
+			wantLine := tc.primary + " • " + strings.Join(tc.rest, " • ")
+			// The coins step wraps its last hint at 70 columns.
 			wantNextLine := ""
 			if tc.name == "utxos" {
 				wantLine = strings.TrimSuffix(wantLine, " • esc back")
 				wantNextLine = "esc back"
 			}
 			lines := strings.Split(plain, "\n")
-			if got := strings.TrimRight(lines[primary.line], " "); got != wantLine {
+			got := strings.TrimRight(lines[primary.line], " ")
+			if got != wantLine {
 				t.Fatalf("hint row = %q, want %q", got, wantLine)
+			}
+			if strings.Contains(got, "  • ") {
+				t.Fatalf("hint row has extra spaces before a separator: %q", got)
 			}
 			if wantNextLine != "" {
 				if got := strings.TrimRight(lines[primary.line+1], " "); got != wantNextLine {

@@ -11,6 +11,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -249,11 +250,13 @@ func TestTxFlow_RenderingFitsAndStaysStable(t *testing.T) {
 							item := v.itemsFor(side)[i]
 							if item.Address != "" {
 								available := width - ansi.StringWidth("Address  ")
-								if ansi.StringWidth(item.Address) <= available {
-									if !strings.Contains(ansi.Strip(view), item.Address) {
-										t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, item.Address)
-									}
-								} else if !strings.Contains(ansi.Strip(view), "…") {
+								formatWidth := min(ansi.StringWidth(item.Address), available)
+								wantText := ansi.Strip(ui.FormatAddress(item.Address, formatWidth))
+								if !strings.Contains(ansi.Strip(view), wantText) {
+									t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, wantText)
+								}
+								if ansi.StringWidth(item.Address) > available &&
+									!strings.Contains(ansi.Strip(view), "…") {
 									t.Errorf("%s cursor %d: long address is not truncated", sideName(side), i)
 								}
 							}
@@ -287,7 +290,8 @@ func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 		t.Fatal("cursor stayed at the top after moving through 25 inputs")
 	}
 	plain = ansi.Strip(v.View())
-	if !strings.Contains(plain, txFlowAddr(24)) {
+	wantLast := ansi.Strip(ui.FormatAddress(txFlowAddr(24), ansi.StringWidth(txFlowAddr(24))))
+	if !strings.Contains(plain, wantLast) {
 		t.Fatalf("last input is not visible after scrolling:\n%s", plain)
 	}
 	if strings.Contains(plain, "+9 more") {
@@ -629,24 +633,20 @@ func TestTxFlow_UnknownValueKeepsAmountColumnAligned(t *testing.T) {
 		{prefix: " ● ", amount: formatFlowCoin(known)},
 		{prefix: " ○ ", amount: "unknown"},
 	}
-	var starts []int
+	var ends []int
 	for _, entry := range entries {
 		found := false
 		for _, line := range lines[start:end] {
 			if !strings.HasPrefix(line, entry.prefix) {
 				continue
 			}
-			if !strings.Contains(line, entry.amount) {
+			idx := strings.Index(line, entry.amount)
+			if idx < 0 {
 				continue
 			}
-			// The shortened address fills its field, then two cells
-			// separate it from the amount column.
-			rest := strings.TrimPrefix(line, entry.prefix)
-			end := strings.IndexByte(rest, ' ')
-			if end <= 0 {
-				t.Fatalf("input row has no address before the amount: %q", line)
-			}
-			starts = append(starts, ansi.StringWidth(entry.prefix)+end+2)
+			// The amount column is right-aligned, so its right edge is
+			// fixed even when "unknown" is shorter.
+			ends = append(ends, ansi.StringWidth(line[:idx])+ansi.StringWidth(entry.amount))
 			found = true
 			break
 		}
@@ -654,9 +654,9 @@ func TestTxFlow_UnknownValueKeepsAmountColumnAligned(t *testing.T) {
 			t.Fatalf("input row with %q amount is missing:\n%s", entry.amount, strings.Join(lines, "\n"))
 		}
 	}
-	if starts[0] != starts[1] {
-		t.Fatalf("amount column starts at offsets %v, want one fixed offset:\n%s",
-			starts, strings.Join(lines, "\n"))
+	if ends[0] != ends[1] {
+		t.Fatalf("amount column ends at offsets %v, want one fixed offset:\n%s",
+			ends, strings.Join(lines, "\n"))
 	}
 }
 

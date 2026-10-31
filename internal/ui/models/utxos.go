@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
@@ -600,7 +601,7 @@ func (m UTXOsModel) renderRow(index int, row utxoDisplayRow, cols utxoColumns, d
 
 	address := "—"
 	if row.address != "" {
-		address = shortenAddress(row.address, cols.addr)
+		address = ui.FormatAddress(row.address, cols.addr)
 	}
 	label := "-"
 	if row.label != "" {
@@ -672,27 +673,6 @@ func formatUTXOAge(row utxoDisplayRow) string {
 	default:
 		return fmt.Sprintf("%dy", int(age.Hours()/(24*365)))
 	}
-}
-
-// shortenAddress renders prefix…suffix within width cells.
-func shortenAddress(address string, width int) string {
-	if width <= 1 {
-		return ""
-	}
-	if lipgloss.Width(address) <= width {
-		return address
-	}
-	r := []rune(address)
-	keep := width - 1
-	if keep < 2 {
-		return string(r[:min(len(r), width)])
-	}
-	prefix := keep - keep/3
-	suffix := keep - prefix
-	if prefix <= 0 || suffix <= 0 || prefix+suffix > len(r) {
-		return truncateRunes(address, width, "…")
-	}
-	return string(r[:prefix]) + "…" + string(r[len(r)-suffix:])
 }
 
 func (m UTXOsModel) summaryLine(displayUnit wallet.DisplayUnit) string {

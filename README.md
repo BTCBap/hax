@@ -19,7 +19,7 @@
 > **hax has not been independently audited.** Try it on testnet4 first.
 
 <p align="center">
-  <img src="docs/images/hax-tour.gif" alt="hax tour" width="820">
+  <img src="docs/images/hax-tour.gif" alt="Animated tour: splash, network pick, create or restore, seed backup and quiz, unlock, dashboard, receive, device verification, send steps and review, hardware wallet picker, transaction flow, PSBT signing, fees, history and speed-up, UTXOs, addresses, settings, server picker, multisig, label import, backup export, stealth mode and help" width="820">
 </p>
 
 ## Features
@@ -34,15 +34,17 @@
 - **Backends:** Electrum (TLS, optional Tor SOCKS5) or your own Bitcoin Core node over JSON-RPC (full history needs `-blockfilterindex=1`)
 - **BIP21 payment URIs:** paste a `bitcoin:` link to fill the address, amount and label
 - **BIP-329 labels** for transactions and addresses, searchable history, and Koinly CSV export
-- **Encrypted at rest:** AES-256-GCM with a PBKDF2-SHA256-derived key. Files are `0600` in a `0700` directory
+- **Encrypted at rest:** AES-256-GCM with an Argon2id-derived key (64 MiB, t=3, p=4). Wallets from older versions (PBKDF2) are migrated on unlock. Files are `0600` in a `0700` directory
 
 | Dashboard | Receive |
 |---|---|
-| ![Dashboard](docs/images/dashboard.png) | ![Receive](docs/images/receive.png) |
+| ![Dashboard with balance, recent activity, fees and menu](docs/images/dashboard.png) | ![Receive with address, QR code and derivation path](docs/images/receive.png) |
 | **Send review** | **UTXOs** |
-| ![Send review](docs/images/send.png) | ![UTXOs](docs/images/utxos.png) |
+| ![Send review with recipient, amount, fee and change output](docs/images/send.png) | ![UTXOs with amounts, confirmations and a frozen coin](docs/images/utxos.png) |
 | **History** | **Help** |
-| ![History](docs/images/history.png) | ![Help](docs/images/help.png) |
+| ![History with confirmed transactions and labels](docs/images/history.png) | ![Help with keyboard shortcuts](docs/images/help.png) |
+| **Transaction flow** | **Verify on device** |
+| ![Transaction flow visualizer showing inputs, fee and outputs](docs/images/txflow.png) | ![Hardware wallet address verification matching the device](docs/images/verify.png) |
 
 ## Install
 

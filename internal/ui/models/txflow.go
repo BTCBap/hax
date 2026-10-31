@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
@@ -868,7 +869,7 @@ func flowLeftItemText(item TxFlowItem, colW int) string {
 	if addrW < 1 {
 		addrW = 1
 	}
-	prefix := " " + marker + " " + shortFlowAddress(flowItemName(item), addrW)
+	prefix := " " + marker + " " + flowAddressText(item, addrW)
 	prefixW := ansi.StringWidth(prefix)
 	if prefixW > amountStart {
 		prefix = ansi.Truncate(prefix, amountStart, "")
@@ -890,7 +891,7 @@ func flowRightItemText(item TxFlowItem, colW int) string {
 		addrW = 1
 	}
 	text := strings.Repeat(" ", reserve) + amount + "  " + marker + " " +
-		shortFlowAddress(flowItemName(item), addrW)
+		flowAddressText(item, addrW)
 	return fitFlowText(text, colW)
 }
 
@@ -933,6 +934,15 @@ func flowItemName(item TxFlowItem) string {
 	default:
 		return "(no address)"
 	}
+}
+
+// flowAddressText renders a row's address in the shared format. Labels that
+// stand in for an address keep their plain shortened form.
+func flowAddressText(item TxFlowItem, width int) string {
+	if item.Address == "" {
+		return shortFlowAddress(flowItemName(item), width)
+	}
+	return ui.FormatAddress(item.Address, width)
 }
 
 func flowMarker(kind TxFlowKind) string {
@@ -1005,8 +1015,9 @@ func (v TxFlowView) detailLines(width int) []string {
 	}
 
 	address := item.Address
+	hasAddress := address != ""
 	switch {
-	case address != "":
+	case hasAddress:
 	case item.Kind == KindOpReturn:
 		address = "OP_RETURN"
 	case item.Kind == KindFee:
@@ -1031,8 +1042,12 @@ func (v TxFlowView) detailLines(width int) []string {
 		}
 	}
 
+	addressRow := flowDetailRow("Address  ", address, width)
+	if hasAddress {
+		addressRow = flowDetailAddressRow("Address  ", address, width)
+	}
 	return []string{
-		flowDetailRow("Address  ", address, width),
+		addressRow,
 		flowDetailRow("Amount   ", amount, width),
 		v.ownershipLine(item.Kind, third, width),
 	}
@@ -1057,6 +1072,22 @@ func flowDetailRow(label, value string, width int) string {
 	}
 	value = fitFlowText(value, width-labelW)
 	return styles.DimText.Render(label) + styles.NormalText.Render(value)
+}
+
+// flowDetailAddressRow keeps the detail line exactly as wide as the plain
+// address made it, so opening the visualizer cannot shift the panel.
+func flowDetailAddressRow(label, address string, width int) string {
+	labelW := ansi.StringWidth(label)
+	if labelW >= width {
+		return styles.DimText.Render(fitFlowText(label, width))
+	}
+	valueWidth := width - labelW
+	formatWidth := ansi.StringWidth(address)
+	if formatWidth > valueWidth {
+		formatWidth = valueWidth
+	}
+	value := ui.FormatAddress(address, formatWidth)
+	return styles.DimText.Render(label) + value
 }
 
 func (v TxFlowView) ownershipLine(kind TxFlowKind, text string, width int) string {
@@ -1245,6 +1276,10 @@ type flowCell struct {
 	r        rune
 	kind     flowCellKind
 	selected bool
+	// sgr is set for cells that carry their own style, such as a formatted
+	// address. It replaces the cell kind's style so the address keeps its
+	// pastel groups even on the selected row.
+	sgr string
 }
 
 type flowGrid struct {
@@ -1275,6 +1310,22 @@ func (g *flowGrid) text(row, col int, text string, kind flowCellKind, selected b
 	if col < 0 {
 		return
 	}
+	if strings.ContainsRune(text, '\x1b') {
+		if row < 0 || row >= g.height {
+			return
+		}
+		pos := col
+		for _, cell := range styledAddressCells(text) {
+			for _, r := range cell.text {
+				if pos >= g.width {
+					return
+				}
+				g.cells[row][pos] = flowCell{r: r, kind: kind, selected: selected, sgr: cell.style}
+				pos++
+			}
+		}
+		return
+	}
 	pos := col
 	for _, r := range text {
 		if pos >= g.width {
@@ -1300,13 +1351,21 @@ func (g *flowGrid) lines() []string {
 		for col := 0; col <= last; {
 			kind := g.cells[row][col].kind
 			selected := g.cells[row][col].selected
+			sgr := g.cells[row][col].sgr
 			start := col
-			for col <= last && g.cells[row][col].kind == kind && g.cells[row][col].selected == selected {
+			for col <= last && g.cells[row][col].kind == kind &&
+				g.cells[row][col].selected == selected && g.cells[row][col].sgr == sgr {
 				col++
 			}
 			var seg strings.Builder
 			for i := start; i < col; i++ {
 				seg.WriteRune(g.cells[row][i].r)
+			}
+			if sgr != "" {
+				b.WriteString(sgr)
+				b.WriteString(seg.String())
+				b.WriteString("\x1b[0m")
+				continue
 			}
 			b.WriteString(flowCellStyle(kind, selected).Render(seg.String()))
 		}

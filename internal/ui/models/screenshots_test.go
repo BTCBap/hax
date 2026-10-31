@@ -26,6 +26,9 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
+	"github.com/BTCBap/hax/internal/backend"
+	"github.com/BTCBap/hax/internal/config"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -37,6 +40,23 @@ type renderedScreen struct {
 	name string
 	view string
 }
+
+// docsScreens are the extra renders used by the README images. The multi-size
+// harness skips them: their sizes are fixed for the docs layout.
+var docsScreens = map[string]bool{"txflow": true, "verify": true, "psbt_inspect": true}
+
+// docsPSBTInspectHeight is tall enough to show the whole sign view: the
+// inspection box, the PSBT box, the signature progress panel, and the usage
+// hints above the help line. The default 34-row terminal clips the progress
+// panel in the README image.
+const docsPSBTInspectHeight = 48
+
+// docsTxFlowHeight is the smallest terminal height at which the batch send
+// keeps the spacer rows between all four rows on each side: the send header
+// takes five rows and the flow needs seven diagram rows (2*4-1) plus its own
+// header, detail block, and hint. Smaller heights drop the gaps and the bus
+// reads as a boxed ladder in the README image.
+const docsTxFlowHeight = 20
 
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("HAX_SCREENSHOT_DIR")
@@ -55,10 +75,115 @@ func TestScreenshots(t *testing.T) {
 		if multi {
 			suffix = fmt.Sprintf("_%dx%d", size.w, size.h)
 		}
-		for _, screen := range renderScreens(size.w, size.h) {
+		for _, screen := range renderScreens(t, size.w, size.h) {
+			if multi && docsScreens[screen.name] {
+				continue
+			}
 			writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".ansi"), screen.view)
 			if multi {
 				writeScreenshot(t, filepath.Join(dir, screen.name+suffix+".txt"), ansi.Strip(screen.view))
+			}
+		}
+	}
+}
+
+// addressScreenLayout pins the visible width of every line in the screens that
+// render bitcoin addresses. The widths are the ones the layout had before the
+// shared address format was applied, so a column shift or an added row fails
+// here even when the terminal size is unchanged.
+type addressExpectation struct {
+	address string
+	width   int
+}
+
+var addressScreenLayout = map[string]struct {
+	widths []int
+	addrs  []addressExpectation
+}{
+	"txflow": {
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 110, 63, 88, 0, 71, 38, 85, 32},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"txflow_many": {
+		widths: []int{110, 0, 48, 48, 48, 48, 110, 63, 110, 63, 110, 63, 110, 63, 88, 48, 48, 48, 48, 0, 69, 37, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{txFlowAddr(0), 25},
+			{txFlowAddr(0), ansi.StringWidth(txFlowAddr(0))},
+			{txFlowAddr(1), 25},
+		},
+	},
+	"txflow_send": {
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 88, 0, 71, 38, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"txflow_history": {
+		widths: []int{22, 110, 0, 110, 63, 110, 63, 88, 0, 51, 40, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		addrs: []addressExpectation{
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 25},
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 42},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+		},
+	},
+	"psbt_inspect": {
+		widths: []int{23, 23, 23, 63, 32, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 77},
+		addrs: []addressExpectation{
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 0},
+			{"tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", 0},
+		},
+	},
+	"utxos": {
+		widths: []int{27, 0, 69, 0, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 0, 80},
+		addrs: []addressExpectation{
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 12},
+			{"tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", 12},
+		},
+	},
+	"addresses": {
+		widths: []int{17, 17, 29, 0, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 79},
+		addrs: []addressExpectation{
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 43},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 43},
+		},
+	},
+}
+
+func TestScreenshotAddressScreensKeepLayout(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+
+	rendered := make(map[string]renderedScreen)
+	for _, screen := range renderScreens(t, 110, 34) {
+		rendered[screen.name] = screen
+	}
+
+	for name, want := range addressScreenLayout {
+		screen, ok := rendered[name]
+		if !ok {
+			t.Fatalf("screen %q was not rendered", name)
+		}
+		lines := strings.Split(screen.view, "\n")
+		if len(lines) != len(want.widths) {
+			t.Fatalf("%s rendered %d lines, want %d", name, len(lines), len(want.widths))
+		}
+		for i, line := range lines {
+			if got := ansi.StringWidth(line); got != want.widths[i] {
+				t.Errorf("%s line %d is %d cells wide, want %d: %q",
+					name, i, got, want.widths[i], ansi.Strip(line))
+			}
+		}
+		plain := ansi.Strip(screen.view)
+		for _, addr := range want.addrs {
+			if got := ansi.Strip(ui.FormatAddress(addr.address, addr.width)); !strings.Contains(plain, got) {
+				t.Errorf("%s does not show formatted address %q:\n%s", name, got, plain)
 			}
 		}
 	}
@@ -114,8 +239,27 @@ func sized[M tea.Model](m M, w, h int) M {
 	return updated.(M)
 }
 
+// screenshotConfigManager writes a throwaway config so the settings and
+// connection screens show the server details a real wallet would.
+func screenshotConfigManager(t *testing.T) *config.ConfigManager {
+	t.Helper()
+	cm, err := config.NewConfigManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.AppConfig{
+		Version:          1,
+		FirstRunComplete: true,
+		Backend:          backend.DefaultElectrumConfig(wallet.NetworkTestnet),
+	}
+	if err := cm.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cm
+}
+
 // renderScreens builds the mock wallet and renders every screen at w×h.
-func renderScreens(w, h int) []renderedScreen {
+func renderScreens(t *testing.T, w, h int) []renderedScreen {
 	sp := sized(NewSplashModel(), w, h)
 	sp.progress = 1.0
 	screens := []renderedScreen{{"splash", sp.View()}}
@@ -209,6 +353,32 @@ func renderScreens(w, h int) []renderedScreen {
 	mock.GetTransactionLabelFn = labels
 	mock.GetUTXOsFn = func(uint32) ([]api.UTXO, error) { return demoUTXOs, nil }
 	mock.GetStateFn = func() wallet.WalletStateSnapshot { return state }
+
+	// Onboarding screens. The seed is the public BIP39 test vector, never a
+	// generated phrase.
+	const testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+	setup := sized(NewWalletSetupModel(mock, nil), w, h)
+	setup.network = wallet.NetworkTestnet
+	setup.cursor = 1
+	screens = append(screens, renderedScreen{"setup_network", setup.View()})
+	setup.step = StepChooseAction
+	setup.cursor = 0
+	screens = append(screens, renderedScreen{"setup_choice", setup.View()})
+	setup.step = StepShowMnemonic
+	setup.wordCount = 12
+	setup.generatedMnemonic = testMnemonic
+	screens = append(screens, renderedScreen{"setup_seed", setup.View()})
+	setup.step = StepConfirmMnemonic
+	setup.startBackupCheck()
+	setup.backupWords = []int{3, 7, 11}
+	setup.backupPos = 0
+	setup.backupInput.Blur()
+	screens = append(screens, renderedScreen{"setup_quiz", setup.View()})
+
+	unlock := sized(NewUnlockModel(mock), w, h)
+	unlock.walletName = "demo-testnet4"
+	screens = append(screens, renderedScreen{"unlock", unlock.View()})
+
 	d := sized(NewMainDashboardModel(mock, nil), w, h)
 	d.balance, d.balanceLoaded, d.loading = balance, true, false
 	screens = append(screens, renderedScreen{"dashboard", d.View()})
@@ -229,6 +399,19 @@ func renderScreens(w, h int) []renderedScreen {
 	dPassphrase := d
 	screens = append(screens, renderedScreen{"dashboard_passphrase", dPassphrase.View()})
 	mock.HasPassphraseFn = nil
+
+	// Send address and amount steps.
+	sendAddr := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	sendAddr.addressInput.SetValue(payee)
+	sendAddr.addressInput.Blur()
+	screens = append(screens, renderedScreen{"send_address", sendAddr.View()})
+
+	sendAmt := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
+	sendAmt.step = SendStepAmount
+	sendAmt.recipientAddress = payee
+	sendAmt.amountInput.SetValue("0.00100000")
+	sendAmt.amountInput.Blur()
+	screens = append(screens, renderedScreen{"send_amount", sendAmt.View()})
 
 	// Send review: one recipient, 1 sat/vB (the medium tier), P2WPKH 1-in/2-out.
 	sm := sized(NewSendModel(mock, balance, demoUTXOs), w, h)
@@ -294,6 +477,66 @@ func renderScreens(w, h int) []renderedScreen {
 	sm.openInspectionFlow()
 	screens = append(screens, renderedScreen{"txflow_send", sm.View()})
 
+	// The same PSBT in the inspector without the flow diagram: the PSBT text,
+	// signature progress, and "What you're signing" rows.
+	inspect := sized(NewSendModel(mock, balance, demoUTXOs), w, docsPSBTInspectHeight)
+	inspect.step = SendStepReview
+	inspect.showPSBTExport = true
+	inspect.psbtBase64 = "cHNidP8BAHECAAAAAXiq8Xx3"
+	inspect.psbtSigsTotal = 1
+	inspect.psbtResult = &wallet.PSBTResult{
+		Fee: 141, IntendedFee: 141, Change: 599_859, HasChange: true,
+		ChangeAddress: ourChange, VSize: 141,
+	}
+	inspect.inspection = sm.inspection
+	// The viewport only syncs when the model sees a window size while the
+	// export view is open; size it again now that the view is active.
+	inspect.syncScrollViewport()
+	screens = append(screens, renderedScreen{"psbt_inspect", inspect.View()})
+
+	// Compact copy for the README: a batch send spending two of our coins to
+	// two external payees with change back. Both sides have four rows (two
+	// inputs, two payees + change + fee), so docsTxFlowHeight leaves the
+	// visualizer exactly enough rows for the spacer lines between them.
+	batch := sized(NewSendModel(mock, balance, demoUTXOs), w, docsTxFlowHeight)
+	batch.feeEstimates = fees
+	batch.recipients = []Recipient{
+		{Address: payee, Amount: 150_000},
+		{Address: faucet, Amount: 75_000},
+	}
+	batch.feeLevel = FeeLevelMedium
+	batch.estimatedSize = 302
+	batch.estimatedFee = 302
+	batch.step = SendStepReview
+	batch.psbtResult = &wallet.PSBTResult{
+		Fee: 302, IntendedFee: 302, Change: 1_724_557, HasChange: true,
+		ChangeAddress: ourChange, VSize: 302,
+		SelectedUTXOs: []wallet.UTXOWithPath{
+			{UTXO: demoUTXOs[0], Address: ourRecv2, Path: "m/84'/1'/0'/0/1"},
+			{UTXO: demoUTXOs[1], Address: ourChange, Path: "m/84'/1'/0'/1/0"},
+		},
+	}
+	batch.inspection = &wallet.PSBTInspection{
+		Inputs: []wallet.InspectedInput{
+			{
+				OutPoint: txFaucet2 + ":0", Address: ourRecv2,
+				Value: 700_000, ValueKnown: true, Mine: true,
+			},
+			{
+				OutPoint: txSpend + ":1", Address: ourChange,
+				Value: 1_249_859, ValueKnown: true, Mine: true,
+			},
+		},
+		Outputs: []wallet.InspectedOutput{
+			{Address: payee, Value: 150_000, Owner: wallet.OutputExternal},
+			{Address: faucet, Value: 75_000, Owner: wallet.OutputExternal},
+			{Address: ourChange, Value: 1_724_557, Owner: wallet.OutputChange},
+		},
+		Fee: 302, FeeKnown: true, FeeRate: 1, VSize: 302,
+	}
+	batch.openInspectionFlow()
+	screens = append(screens, renderedScreen{"txflow", batch.View()})
+
 	// One frozen coin, so the UTXO screen shows the marker.
 	_ = mock.SetUTXOFrozen(txFaucet2, 0, true)
 	um := sized(NewUTXOsModel(mock, nil), w, h)
@@ -301,6 +544,19 @@ func renderScreens(w, h int) []renderedScreen {
 	um.utxos = demoUTXOs
 	um.sortAndUpdateTable()
 	screens = append(screens, renderedScreen{"utxos", um.View()})
+
+	// Address list: two used receive addresses and the change address.
+	am := sized(NewAddressesModel(mock, nil), w, h)
+	am.receiveAddresses = []AddrDisplayInfo{
+		{Address: ourRecv, Path: "m/84'/1'/0'/0/0", Index: 0, Used: true, Label: "Faucet"},
+		{Address: ourRecv2, Path: "m/84'/1'/0'/0/1", Index: 1, Used: true, Balance: 700_000, Label: "Savings"},
+	}
+	am.changeAddresses = []AddrDisplayInfo{
+		{Address: ourChange, Path: "m/84'/1'/0'/1/0", Index: 0, Used: true, Balance: 1_249_859, Label: "Change"},
+	}
+	am.loading = false
+	am.updateTable()
+	screens = append(screens, renderedScreen{"addresses", am.View()})
 
 	rm := NewMockWalletManager()
 	rm.GetCurrentReceiveAddrFn = func(uint32) (string, string, uint32, error) {
@@ -345,6 +601,9 @@ func renderScreens(w, h int) []renderedScreen {
 			})
 		}
 		screens = append(screens, renderedScreen{verify.name, hm.View()})
+		if verify.state == AddressVerifyMatch {
+			screens = append(screens, renderedScreen{"verify", hm.View()})
+		}
 	}
 
 	hi := sized(NewTransactionHistoryModel(mock), w, h)
@@ -374,6 +633,74 @@ func renderScreens(w, h int) []renderedScreen {
 	hp := sized(NewHelpModel(nil), w, h)
 	hp.fadeIn = 1.0
 	screens = append(screens, renderedScreen{"help", hp.View()})
+
+	// Settings and connection setup share a throwaway config so the server
+	// rows read like a real testnet4 install.
+	settingsMock := NewMockWalletManager()
+	settingsMock.IsUnlockedFn = func() bool { return true }
+	settingsMock.GetWalletNameFn = func() string { return "demo-testnet4" }
+	settingsMock.GetWalletTypeFn = func() string { return "Software" }
+	settingsMock.GetNetworkFn = func() string { return wallet.NetworkTestnet }
+	settingsMock.GetCreatedAtFn = func() int64 { return 1759830000 }
+	settingsMock.GetScriptTypeFn = func() (wallet.ScriptType, int, int) {
+		return wallet.ScriptTypeP2WPKH, 0, 0
+	}
+	settingsMock.GetAccountsFn = func() []wallet.AccountData {
+		return []wallet.AccountData{{
+			Index:       0,
+			Name:        "Main Account",
+			AddressType: "segwit_native",
+			Addresses: []wallet.AddressData{
+				{Index: 0, Address: ourRecv, Path: "m/84'/1'/0'/0/0", Used: true},
+				{Index: 1, Address: ourRecv2, Path: "m/84'/1'/0'/0/1", Used: true},
+				{Address: ourChange, Path: "m/84'/1'/0'/1/0", Change: true, Used: true},
+			},
+		}}
+	}
+	settingsMock.GetExtendedPublicKeyFn = func(uint32) (string, error) {
+		return "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M", nil
+	}
+	settingsCM := screenshotConfigManager(t)
+	settingsScreen := sized(NewSettingsModel(settingsMock, settingsCM), w, h)
+	screens = append(screens, renderedScreen{"settings", settingsScreen.View()})
+
+	serverScreen := sized(NewConnectionSetupModel(settingsCM, true), w, h)
+	serverScreen.step = StepConfigureElectrum
+	serverScreen.cursor = 0
+	screens = append(screens, renderedScreen{"settings_server", serverScreen.View()})
+
+	// Multisig cosigner list with signing status.
+	msConfig := &wallet.MultisigWalletConfig{
+		M: 2, N: 3, ScriptType: int(wallet.MultisigNativeSegwit),
+		Cosigners: []wallet.MultisigCosignerConfig{
+			{
+				Name: "Coldcard", Fingerprint: "0f056943",
+				KeyOrigin: "0f056943/48h/1h/0h/2h", DeviceType: "coldcard",
+				Xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M",
+			},
+			{
+				Name: "Trezor", Fingerprint: "abcd1234",
+				KeyOrigin: "abcd1234/48h/1h/0h/2h", DeviceType: "trezor",
+				Xpub: "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1N",
+			},
+			{
+				Name: "This device", Fingerprint: "cafebabe",
+				KeyOrigin: "cafebabe/48h/1h/0h/2h", IsMine: true, DeviceType: "local",
+				Mnemonic: testMnemonic,
+				Xpub:     "tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1P",
+			},
+		},
+	}
+	msMock := NewMockWalletManager()
+	msMock.GetWalletNameFn = func() string { return "demo-multisig" }
+	msMock.GetNetworkFn = func() string { return wallet.NetworkTestnet }
+	msMock.IsMultisigFn = func() bool { return true }
+	msMock.GetMultisigConfigFn = func() *wallet.MultisigWalletConfig { return msConfig }
+	msMock.GetCosignersFn = func() []wallet.MultisigCosignerConfig { return msConfig.Cosigners }
+	msMock.GetMultisigSigningStatFn = func() (int, int, int) { return 1, 1, 1 }
+	msScreen := sized(NewSettingsModel(msMock, nil), w, h)
+	msScreen.showCosignerList = true
+	screens = append(screens, renderedScreen{"multisig", msScreen.View()})
 
 	labelScreen := sized(NewSettingsModel(mock, nil), w, h)
 	labelScreen.showLabelImport = true
