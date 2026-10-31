@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 )
 
@@ -160,38 +161,6 @@ func (m AlertModel) View() tea.View {
 	return tea.NewView("")
 }
 
-// cutLeft removes n display cells from the left of s. Escape sequences are
-// kept so the visible remainder keeps its styling; a wide grapheme that
-// straddles the cut is dropped whole.
-func cutLeft(s string, n int) string {
-	if n <= 0 {
-		return s
-	}
-	var out strings.Builder
-	p := ansi.NewParser()
-	state := ansi.NormalState
-	cells := 0
-	for len(s) > 0 {
-		seq, width, size, newState := ansi.DecodeSequence(s, state, p)
-		if size <= 0 {
-			break
-		}
-		state = newState
-		s = s[size:]
-		switch {
-		case width == 0:
-			out.WriteString(seq)
-		case cells >= n:
-			out.WriteString(seq)
-		case cells+width <= n:
-			cells += width
-		default:
-			cells = n
-		}
-	}
-	return out.String()
-}
-
 // Render overlays the alert on content with slide-reveal animation.
 // As the alert fades in, lines are revealed top-down. On fade-out, lines
 // disappear bottom-up, creating a natural slide effect.
@@ -215,31 +184,21 @@ func (m AlertModel) Render(content string) string {
 	if visibleLines < 0 {
 		visibleLines = 0
 	}
-
-	var builder strings.Builder
-
-	for i := 0; i < contentHeight; i++ {
-		if i > 0 {
-			builder.WriteByte('\n')
-		}
-
-		if i >= visibleLines {
-			// Beyond revealed notification lines — show content
-			builder.WriteString(contentLines[i])
-		} else {
-			notifLine := notifLines[i]
-			builder.WriteString(notifLine)
-
-			notifLen := ansi.StringWidth(notifLine)
-			if notifLen < ansi.StringWidth(contentLines[i]) {
-				// Add remaining content after notification
-				remaining := cutLeft(contentLines[i], notifLen)
-				builder.WriteString(remaining)
-			}
-		}
+	if visibleLines == 0 {
+		return content
 	}
 
-	return builder.String()
+	width := 0
+	for _, line := range contentLines {
+		width = max(width, ansi.StringWidth(line))
+	}
+	for _, line := range notifLines[:visibleLines] {
+		width = max(width, ansi.StringWidth(line))
+	}
+
+	overlay := strings.Join(notifLines[:visibleLines], "\n")
+	return ui.Composite(content, width, contentHeight,
+		ui.Overlay{Content: overlay}.TopLeft())
 }
 
 // NewAlertCmd creates a command to show an alert

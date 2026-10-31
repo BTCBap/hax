@@ -398,7 +398,7 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 	if m.hwiLoading {
 		content.WriteString(m.spinner.View() + " Detecting hardware wallets...\n")
 	} else if m.hwiError != nil {
-		content.WriteString(styles.RenderErrorBox("⚠ "+m.hwiError.Error(), m.width) + "\n\n")
+		content.WriteString(styles.RenderErrorBox("⚠ "+m.hwiError.Error(), panelContentWidth(m.width)) + "\n\n")
 		content.WriteString(renderHWITroubleshootingHints(hwiErrorHints(m.hwiError)))
 		content.WriteString(styles.DimText.Render("Press 'r' to retry or 'esc' to go back.") + "\n")
 	} else if len(m.hwiDevices) == 0 {
@@ -407,7 +407,8 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 		content.WriteString(styles.DimText.Render("Press 'r' to retry or 'esc' to go back.") + "\n")
 	} else {
 		content.WriteString(styles.NormalText.Render("Connected devices:") + "\n\n")
-		content.WriteString(renderDeviceMenu(hardwareDeviceChoices(m.hwiDevices), m.selectedHWDevice))
+		content.WriteString(renderDeviceMenuFit(hardwareDeviceChoices(m.hwiDevices),
+			m.selectedHWDevice, panelContentWidth(m.width)))
 	}
 
 	instructions := styles.DimText.Render(
@@ -421,10 +422,10 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 		styles.HK("esc", "back"),
 	)
 
-	return title + "\n" + subtitle + "\n\n" +
-		content.String() +
-		instructions + "\n\n" +
-		help
+	return centeredPanel(title+"\n"+subtitle+"\n\n"+
+		content.String()+
+		instructions+"\n\n"+
+		help, m.width, m.height)
 }
 
 func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {

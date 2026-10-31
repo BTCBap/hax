@@ -797,15 +797,21 @@ func (m SendModel) viewReviewTxFlow() string {
 	return m.renderTxFlowUnder(header)
 }
 
-// renderTxFlowUnder draws the visualizer in the rows left below header.
+// renderTxFlowUnder draws the visualizer over the rows below header. The
+// flow block is opaque, so the screen behind it keeps its size and does not
+// show through the diagram's blank rows.
 func (m SendModel) renderTxFlowUnder(header string) string {
+	headerHeight := lipgloss.Height(header)
 	flow := *m.txFlow
 	flow.Width = m.width
-	flow.Height = m.height - lipgloss.Height(header) - 1
+	flow.Height = m.height - headerHeight - 1
 	if flow.Height < 1 {
 		flow.Height = 1
 	}
-	return header + "\n" + flow.View()
+	base := m
+	base.txFlow = nil
+	return ui.Composite(base.View(), m.width, headerHeight+flow.Height,
+		ui.Overlay{Content: flowBlock(flow), X: 0, Y: headerHeight}.TopLeft())
 }
 
 func (m SendModel) viewBroadcasting() string {

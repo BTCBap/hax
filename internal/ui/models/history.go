@@ -20,6 +20,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/fsutil"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/charmbracelet/harmonica"
 )
@@ -112,11 +113,10 @@ type SpeedUpFeeEstimatesMsg struct {
 
 // speedUpTrayState is the inline speed-up panel opened from a pending row.
 type speedUpTrayState struct {
-	tx        api.Transaction
-	tray      Tray
-	rates     [3]float64
-	loading   bool
-	baseLines int
+	tx      api.Transaction
+	tray    Tray
+	rates   [3]float64
+	loading bool
 }
 
 const speedUpCustomIndex = 3
@@ -301,7 +301,6 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		m.updateTableData()
 		if m.speedUp != nil {
 			m.speedUp.tray = m.speedUp.tray.WithWidth(m.trayWidth())
-			m.speedUp.baseLines = m.linesWithoutTray()
 		}
 
 	case TransactionsMsg:
@@ -1252,7 +1251,7 @@ func (m TransactionHistoryModel) trayWidth() int {
 // openSpeedUpTray opens the inline panel and loads fee estimates when the
 // wallet has no cached ones.
 func (m *TransactionHistoryModel) openSpeedUpTray(tx api.Transaction) tea.Cmd {
-	m.speedUp = &speedUpTrayState{tx: tx, baseLines: m.linesWithoutTray()}
+	m.speedUp = &speedUpTrayState{tx: tx}
 
 	var estimates *api.FeeEstimates
 	if m.walletManager != nil {
@@ -1376,14 +1375,6 @@ func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyPressMsg) (bool, t
 		return true, NavigateToFeeBumpWithRate(txid, rate)
 	}
 	return true, nil
-}
-
-// linesWithoutTray is the normal history height, used to keep the total
-// line count fixed while the tray is open.
-func (m TransactionHistoryModel) linesWithoutTray() int {
-	clone := m
-	clone.speedUp = nil
-	return lipgloss.Height(clone.View())
 }
 
 // openTransactionFlow shows the selected transaction as a flow diagram.
@@ -1513,17 +1504,22 @@ func (m TransactionHistoryModel) View() string {
 	headerBlock := m.historyHeaderBlock()
 
 	if m.txFlow != nil {
+		headerHeight := lipgloss.Height(headerBlock)
 		flow := *m.txFlow
 		flow.Width = m.width
-		flow.Height = m.height - lipgloss.Height(headerBlock) - 1
+		flow.Height = m.height - headerHeight - 1
 		if flow.Height < 1 {
 			flow.Height = 1
 		}
-		return headerBlock + "\n" + flow.View()
+		base := m
+		base.txFlow = nil
+		base.speedUp = nil
+		return ui.Composite(base.View(), m.width, headerHeight+flow.Height,
+			ui.Overlay{Content: flowBlock(flow), X: 0, Y: headerHeight}.TopLeft())
 	}
 
 	if m.speedUp != nil {
-		return m.viewWithSpeedUp(headerBlock)
+		return m.viewWithSpeedUp()
 	}
 
 	var content string
@@ -1636,28 +1632,34 @@ func (m TransactionHistoryModel) renderTransactionTableAt(tableHeight int) strin
 	return styles.TableBorderStyle.Render(view)
 }
 
-// viewWithSpeedUp keeps the header and table top in place and gives the
-// tray the bottom of the screen. The table loses rows to make room, so the
-// total height stays the same as the normal history view.
-func (m TransactionHistoryModel) viewWithSpeedUp(headerBlock string) string {
+// viewWithSpeedUp keeps the history frame at its normal size and draws the
+// tray as a bottom-centered layer over it. The table fills the space above
+// the tray, so opening the tray never changes the frame height.
+func (m TransactionHistoryModel) viewWithSpeedUp() string {
+	headerBlock := m.historyHeaderBlock()
 	trayView := m.speedUp.tray.View()
-	trayLines := lipgloss.Height(trayView)
-	target := m.speedUp.baseLines
+	trayHeight := lipgloss.Height(trayView)
+
+	frame := m
+	frame.speedUp = nil
+	frameView := frame.View()
+	target := lipgloss.Height(frameView)
 	if target <= 0 {
-		target = m.height
-	}
-	if target <= 0 {
-		target = lipgloss.Height(headerBlock) + trayLines + 6
+		target = lipgloss.Height(headerBlock) + trayHeight + 6
 	}
 
-	tableBlock := target - lipgloss.Height(headerBlock) - trayLines
+	tableBlock := target - lipgloss.Height(headerBlock) - trayHeight
 	if tableBlock < 5 {
 		tableBlock = 5
 	}
+	base := headerBlock + "\n" + m.renderTransactionTableAt(tableBlock-2)
 
-	return headerBlock + "\n" +
-		m.renderTransactionTableAt(tableBlock-2) + "\n" +
-		trayView
+	width := lipgloss.Width(frameView)
+	if width < lipgloss.Width(trayView) {
+		width = lipgloss.Width(trayView)
+	}
+	return ui.Composite(base, width, target,
+		ui.Overlay{Content: trayView}.BottomCenter())
 }
 
 func (m TransactionHistoryModel) renderTransactionDetails() string {
