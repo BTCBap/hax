@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/version"
 )
@@ -42,20 +42,20 @@ func TestSplashInit_ReturnsCommands(t *testing.T) {
 func TestSplashKeyPress_NavigatesToWalletSetup(t *testing.T) {
 	m := NewSplashModel()
 	// Press 'enter' key
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(keyCode(tea.KeyEnter))
 	assertNavigatesTo(t, cmd, StateWalletSetup)
 }
 
 func TestSplashKeyPress_AnyKey_NavigatesToWalletSetup(t *testing.T) {
 	m := NewSplashModel()
 	// Press 'a' key
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	_, cmd := m.Update(keyRune('a'))
 	assertNavigatesTo(t, cmd, StateWalletSetup)
 }
 
 func TestSplashCtrlC_DoesNotNavigate(t *testing.T) {
 	m := NewSplashModel()
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd != nil {
 		msg := extractMsg(cmd)
 		if _, ok := msg.(NavigateMsg); ok {
@@ -67,7 +67,7 @@ func TestSplashCtrlC_DoesNotNavigate(t *testing.T) {
 func TestSplashTickMsg_AdvancesProgress(t *testing.T) {
 	m := NewSplashModel()
 	// Send several tick messages to advance animation
-	var model tea.Model = m
+	var model screenModel = m
 	for i := 0; i < 10; i++ {
 		model, _ = model.Update(TickMsg(time.Now()))
 	}

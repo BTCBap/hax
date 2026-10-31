@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -26,7 +25,7 @@ func TestUTXOs_FreezeToggle(t *testing.T) {
 	m.utxos = freezeTestUTXOs()
 	m.sortAndUpdateTable()
 
-	key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}
+	key := keyRune('f')
 	model, _ := m.Update(key)
 	m = model.(UTXOsModel)
 	big := freezeTestUTXOs()[0]

@@ -1,9 +1,9 @@
 package models
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m WalletSetupModel) isTestnet() bool { return m.network != wallet.NetworkMainnet }
@@ -12,7 +12,7 @@ func (m WalletSetupModel) coinType() uint32 { return wallet.CoinTypeForNetwork(m
 
 // handleChooseNetwork picks the wallet's network. It is the first step of
 // onboarding, so the choice continues to the create/restore menu.
-func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseNetwork(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {

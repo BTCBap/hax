@@ -11,17 +11,17 @@ import (
 
 	"github.com/BTCBap/hax/internal/wallet"
 
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/fsutil"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type TransactionHistoryModel struct {
@@ -166,17 +166,17 @@ func NewTransactionHistoryModel(walletManager WalletService) TransactionHistoryM
 
 	t.SetStyles(tableStyles)
 
-	vp := viewport.New(80, 10)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
 
-	searchInput := textinput.New()
+	searchInput := newTextInput()
 	searchInput.Placeholder = "Search transactions..."
 	searchInput.CharLimit = 100
-	searchInput.Width = 50
+	searchInput.SetWidth(50)
 
-	labelInput := textinput.New()
+	labelInput := newTextInput()
 	labelInput.Placeholder = "Enter label for transaction..."
 	labelInput.CharLimit = 255
-	labelInput.Width = 60
+	labelInput.SetWidth(60)
 
 	return TransactionHistoryModel{
 		walletManager: walletManager,
@@ -242,7 +242,7 @@ func (m TransactionHistoryModel) animateTick() tea.Cmd {
 	})
 }
 
-func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m TransactionHistoryModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -272,7 +272,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width - 4
+		m.viewport.SetWidth(msg.Width - 4)
 		reservedHeight := 17
 		if m.searchMode {
 			reservedHeight += 2
@@ -294,9 +294,9 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.table.SetHeight(tableHeight)
 		m.itemsPerPage = tableHeight
-		m.viewport.Height = m.height - tableHeight - 14
-		if m.viewport.Height < 5 {
-			m.viewport.Height = 5
+		m.viewport.SetHeight(m.height - tableHeight - 14)
+		if m.viewport.Height() < 5 {
+			m.viewport.SetHeight(5)
 		}
 		m.updateTableData()
 		if m.speedUp != nil {
@@ -392,7 +392,19 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		if m.editMode {
+			m.labelInput, cmd = m.labelInput.Update(msg)
+			cmds = append(cmds, cmd)
+		} else if m.searchMode {
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			m.searchQuery = m.searchInput.Value()
+			m.currentPage = 0
+			m.updateTableData()
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		// The speed-up tray owns every key while it is open.
 		if m.speedUp != nil {
 			if handled, cmd := m.handleSpeedUpKey(msg); handled {
@@ -676,13 +688,13 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 		}
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseWheelUp:
 			m.table.MoveUp(1)
 			m.selectedRow = m.table.Cursor()
 			return m, nil
-		case tea.MouseButtonWheelDown:
+		case tea.MouseWheelDown:
 			m.table.MoveDown(1)
 			m.selectedRow = m.table.Cursor()
 			return m, nil
@@ -740,6 +752,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		{Title: "", Width: actionWidth},
 	}
 	m.table.SetColumns(columns)
+	m.table.SetWidth(naturalTableWidth(columns))
 
 	// Get accounts to determine our addresses
 	accounts := m.walletManager.GetAccounts()
@@ -1322,7 +1335,7 @@ func (m TransactionHistoryModel) fetchSpeedUpFeeEstimates() tea.Cmd {
 	}
 }
 
-func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyMsg) (bool, tea.Cmd) {
+func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	st := m.speedUp
 	if st == nil {
 		return false, nil
@@ -1682,7 +1695,7 @@ func (m TransactionHistoryModel) renderTransactionDetails() string {
 
 	detailsWidth := styles.ClampWidth(84, m.width)
 	detailsBox := styles.BoxStyle.
-		Width(detailsWidth).
+		Width(detailsWidth + 2).
 		BorderForeground(styles.ElectricBlue).
 		Render(strings.Join(details, "\n"))
 

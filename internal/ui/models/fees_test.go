@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
@@ -275,7 +275,7 @@ func TestFees_OnlyFeeMethodsAreCalled(t *testing.T) {
 		t.Fatalf("cached calls = %d, estimate calls = %d; want 1 each", cachedCalls, estimateCalls)
 	}
 
-	updated, refreshCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, refreshCmd := m.Update(keyRunes("r"))
 	refreshed := updated.(FeesModel)
 	if !refreshed.refreshing {
 		t.Fatal("refresh key should show the refreshing state")
@@ -287,13 +287,13 @@ func TestFees_OnlyFeeMethodsAreCalled(t *testing.T) {
 }
 func TestFees_EscReturnsToDashboard(t *testing.T) {
 	m := feesTestModel(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestDashboard_FeesKeyNavigates(t *testing.T) {
 	m, _ := newTestDashboard(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	_, cmd := m.Update(keyRune('F'))
 	assertNavigatesTo(t, cmd, StateFees)
 }
 

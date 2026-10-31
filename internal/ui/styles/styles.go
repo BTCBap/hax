@@ -1,12 +1,13 @@
 package styles
 
 import (
+	"image/color"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -448,11 +449,11 @@ func RenderErrorBox(message string, availableWidth int) string {
 	}
 
 	wrapped := lipgloss.NewStyle().Width(wrapWidth).Render(message)
-	return ErrorBoxStyle.Width(boxWidth).Render(wrapped)
+	return ErrorBoxStyle.Width(boxWidth + 2).Render(wrapped)
 }
 
 // Badge creates a styled inline badge with the given foreground color on AccentBg.
-func Badge(fg lipgloss.Color) lipgloss.Style {
+func Badge(fg color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(fg).
 		Background(AccentBg).

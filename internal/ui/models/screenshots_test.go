@@ -20,10 +20,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
@@ -63,8 +61,6 @@ func TestScreenshots(t *testing.T) {
 	if dir == "" {
 		t.Skip("HAX_SCREENSHOT_DIR not set")
 	}
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	lipgloss.SetHasDarkBackground(true)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -156,10 +152,6 @@ var addressScreenLayout = map[string]struct {
 }
 
 func TestScreenshotAddressScreensKeepLayout(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-
 	rendered := make(map[string]renderedScreen)
 	for _, screen := range renderScreens(t, 110, 34) {
 		rendered[screen.name] = screen
@@ -234,7 +226,7 @@ func writeScreenshot(t *testing.T, path, content string) {
 
 // sized delivers a WindowSizeMsg so each model takes its width and height the
 // same way it does in the running app.
-func sized[M tea.Model](m M, w, h int) M {
+func sized[M screenModel](m M, w, h int) M {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	return updated.(M)
 }
@@ -711,7 +703,7 @@ func renderScreens(t *testing.T, w, h int) []renderedScreen {
 
 	backupScreen := sized(NewSettingsModel(mock, nil), w, h)
 	backupScreen.openBackupExport()
-	backupScreen.backupTray, _ = backupScreen.backupTray.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	backupScreen.backupTray, _ = backupScreen.backupTray.Update(keyCode(tea.KeyEnter))
 	backupScreen.backupExportStage = backupExportStageConfirm
 	screens = append(screens, renderedScreen{"backup_export_confirm", backupScreen.View()})
 

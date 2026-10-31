@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/reflow/ansi"
 )
@@ -156,8 +156,8 @@ func (m AlertModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View returns empty string (use Render instead)
-func (m AlertModel) View() string {
-	return ""
+func (m AlertModel) View() tea.View {
+	return tea.NewView("")
 }
 
 // Render overlays the alert on content with slide-reveal animation.

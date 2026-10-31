@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -115,7 +115,7 @@ func TestSettings_MnemonicWarning_Cancel_N(t *testing.T) {
 	m := NewSettingsModel(nil, nil)
 	m.showMnemonicWarning = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model, _ := m.Update(keyRune('n'))
 	updated := model.(SettingsModel)
 
 	if updated.showMnemonicWarning {
@@ -127,7 +127,7 @@ func TestSettings_MnemonicWarning_Cancel_Esc(t *testing.T) {
 	m := NewSettingsModel(nil, nil)
 	m.showMnemonicWarning = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(SettingsModel)
 
 	if updated.showMnemonicWarning {
@@ -139,7 +139,7 @@ func TestSettings_MnemonicWarning_IgnoresOtherKeys(t *testing.T) {
 	m := NewSettingsModel(nil, nil)
 	m.showMnemonicWarning = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model, _ := m.Update(keyRune('x'))
 	updated := model.(SettingsModel)
 
 	// Should stay in warning state (only y/n/esc close it)
@@ -155,7 +155,7 @@ func TestSettings_MnemonicView_EscCloses(t *testing.T) {
 	m.showMnemonic = true
 	m.mnemonic = "test mnemonic words"
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(SettingsModel)
 
 	if updated.showMnemonic {
@@ -171,7 +171,7 @@ func TestSettings_MnemonicView_EnterCloses(t *testing.T) {
 	m.showMnemonic = true
 	m.mnemonic = "test mnemonic words"
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(SettingsModel)
 
 	if updated.showMnemonic {
@@ -184,7 +184,7 @@ func TestSettings_MnemonicView_QCloses(t *testing.T) {
 	m.showMnemonic = true
 	m.mnemonic = "test mnemonic words"
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model, _ := m.Update(keyRune('q'))
 	updated := model.(SettingsModel)
 
 	if updated.showMnemonic {
@@ -200,7 +200,7 @@ func TestSettings_CosignerList_EscCloses(t *testing.T) {
 	m.cosignerImportError = "old error"
 	m.cosignerImportSuccess = "old success"
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(SettingsModel)
 
 	if updated.showCosignerList {
@@ -218,7 +218,7 @@ func TestSettings_CosignerList_QCloses(t *testing.T) {
 	m := NewSettingsModel(nil, nil)
 	m.showCosignerList = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model, _ := m.Update(keyRune('q'))
 	updated := model.(SettingsModel)
 
 	if updated.showCosignerList {
@@ -230,7 +230,7 @@ func TestSettings_CosignerList_OpenSeedInput(t *testing.T) {
 	m := NewSettingsModel(nil, nil)
 	m.showCosignerList = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	model, _ := m.Update(keyRune('i'))
 	updated := model.(SettingsModel)
 
 	if updated.showCosignerList {
@@ -251,7 +251,7 @@ func TestSettings_CosignerEdit_EscCancels(t *testing.T) {
 	m.showCosignerEdit = true
 	m.editingCosignerIndex = 1
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(SettingsModel)
 
 	if updated.showCosignerEdit {
@@ -268,7 +268,7 @@ func TestSettings_CosignerEdit_TabSwitchesFields(t *testing.T) {
 	m.cosignerEditField = 0
 	m.cosignerNameInput.Focus()
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := model.(SettingsModel)
 
 	if updated.cosignerEditField != 1 {
@@ -276,7 +276,7 @@ func TestSettings_CosignerEdit_TabSwitchesFields(t *testing.T) {
 	}
 
 	// Tab again goes back to name
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ = updated.Update(keyCode(tea.KeyTab))
 	updated = model.(SettingsModel)
 
 	if updated.cosignerEditField != 0 {
@@ -291,7 +291,7 @@ func TestSettings_DescriptorMenu_EscCloses(t *testing.T) {
 	m.showDescriptorMenu = true
 	m.descriptorText = "wpkh([fingerprint/84'/1'/0']tpub...)"
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(SettingsModel)
 
 	if updated.showDescriptorMenu {
@@ -362,7 +362,7 @@ func TestSettings_ExportUnsortedMultisigFallsBackToDescriptor(t *testing.T) {
 	m := NewSettingsModel(mock, nil)
 	m.showDescriptorMenu = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	model, _ := m.Update(keyRune('e'))
 	updated := model.(SettingsModel)
 
 	path := filepath.Join(home, ".hax", "test-wallet_descriptor.txt")
@@ -386,7 +386,7 @@ func TestSettings_ColdcardUnsortedMultisigShowsDescriptorHint(t *testing.T) {
 	}
 
 	m := NewSettingsModel(mock, nil)
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model, _ := m.Update(keyRune('w'))
 	updated := model.(SettingsModel)
 
 	want := "Coldcard file needs sortedmulti; use descriptor export"

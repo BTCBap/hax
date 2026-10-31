@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 )
@@ -88,7 +88,7 @@ func (m SettingsModel) viewCosignerList() string {
 	}
 
 	cosignerList := styles.BoxStyle.
-		Width(styles.ClampWidth(78, m.width)).
+		Width(styles.ClampWidth(78, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(1, 2).
 		Render(strings.Join(rows, "\n\n"))
@@ -169,7 +169,7 @@ func (m SettingsModel) viewCosignerEdit() string {
 	}
 
 	inputBox := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(1, 2).
 		Render(xpubInfo + "\n\n" + nameField + "\n\n" + fpField + indicator)
@@ -233,7 +233,7 @@ func (m SettingsModel) viewCosignerSeedInput() string {
 
 	// Input box
 	inputBox := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(1, 2).
 		Render(m.cosignerSeedInput.View())
@@ -296,7 +296,7 @@ func (m SettingsModel) viewSingleSigSeedInput() string {
 
 	// Input box
 	inputBox := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(1, 2).
 		Render(m.cosignerSeedInput.View())
@@ -366,7 +366,7 @@ func (m SettingsModel) viewCosignerScanPassword() string {
 	title := styles.TitleStyle.Render("Scan Local Wallets")
 	info := styles.DimText.Render("Enter the password of the local wallets to scan for matching cosigner seeds.\nWallets with a different password are skipped.")
 	box := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(1, 2).
 		Render(m.cosignerScanPassword.View())

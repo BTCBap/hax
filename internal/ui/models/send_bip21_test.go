@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 const uriAddr = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
@@ -23,7 +23,7 @@ func sendWithBalance(t *testing.T) (SendModel, *MockWalletManager) {
 func typeAndEnter(t *testing.T, m SendModel, s string) SendModel {
 	t.Helper()
 	m.addressInput.SetValue(s)
-	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	out, _ := m.Update(keyCode(tea.KeyEnter))
 	return out.(SendModel)
 }
 
@@ -46,7 +46,7 @@ func TestSend_BIP21FillsRecipientAndPrefillsAmount(t *testing.T) {
 		}
 	}
 	// The amount still needs the user's enter.
-	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	out, _ := m.Update(keyCode(tea.KeyEnter))
 	m = out.(SendModel)
 	if len(m.recipients) != 1 || m.recipients[0].Amount != 50_000 || m.recipients[0].Label != "Coffee" {
 		t.Fatalf("recipients %+v", m.recipients)
@@ -77,13 +77,13 @@ func TestSend_IOnlyImportsWhenAddressEmpty(t *testing.T) {
 	m, _ := sendWithBalance(t)
 	m.addressInput.SetValue("b")
 	m.addressInput.CursorEnd()
-	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	out, _ := m.Update(keyRune('i'))
 	m = out.(SendModel)
 	if m.showFileBrowser || m.addressInput.Value() != "bi" {
 		t.Fatalf("typing 'i' opened import (browser=%v value=%q)", m.showFileBrowser, m.addressInput.Value())
 	}
 	m.addressInput.SetValue("")
-	out, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	out, _ = m.Update(keyRune('i'))
 	if !out.(SendModel).showFileBrowser {
 		t.Fatal("'i' on an empty field should open PSBT import")
 	}

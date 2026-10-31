@@ -4,21 +4,21 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
-func netKey(s string) tea.KeyMsg {
+func netKey(s string) tea.KeyPressMsg {
 	switch s {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return keyCode(tea.KeyEnter)
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return keyCode(tea.KeyDown)
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return keyCode(tea.KeyEsc)
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return keyRunes(s)
 }
 
 func TestWalletSetup_FirstScreenIsNetworkWithMainnetSelected(t *testing.T) {

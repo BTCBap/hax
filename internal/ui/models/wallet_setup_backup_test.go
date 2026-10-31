@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 const testMnemonic = "abandon ability able about above absent absorb abstract absurd abuse access accident"
 
 func typeKeys(m WalletSetupModel, s string) WalletSetupModel {
 	for _, r := range s {
-		model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model, _ := m.Update(keyRune(r))
 		m = model.(WalletSetupModel)
 	}
 	return m
@@ -23,7 +23,7 @@ func newBackupModel(t *testing.T) WalletSetupModel {
 	m.width, m.height = 100, 40
 	m.generatedMnemonic = testMnemonic
 	m.step = StepShowMnemonic
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	m = model.(WalletSetupModel)
 	if m.step != StepConfirmMnemonic {
 		t.Fatalf("step = %v, want backup check", m.step)
@@ -40,8 +40,8 @@ func TestBackupCheck_CorrectWordsFinish(t *testing.T) {
 	var cmd tea.Cmd
 	for i, pos := range m.backupWords {
 		m = typeKeys(m, " "+strings.ToUpper(words[pos])+" ")
-		var model tea.Model
-		model, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		var model screenModel
+		model, cmd = m.Update(keyCode(tea.KeyEnter))
 		m = model.(WalletSetupModel)
 		if m.err != nil {
 			t.Fatalf("word %d rejected: %v", i, m.err)
@@ -58,7 +58,7 @@ func TestBackupCheck_CorrectWordsFinish(t *testing.T) {
 func TestBackupCheck_WrongWordStays(t *testing.T) {
 	m := newBackupModel(t)
 	m = typeKeys(m, "zoo")
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	m = model.(WalletSetupModel)
 	if m.err == nil || m.backupPos != 0 || m.step != StepConfirmMnemonic {
 		t.Fatal("a wrong word must be rejected without advancing")
@@ -67,19 +67,19 @@ func TestBackupCheck_WrongWordStays(t *testing.T) {
 
 func TestBackupCheck_SkipNeedsConfirmation(t *testing.T) {
 	m := newBackupModel(t)
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	model, _ := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = model.(WalletSetupModel)
 	if !m.backupSkipConfirm || !strings.Contains(m.View(), "Skip the backup check?") {
 		t.Fatal("ctrl+s should ask for confirmation")
 	}
-	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ = m.Update(keyCode(tea.KeyEsc))
 	m = model.(WalletSetupModel)
 	if m.backupSkipConfirm || m.step != StepConfirmMnemonic {
 		t.Fatal("esc should cancel the skip prompt and stay on the check")
 	}
-	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	model, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = model.(WalletSetupModel)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	_, cmd := m.Update(keyRune('y'))
 	if cmd == nil {
 		t.Fatal("confirmed skip should open the wallet")
 	}

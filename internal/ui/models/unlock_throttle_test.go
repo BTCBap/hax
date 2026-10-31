@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestUnlockBackoff_GrowsAndCaps(t *testing.T) {
@@ -37,7 +37,7 @@ func TestUnlock_ThrottleBlocksAttemptDuringWindow(t *testing.T) {
 	m.passwordInput.SetValue("guess")
 	m.throttleUntil = time.Now().Add(time.Minute)
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(UnlockModel)
 
 	if updated.unlocking {
@@ -63,7 +63,7 @@ func TestUnlock_ThrottleExpires(t *testing.T) {
 	m.passwordInput.SetValue("guess")
 	m.throttleUntil = time.Now().Add(-time.Second)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(UnlockModel)
 
 	if !updated.unlocking {

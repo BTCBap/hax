@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 func (m WalletSetupModel) viewMultisigChooseType() string {
@@ -118,7 +118,7 @@ func (m WalletSetupModel) viewMultisigChooseType() string {
 	return styles.CenterHorizontal(prefix+menuContent+"\n"+help, m.width)
 }
 
-func (m WalletSetupModel) handleMultisigChooseType(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigChooseType(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	// cursor: 0=M row, 1=N row, 2=Native SegWit, 3=Nested SegWit, 4=Legacy, 5=Custom Path
 	totalOptions := 6
 
@@ -182,7 +182,7 @@ func (m WalletSetupModel) handleMultisigChooseType(msg tea.KeyMsg) (tea.Model, t
 		} else if m.cursor == 1 && m.multisigN < 15 {
 			m.multisigN++
 		}
-	case " ":
+	case "space":
 		// Spacebar selects
 		switch m.cursor {
 		case 2:
@@ -244,7 +244,7 @@ func (m WalletSetupModel) viewMultisigConfirm() string {
 	return styles.CenterHorizontal(title+"\n\n"+summary+"\n\n"+nextStep+"\n\n"+help, m.width)
 }
 
-func (m WalletSetupModel) handleMultisigConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigConfirm(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		m.step = StepMultisigEnterCosigners
@@ -427,7 +427,7 @@ func (m WalletSetupModel) viewHWIDeviceSelection() string {
 		help
 }
 
-func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigEnterCosigners(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 
 	// Handle HWI device selection mode
@@ -640,7 +640,7 @@ func (m WalletSetupModel) viewMultisigReview() string {
 	)
 }
 
-func (m WalletSetupModel) handleMultisigReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		// Create the multisig wallet
@@ -749,7 +749,7 @@ func (m WalletSetupModel) getXpubFromHWI(device wallet.HardwareDevice) tea.Cmd {
 	}
 }
 
-func (m WalletSetupModel) handleMultisigImportDescriptor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigImportDescriptor(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg.String() {
@@ -812,7 +812,7 @@ func (m WalletSetupModel) handleMultisigImportDescriptor(msg tea.KeyMsg) (tea.Mo
 	}
 }
 
-func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleMultisigImportReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg.String() {

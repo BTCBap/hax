@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 func (m WalletSetupModel) viewChooseKeySource() string {
@@ -32,7 +32,7 @@ func (m WalletSetupModel) viewChooseKeySource() string {
 	return styles.CenterHorizontal(content, m.width)
 }
 
-func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseKeySource(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -113,7 +113,7 @@ func (m WalletSetupModel) viewHWISetup() string {
 }
 
 // handleHWISetup handles key events on the HWI installation guide screen
-func (m WalletSetupModel) handleHWISetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleHWISetup(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		if m.hwiVerifyOK {
@@ -178,7 +178,7 @@ func (m WalletSetupModel) renderDeviceTroubleshooting() string {
 		styles.NormalText.Render("Press Enter to scan again, or Esc to go back") + "\n"
 }
 
-func (m WalletSetupModel) handleHardwareWalletConnect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleHardwareWalletConnect(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if len(m.hwiDevices) > 0 && m.selectedHWDevice > 0 {
@@ -271,7 +271,7 @@ func (m WalletSetupModel) viewHardwareWalletReview() string {
 	return styles.CenterHorizontal(title+"\n\n"+summary+"\n\n"+warning+"\n\n"+help, m.width)
 }
 
-func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleHardwareWalletReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		// Determine device type

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/api"
@@ -113,10 +113,10 @@ func NewAddressesModel(walletManager WalletService, configManager *config.Config
 		Background(lipgloss.Color(""))
 	t.SetStyles(tableStyles)
 
-	li := textinput.New()
+	li := newTextInput()
 	li.Placeholder = "Label for this address"
 	li.CharLimit = 255
-	li.Width = 40
+	li.SetWidth(40)
 
 	return AddressesModel{
 		labelInput:    li,
@@ -135,7 +135,7 @@ func (m AddressesModel) Init() tea.Cmd {
 	}
 }
 
-func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m AddressesModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -203,19 +203,26 @@ func (m AddressesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}))
 		}
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseWheelUp:
 			m.table.MoveUp(1)
 			m.clampCursor()
 			return m, nil
-		case tea.MouseButtonWheelDown:
+		case tea.MouseWheelDown:
 			m.table.MoveDown(1)
 			m.clampCursor()
 			return m, nil
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		if m.editing {
+			var cmd tea.Cmd
+			m.labelInput, cmd = m.labelInput.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		// Any keyboard interaction should cancel queued wheel momentum globally.
 		cmds = append(cmds, SuppressWheelFor(150*time.Millisecond))
 		if m.editing {
@@ -384,6 +391,7 @@ func (m *AddressesModel) resizeColumnsForWidth() {
 		m.labelColW = cols[4].Width
 	}
 	m.table.SetColumns(cols)
+	m.table.SetWidth(naturalTableWidth(cols))
 }
 
 // addressLabelColMin is the narrowest Label column worth showing.
@@ -780,7 +788,7 @@ func (m AddressesModel) selected() (AddrDisplayInfo, bool) {
 }
 
 // handleLabelKey edits the selected address's label.
-func (m AddressesModel) handleLabelKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m AddressesModel) handleLabelKey(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.editing = false

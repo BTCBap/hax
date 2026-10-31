@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func testTray() Tray {
@@ -23,8 +23,8 @@ func testTray() Tray {
 	return NewTray("⚡ Speed Up Transaction", options, summary, 80)
 }
 
-func trayKey(kind tea.KeyType) tea.KeyMsg {
-	return tea.KeyMsg{Type: kind}
+func trayKey(kind rune) tea.KeyPressMsg {
+	return keyCode(kind)
 }
 
 func TestTrayLineCountStableAcrossStagesAndSelections(t *testing.T) {

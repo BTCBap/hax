@@ -6,28 +6,28 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
-func setupKey(key string) tea.KeyMsg {
+func setupKey(key string) tea.KeyPressMsg {
 	switch key {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return keyCode(tea.KeyEnter)
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return keyCode(tea.KeyEsc)
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return keyCode(tea.KeyTab)
 	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
+		return keyCode(tea.KeyUp)
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return keyCode(tea.KeyDown)
 	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
+		return keyCode(tea.KeyRight)
 	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
+		return keyCode(tea.KeyLeft)
 	default:
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+		return keyRunes(key)
 	}
 }
 

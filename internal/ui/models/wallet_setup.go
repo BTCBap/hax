@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // WalletSetupStep represents the current step in wallet setup
@@ -178,68 +178,70 @@ func NewWalletSetupModel(walletManager WalletService, configManager *config.Conf
 	// Create progress bar with neon orange gradient. The built-in percentage
 	// is variable width, so the view renders its own fixed-width field.
 	prog := progress.New(
-		progress.WithScaledGradient(string(styles.NeonOrange), string(styles.BitcoinGold)),
+		progress.WithColors(styles.NeonOrange, styles.BitcoinGold),
+		progress.WithScaled(true),
 		progress.WithWidth(walletSetupProgressBarWidth),
+		progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock),
 		progress.WithoutPercentage(),
 	)
 
 	// Create input fields
-	nameInput := textinput.New()
+	nameInput := newTextInput()
 	nameInput.Placeholder = "My Bitcoin Wallet"
 	nameInput.CharLimit = 50
-	nameInput.Width = 40
+	nameInput.SetWidth(40)
 
-	passwordInput := textinput.New()
+	passwordInput := newTextInput()
 	passwordInput.Placeholder = ""
 	passwordInput.EchoMode = textinput.EchoPassword
 	passwordInput.CharLimit = 100
-	passwordInput.Width = 40
+	passwordInput.SetWidth(40)
 
-	confirmPasswordInput := textinput.New()
+	confirmPasswordInput := newTextInput()
 	confirmPasswordInput.Placeholder = "Confirm password"
 	confirmPasswordInput.EchoMode = textinput.EchoPassword
 	confirmPasswordInput.CharLimit = 100
-	confirmPasswordInput.Width = 40
+	confirmPasswordInput.SetWidth(40)
 
-	passphraseInput := textinput.New()
+	passphraseInput := newTextInput()
 	passphraseInput.Placeholder = "optional"
 	passphraseInput.EchoMode = textinput.EchoPassword
 	passphraseInput.CharLimit = 256
-	passphraseInput.Width = 40
+	passphraseInput.SetWidth(40)
 
-	confirmPassphraseInput := textinput.New()
+	confirmPassphraseInput := newTextInput()
 	confirmPassphraseInput.Placeholder = "Confirm passphrase"
 	confirmPassphraseInput.EchoMode = textinput.EchoPassword
 	confirmPassphraseInput.CharLimit = 256
-	confirmPassphraseInput.Width = 40
+	confirmPassphraseInput.SetWidth(40)
 
-	mnemonicInput := textinput.New()
+	mnemonicInput := newTextInput()
 	mnemonicInput.Placeholder = "word1 word2 word3 ..."
-	mnemonicInput.Width = 60
+	mnemonicInput.SetWidth(60)
 	mnemonicInput.CharLimit = 300
 
 	// Multisig xpub input
-	multisigXpubInput := textinput.New()
+	multisigXpubInput := newTextInput()
 	multisigXpubInput.Placeholder = "tpub... (BIP48 xpub from cosigner)"
-	multisigXpubInput.Width = 60
+	multisigXpubInput.SetWidth(60)
 	multisigXpubInput.CharLimit = 200
 
 	// Multisig cosigner seed input (for deriving BIP48 xpub)
-	multisigSeedInput := textinput.New()
+	multisigSeedInput := newTextInput()
 	multisigSeedInput.Placeholder = "word1 word2 word3 ... (12 or 24 words)"
-	multisigSeedInput.Width = 60
+	multisigSeedInput.SetWidth(60)
 	multisigSeedInput.CharLimit = 300
 
 	// Custom derivation path input
-	customPathInput := textinput.New()
+	customPathInput := newTextInput()
 	customPathInput.Placeholder = "m/84'/1'/0'"
-	customPathInput.Width = 30
+	customPathInput.SetWidth(30)
 	customPathInput.CharLimit = 50
 
 	// Descriptor import text input (single line - descriptors don't have newlines)
-	descriptorInput := textinput.New()
+	descriptorInput := newTextInput()
 	descriptorInput.Placeholder = "wsh(sortedmulti(2,[fp/48h/1h/0h/2h]tpub...))#checksum"
-	descriptorInput.Width = 60
+	descriptorInput.SetWidth(60)
 	descriptorInput.CharLimit = 2000
 
 	// Check for last used wallet (auto-login feature)
@@ -322,7 +324,7 @@ func (m WalletSetupModel) CapturesTextInput() bool {
 		m.multisigCurrentXpub.Focused() || m.multisigCosignerSeed.Focused()
 }
 
-func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	previousFlow := m.currentFlow()
 	previousStep, _, _ := m.flowStepNumber()
 
@@ -334,7 +336,7 @@ func (m WalletSetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return updated, cmd
 }
 
-func (m WalletSetupModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -433,7 +435,50 @@ func (m WalletSetupModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		var cmd tea.Cmd
+		switch m.step {
+		case StepEnterName, StepRestoreEnterName:
+			m.nameInput, cmd = m.nameInput.Update(msg)
+		case StepEnterPassphrase, StepRestoreEnterPassphrase:
+			m.passphraseInput, cmd = m.passphraseInput.Update(msg)
+		case StepConfirmPassphrase, StepRestoreConfirmPassphrase:
+			m.confirmPassphraseInput, cmd = m.confirmPassphraseInput.Update(msg)
+		case StepEnterPassword, StepRestoreEnterPassword, StepRestoreFilePassword:
+			m.passwordInput, cmd = m.passwordInput.Update(msg)
+		case StepConfirmPassword, StepRestoreConfirmPassword:
+			m.confirmPasswordInput, cmd = m.confirmPasswordInput.Update(msg)
+		case StepRestoreEnterMnemonic:
+			m.mnemonicInput, cmd = m.mnemonicInput.Update(msg)
+		case StepConfirmMnemonic:
+			m.backupInput, cmd = m.backupInput.Update(msg)
+		case StepChooseScriptType, StepRestoreChooseScriptType:
+			if m.showCustomPath {
+				m.customPathInput, cmd = m.customPathInput.Update(msg)
+			}
+		case StepMultisigChooseType:
+			if m.showMultisigCustomPath {
+				m.customPathInput, cmd = m.customPathInput.Update(msg)
+			}
+		case StepMultisigEnterCosigners:
+			if !m.showHWIDevices {
+				switch m.multisigInputMode {
+				case 0:
+					m.multisigCurrentXpub, cmd = m.multisigCurrentXpub.Update(msg)
+				case 1:
+					m.multisigCosignerSeed, cmd = m.multisigCosignerSeed.Update(msg)
+				}
+			}
+		case StepMultisigImportDescriptor:
+			m.descriptorInput, cmd = m.descriptorInput.Update(msg)
+		case StepMultisigImportReview:
+			m.nameInput, cmd = m.nameInput.Update(msg)
+		}
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -821,7 +866,7 @@ func (m WalletSetupModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m WalletSetupModel) handleChooseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseAction(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -859,7 +904,7 @@ func (m WalletSetupModel) handleChooseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	return m, nil
 }
 
-func (m WalletSetupModel) handleChooseWalletType(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseWalletType(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -890,7 +935,7 @@ func (m WalletSetupModel) handleChooseWalletType(msg tea.KeyMsg) (tea.Model, tea
 	return m, nil
 }
 
-func (m WalletSetupModel) handleChooseScriptType(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseScriptType(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	// When custom path input is active, route keys to it
 	if m.showCustomPath {
 		switch msg.String() {
@@ -965,7 +1010,7 @@ func (m WalletSetupModel) handleChooseScriptType(msg tea.KeyMsg) (tea.Model, tea
 }
 
 // proceedFromScriptType advances to the next step after script type + optional custom path selection.
-func (m WalletSetupModel) proceedFromScriptType() (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) proceedFromScriptType() (screenModel, tea.Cmd) {
 	// Set script type from cursor if not already set
 	if m.customDerivationPath != "" {
 		// Infer address type from custom path's purpose
@@ -995,7 +1040,7 @@ func (m WalletSetupModel) proceedFromScriptType() (tea.Model, tea.Cmd) {
 	return m, m.passwordInput.Focus()
 }
 
-func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -1028,7 +1073,7 @@ func (m WalletSetupModel) handleChooseWordCount(msg tea.KeyMsg) (tea.Model, tea.
 	return m, nil
 }
 
-func (m WalletSetupModel) handleRestoreChooseMethod(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleRestoreChooseMethod(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -1076,7 +1121,7 @@ func (m WalletSetupModel) handleRestoreChooseMethod(msg tea.KeyMsg) (tea.Model, 
 	return m, nil
 }
 
-func (m WalletSetupModel) handleRestoreChooseFile(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleRestoreChooseFile(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {

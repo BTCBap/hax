@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
@@ -119,10 +118,6 @@ func TestAddressVerifyViewAddressLayout(t *testing.T) {
 }
 
 func TestAddressVerifyViewWrapsAddress(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	v := newVerifyView(AddressVerifyWaiting, 40)
 	if got, want := v.reservedRows(), 3; got != want {
 		t.Fatalf("reservedRows() = %d, want %d", got, want)
@@ -160,10 +155,6 @@ func TestAddressVerifyViewWrapsAddress(t *testing.T) {
 }
 
 func TestAddressVerifyViewMismatchHighlightsDifferentCharacters(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	rendered := newVerifyView(AddressVerifyMismatch, 80).View()
 	plain := stripANSI(rendered)
 	if strings.Count(plain, "Device  tb1qrp33") != 1 {

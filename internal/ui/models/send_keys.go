@@ -8,17 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ur"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleTxFlowKey drives the transaction visualizer; esc/q returns to the
 // screen that opened it without touching that screen's state.
-func (m *SendModel) handleTxFlowKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleTxFlowKey(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	if handleTxFlowKey(m.txFlow, msg.String()) {
 		m.txFlow = nil
 	}
@@ -27,7 +27,7 @@ func (m *SendModel) handleTxFlowKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleAddressInputSpecial handles special keys for address input
 // Returns (true, cmd) if key was handled, (false, nil) if input should handle it
-func (m *SendModel) handleAddressInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
+func (m *SendModel) handleAddressInputSpecial(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+v":
 		// Paste from clipboard
@@ -110,7 +110,7 @@ func (m *SendModel) applyPaymentRequest(uri string) tea.Cmd {
 
 // handleAmountInputSpecial handles special keys for amount input
 // Returns (true, cmd) if key was handled, (false, nil) if input should handle it
-func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
+func (m *SendModel) handleAmountInputSpecial(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		amtStr := m.amountInput.Value()
@@ -242,7 +242,7 @@ func (m *SendModel) handleAmountInputSpecial(msg tea.KeyMsg) (bool, tea.Cmd) {
 	return false, nil // Not handled - let input handle it
 }
 
-func (m *SendModel) handleRecipientList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleRecipientList(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -337,7 +337,7 @@ func (m *SendModel) handleRecipientList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *SendModel) handleUTXOSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleUTXOSelection(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -347,7 +347,7 @@ func (m *SendModel) handleUTXOSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(m.utxos)-1 {
 			m.cursor++
 		}
-	case " ", "enter":
+	case "space", "enter":
 		if m.sendAll {
 			m.forceSelectAllUTXOs()
 			m.err = fmt.Errorf("MAX spend uses all UTXOs; selection is locked")
@@ -435,7 +435,7 @@ const (
 	highFeeConfirmWord = "high fee"
 )
 
-func (m *SendModel) handleHighFeeConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleHighFeeConfirm(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		if strings.TrimSpace(strings.ToLower(m.highFeeInput.Value())) != highFeeConfirmWord {
@@ -458,7 +458,7 @@ func (m *SendModel) handleHighFeeConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleFeeSelection(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	if m.highFeePending > 0 {
 		return m.handleHighFeeConfirm(msg)
 	}
@@ -483,10 +483,10 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if feeRate > feeSoftCap {
 				m.highFeePending = feeRate
-				m.highFeeInput = textinput.New()
+				m.highFeeInput = newTextInput()
 				m.highFeeInput.Placeholder = highFeeConfirmWord
 				m.highFeeInput.CharLimit = 20
-				m.highFeeInput.Width = 20
+				m.highFeeInput.SetWidth(20)
 				m.err = nil
 				return m, m.highFeeInput.Focus()
 			}
@@ -555,10 +555,10 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if rate > feeSoftCap {
 			m.highFeePending = rate
-			m.highFeeInput = textinput.New()
+			m.highFeeInput = newTextInput()
 			m.highFeeInput.Placeholder = highFeeConfirmWord
 			m.highFeeInput.CharLimit = 20
-			m.highFeeInput.Width = 20
+			m.highFeeInput.SetWidth(20)
 			m.err = nil
 			return m, m.highFeeInput.Focus()
 		}
@@ -603,7 +603,7 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	// Handle file path input mode (for save/load PSBT)
 	if m.showFileInput {
 		switch msg.String() {
@@ -929,9 +929,9 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "u", "U":
 			// Paste UR string (signed PSBT from hardware wallet)
 			m.showURInput = true
-			m.urInput = textinput.New()
+			m.urInput = newTextInput()
 			m.urInput.Placeholder = "ur:crypto-psbt/..."
-			m.urInput.Width = 60
+			m.urInput.SetWidth(60)
 			m.urInput.CharLimit = 10000
 			m.urInput.Focus()
 			m.psbtExportErr = nil
@@ -1013,7 +1013,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *SendModel) handleComplete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SendModel) handleComplete(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "c":
 		// Copy transaction ID to clipboard

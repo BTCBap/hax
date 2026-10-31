@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 )
@@ -177,7 +177,7 @@ func (m *SettingsModel) openLabelImport() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m SettingsModel) updateLabelImport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m SettingsModel) updateLabelImport(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch m.labelImportStage {
 	case labelImportStagePath:
 		switch msg.String() {
@@ -211,7 +211,7 @@ func (m SettingsModel) updateLabelImport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m SettingsModel) beginLabelImport() (tea.Model, tea.Cmd) {
+func (m SettingsModel) beginLabelImport() (screenModel, tea.Cmd) {
 	path := strings.TrimSpace(m.labelImportPath.Value())
 	if path == "" {
 		m.failLabelImport("Enter a file path")
@@ -239,7 +239,7 @@ func (m SettingsModel) beginLabelImport() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m SettingsModel) importLabels() (tea.Model, tea.Cmd) {
+func (m SettingsModel) importLabels() (screenModel, tea.Cmd) {
 	n, err := m.walletManager.ImportLabelsBIP329(m.labelImportData)
 	if err != nil {
 		m.failLabelImport("Import failed: " + err.Error())
@@ -317,7 +317,7 @@ func (m SettingsModel) viewLabelImport() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.BitcoinOrange).
 		Padding(0, 1).
-		Width(boxWidth).
+		Width(boxWidth + 2).
 		Render(strings.Join(rows, "\n"))
 
 	header := styles.ScreenHeaderStyle.Render("⚙  Import Labels")

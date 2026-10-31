@@ -4,9 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -141,10 +139,6 @@ func TestSendHintMorphTextAndSeparators(t *testing.T) {
 }
 
 func TestSendHintMorphFinalUsesWarningStyle(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	cases := sendHintCases()
 	review := cases[len(cases)-1].build(t).View()
 	if !strings.Contains(review, styles.WarningText.Render("enter confirm & sign")) {
@@ -198,7 +192,7 @@ func TestSendReviewEnterStillOpensSigning(t *testing.T) {
 	m.psbtResult = &wallet.PSBTResult{Fee: 100}
 	m.width, m.height = 80, 24
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 	if cmd == nil || !updated.loading {
 		t.Fatal("enter should still export the previewed PSBT")

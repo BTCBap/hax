@@ -3,16 +3,17 @@ package models
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type UnlockModel struct {
@@ -74,11 +75,11 @@ type SyncResultMsg struct {
 
 func NewUnlockModel(walletManager WalletService) UnlockModel {
 	// Create password input
-	pwInput := textinput.New()
+	pwInput := newTextInput()
 	pwInput.Placeholder = "Enter your wallet password"
 	pwInput.EchoMode = textinput.EchoPassword
 	pwInput.EchoCharacter = '•'
-	pwInput.Width = 40
+	pwInput.SetWidth(40)
 	pwInput.CharLimit = 100
 	pwInput.Blur()
 
@@ -159,7 +160,7 @@ func (m UnlockModel) CapturesTextInput() bool {
 	return m.passwordInput.Focused()
 }
 
-func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m UnlockModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -252,7 +253,7 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// If selecting wallet from list
 		if len(m.walletList) > 1 && !m.passwordInput.Focused() {
 			return m.handleWalletSelection(msg)
@@ -312,7 +313,7 @@ func (m UnlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *UnlockModel) handleWalletSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *UnlockModel) handleWalletSelection(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -442,7 +443,7 @@ func (m UnlockModel) renderWalletSelection() string {
 	if boxWidth < 30 {
 		boxWidth = 30
 	}
-	return styles.BoxStyle.Width(boxWidth).Render(title + menu)
+	return styles.BoxStyle.Width(boxWidth + 2).Render(title + menu)
 }
 
 func (m UnlockModel) renderPasswordEntry() string {
@@ -453,7 +454,7 @@ func (m UnlockModel) renderPasswordEntry() string {
 	if boxWidth < 30 {
 		boxWidth = 30
 	}
-	walletInfo := styles.BoxStyle.Width(boxWidth).Render(
+	walletInfo := styles.BoxStyle.Width(boxWidth + 2).Render(
 		styles.DimText.Render("Wallet:") + "\n" +
 			styles.HighlightText.Render(m.walletName),
 	)
@@ -513,6 +514,6 @@ func (m UnlockModel) networkMismatch() bool {
 	return errors.Is(m.err, wallet.ErrNetworkMismatch)
 }
 
-func (m UnlockModel) getGlowColor() lipgloss.Color {
+func (m UnlockModel) getGlowColor() color.Color {
 	return styles.BitcoinOrange // Static orange, no animation
 }

@@ -4,25 +4,25 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
-func ppKey(s string) tea.KeyMsg {
+func ppKey(s string) tea.KeyPressMsg {
 	switch s {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return keyCode(tea.KeyEnter)
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return keyCode(tea.KeyEsc)
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return keyRunes(s)
 }
 
 func typeIntoFocused(t *testing.T, m WalletSetupModel, text string) WalletSetupModel {
 	t.Helper()
 	for _, r := range text {
-		out, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		out, _ := m.Update(keyRune(r))
 		m = out.(WalletSetupModel)
 	}
 	return m

@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
@@ -820,10 +818,6 @@ func assertDeviceMenuStable(t *testing.T, devices []wallet.HardwareDevice, listH
 }
 
 func TestHardwareDeviceMenuStatusStyles(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	longError := "Could not connect to device: the user did not confirm the request " +
 		"on the device screen before the transport closed unexpectedly"
 	devices := []wallet.HardwareDevice{

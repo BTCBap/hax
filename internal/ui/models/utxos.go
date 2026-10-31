@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/config"
@@ -161,10 +161,10 @@ type UTXOsModel struct {
 type UTXOsInitMsg struct{}
 
 func NewUTXOsModel(walletManager WalletService, configManager *config.ConfigManager) UTXOsModel {
-	labelInput := textinput.New()
+	labelInput := newTextInput()
 	labelInput.Placeholder = "Enter label for UTXO..."
 	labelInput.CharLimit = 255
-	labelInput.Width = 60
+	labelInput.SetWidth(60)
 
 	return UTXOsModel{
 		walletManager: walletManager,
@@ -182,7 +182,7 @@ func (m UTXOsModel) Init() tea.Cmd {
 	}
 }
 
-func (m UTXOsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m UTXOsModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -227,17 +227,24 @@ func (m UTXOsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}))
 		}
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseWheelUp:
 			m.moveCursor(-1)
 			return m, nil
-		case tea.MouseButtonWheelDown:
+		case tea.MouseWheelDown:
 			m.moveCursor(1)
 			return m, nil
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		if m.editMode {
+			var cmd tea.Cmd
+			m.labelInput, cmd = m.labelInput.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		// Handle edit mode separately
 		if m.editMode {
 			switch msg.String() {
@@ -723,7 +730,7 @@ func (m UTXOsModel) tableBox(cols utxoColumns, displayUnit wallet.DisplayUnit) s
 	for len(lines) < m.itemsPerPage+2 {
 		lines = append(lines, strings.Repeat(" ", cols.total()))
 	}
-	return styles.TableBorderStyle.Width(cols.total() + 2).Render(strings.Join(lines, "\n"))
+	return styles.TableBorderStyle.Width(cols.total() + 4).Render(strings.Join(lines, "\n"))
 }
 
 func (m UTXOsModel) View() string {

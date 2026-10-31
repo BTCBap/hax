@@ -9,7 +9,7 @@ import (
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestViews_SurviveTinyAndOddTerminalSizes renders every top-level view at
@@ -17,19 +17,19 @@ import (
 // of range, etc.) would crash the wallet when the user shrinks the window.
 func TestViews_SurviveTinyAndOddTerminalSizes(t *testing.T) {
 	sizes := [][2]int{{0, 0}, {1, 1}, {10, 5}, {20, 8}, {40, 12}, {80, 24}, {300, 100}}
-	builders := map[string]func() tea.Model{
-		"splash":     func() tea.Model { return NewSplashModel() },
-		"unlock":     func() tea.Model { return NewUnlockModel(NewMockWalletManager()) },
-		"dashboard":  func() tea.Model { return NewMainDashboardModel(NewMockWalletManager(), nil) },
-		"receive":    func() tea.Model { return NewReceiveModel(NewMockWalletManager()) },
-		"send":       func() tea.Model { return NewSendModel(NewMockWalletManager(), 0, nil) },
-		"history":    func() tea.Model { return NewTransactionHistoryModel(NewMockWalletManager()) },
-		"addresses":  func() tea.Model { return NewAddressesModel(NewMockWalletManager(), nil) },
-		"utxos":      func() tea.Model { return NewUTXOsModel(NewMockWalletManager(), nil) },
-		"settings":   func() tea.Model { return NewSettingsModel(NewMockWalletManager(), nil) },
-		"help":       func() tea.Model { return NewHelpModel(NewMockWalletManager()) },
-		"setup":      func() tea.Model { return NewWalletSetupModel(NewMockWalletManager(), nil) },
-		"connection": func() tea.Model { return NewConnectionSetupModel(nil, false) },
+	builders := map[string]func() screenModel{
+		"splash":     func() screenModel { return NewSplashModel() },
+		"unlock":     func() screenModel { return NewUnlockModel(NewMockWalletManager()) },
+		"dashboard":  func() screenModel { return NewMainDashboardModel(NewMockWalletManager(), nil) },
+		"receive":    func() screenModel { return NewReceiveModel(NewMockWalletManager()) },
+		"send":       func() screenModel { return NewSendModel(NewMockWalletManager(), 0, nil) },
+		"history":    func() screenModel { return NewTransactionHistoryModel(NewMockWalletManager()) },
+		"addresses":  func() screenModel { return NewAddressesModel(NewMockWalletManager(), nil) },
+		"utxos":      func() screenModel { return NewUTXOsModel(NewMockWalletManager(), nil) },
+		"settings":   func() screenModel { return NewSettingsModel(NewMockWalletManager(), nil) },
+		"help":       func() screenModel { return NewHelpModel(NewMockWalletManager()) },
+		"setup":      func() screenModel { return NewWalletSetupModel(NewMockWalletManager(), nil) },
+		"connection": func() screenModel { return NewConnectionSetupModel(nil, false) },
 	}
 	for name, build := range builders {
 		for _, sz := range sizes {
@@ -64,12 +64,12 @@ func hostileMock() *MockWalletManager {
 
 func TestViews_SurviveHostileData(t *testing.T) {
 	sizes := [][2]int{{20, 8}, {80, 24}, {200, 60}}
-	builders := map[string]func() tea.Model{
-		"dashboard": func() tea.Model { return NewMainDashboardModel(hostileMock(), nil) },
-		"history":   func() tea.Model { return NewTransactionHistoryModel(hostileMock()) },
-		"utxos":     func() tea.Model { return NewUTXOsModel(hostileMock(), nil) },
-		"addresses": func() tea.Model { return NewAddressesModel(hostileMock(), nil) },
-		"send":      func() tea.Model { return NewSendModel(hostileMock(), 1546, nil) },
+	builders := map[string]func() screenModel{
+		"dashboard": func() screenModel { return NewMainDashboardModel(hostileMock(), nil) },
+		"history":   func() screenModel { return NewTransactionHistoryModel(hostileMock()) },
+		"utxos":     func() screenModel { return NewUTXOsModel(hostileMock(), nil) },
+		"addresses": func() screenModel { return NewAddressesModel(hostileMock(), nil) },
+		"send":      func() screenModel { return NewSendModel(hostileMock(), 1546, nil) },
 	}
 	for name, build := range builders {
 		for _, sz := range sizes {

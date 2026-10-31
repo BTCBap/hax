@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 var utxoCount = regexp.MustCompile(`\d+ UTXOs?\b`)
@@ -40,7 +40,7 @@ func TestUnlock_NetworkMismatchOffersServerChoice(t *testing.T) {
 	if !strings.Contains(m.View(), "choose server") {
 		t.Fatal("mismatch error should offer choosing a server")
 	}
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("ctrl+s produced no command")
 	}

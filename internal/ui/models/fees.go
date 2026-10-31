@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Fee screen column widths. The bar grows on wide terminals; every other
@@ -90,7 +90,7 @@ func fetchFees(wm WalletService) tea.Cmd {
 	}
 }
 
-func (m FeesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m FeesModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ScreenActiveMsg:
 		m.isActive = true
@@ -128,7 +128,7 @@ func (m FeesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.ageTick()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q":
 			m.isActive = false

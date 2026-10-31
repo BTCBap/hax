@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -105,33 +105,33 @@ func NewSettingsModel(walletManager WalletService, configManager *config.ConfigM
 	}
 
 	// Initialize cosigner seed input
-	seedInput := textinput.New()
+	seedInput := newTextInput()
 	seedInput.Placeholder = "Enter 12 or 24 word seed phrase..."
 	seedInput.CharLimit = 500
-	seedInput.Width = 60
+	seedInput.SetWidth(60)
 
 	// Initialize cosigner edit inputs
-	nameInput := textinput.New()
+	nameInput := newTextInput()
 	nameInput.Placeholder = "Cosigner name..."
 	nameInput.CharLimit = 50
-	nameInput.Width = 40
+	nameInput.SetWidth(40)
 
-	fingerprintInput := textinput.New()
+	fingerprintInput := newTextInput()
 	fingerprintInput.Placeholder = "8 hex characters (e.g., 0f056943)"
 	fingerprintInput.CharLimit = 8
-	fingerprintInput.Width = 20
+	fingerprintInput.SetWidth(20)
 
-	scanPw := textinput.New()
+	scanPw := newTextInput()
 	scanPw.Placeholder = "Password for other local wallets"
 	scanPw.EchoMode = textinput.EchoPassword
 	scanPw.EchoCharacter = '•'
 	scanPw.CharLimit = 100
-	scanPw.Width = 40
+	scanPw.SetWidth(40)
 
-	labelPath := textinput.New()
+	labelPath := newTextInput()
 	labelPath.Placeholder = "~/.hax/<wallet>_labels_bip329.jsonl"
 	labelPath.CharLimit = 1024
-	labelPath.Width = 60
+	labelPath.SetWidth(60)
 	if walletManager != nil {
 		labelPath.Placeholder = "~/.hax/" + walletManager.GetWalletName() + "_labels_bip329.jsonl"
 	}
@@ -190,7 +190,7 @@ func (m SettingsModel) animateTick() tea.Cmd {
 	})
 }
 
-func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m SettingsModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -229,7 +229,28 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		var cmd tea.Cmd
+		switch {
+		case m.showLabelImport && m.labelImportStage == labelImportStagePath:
+			m.labelImportPath, cmd = m.labelImportPath.Update(msg)
+		case m.showCosignerEdit:
+			if m.cosignerEditField == 0 {
+				m.cosignerNameInput, cmd = m.cosignerNameInput.Update(msg)
+			} else {
+				m.cosignerFingerprintInput, cmd = m.cosignerFingerprintInput.Update(msg)
+			}
+		case m.showCosignerScanPassword:
+			m.cosignerScanPassword, cmd = m.cosignerScanPassword.Update(msg)
+		case m.showCosignerSeedInput, m.showSingleSigSeedInput:
+			m.cosignerSeedInput, cmd = m.cosignerSeedInput.Update(msg)
+		}
+		if cmd != nil {
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
 		if m.showLabelImport {
 			return m.updateLabelImport(msg)
 		}

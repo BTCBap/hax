@@ -6,9 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
@@ -537,11 +535,8 @@ func TestTxFlow_ConnectorWeightTiers(t *testing.T) {
 }
 
 func TestTxFlow_80(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.Ascii)
-	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
-
 	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
-	got := v.View()
+	got := ansi.Strip(v.View())
 
 	const path = "testdata/TestTxFlow_80.golden"
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
@@ -696,9 +691,6 @@ func TestTxFlow_EmptyOutPointTxIDShowsInputIndex(t *testing.T) {
 }
 
 func TestTxFlow_MarkersAndWordsWithoutColor(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.Ascii)
-	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
-
 	flow := txFlowFixture(3, 3)
 	v := TxFlowView{Flow: flow, Width: 120, Height: 40, Side: FlowInput}
 

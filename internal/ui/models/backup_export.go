@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/ui/styles"
 )
@@ -64,7 +64,7 @@ func (m *SettingsModel) openBackupExport() {
 	m.backupExportError = ""
 }
 
-func (m SettingsModel) updateBackupExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m SettingsModel) updateBackupExport(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch m.backupExportStage {
 	case backupExportStageChoose, backupExportStageConfirm:
 		var result TrayResult
@@ -192,6 +192,6 @@ func (m SettingsModel) viewBackupExportResult() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.BitcoinOrange).
 		Padding(0, 1).
-		Width(m.backupTray.contentWidth + 2).
+		Width(m.backupTray.contentWidth + 4).
 		Render(strings.Join(inner, "\n"))
 }

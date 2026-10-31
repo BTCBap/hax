@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
@@ -110,7 +110,7 @@ func (m SettingsModel) View() string {
 	}
 
 	walletInfo := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.NeonPurple).
 		Padding(0, 2).
 		Render(
@@ -211,7 +211,7 @@ func (m SettingsModel) renderConnectionSection() string {
 
 	boxWidth := styles.ClampWidth(70, m.width)
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.SuccessGreen).
 		Padding(0, 2).
 		Render(
@@ -230,7 +230,7 @@ func (m SettingsModel) renderSettingsActions() string {
 		renderSettingsActionRow("B", "Export backup (descriptors + labels)", "no private keys", rowWidth),
 	}
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.BitcoinGold).
 		Padding(0, 2).
 		Render(
@@ -363,7 +363,7 @@ func (m SettingsModel) renderAccountSection(account wallet.AccountData, index in
 
 	boxWidth := styles.ClampWidth(70, m.width)
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(0, 2).
 		Render(
@@ -398,7 +398,7 @@ func (m SettingsModel) viewDescriptorMenu() string {
 	qrCode, err := ui.GenerateQRCodeHalfBlocks(qrData)
 	if err == nil {
 		qrSection = styles.BoxStyle.
-			Width(styles.ClampWidth(78, m.width)).
+			Width(styles.ClampWidth(78, m.width)+2).
 			BorderForeground(styles.NeonPurple).
 			Padding(0, 0).
 			MarginBottom(0).
@@ -420,7 +420,7 @@ func (m SettingsModel) viewDescriptorMenu() string {
 	}
 
 	descriptorBox := styles.BoxStyle.
-		Width(styles.ClampWidth(78, m.width)).
+		Width(styles.ClampWidth(78, m.width)+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(0, 2).
 		MarginBottom(0).
@@ -453,7 +453,7 @@ func (m SettingsModel) viewDescriptorMenu() string {
 			}
 
 			cosignerSection = styles.BoxStyle.
-				Width(styles.ClampWidth(78, m.width)).
+				Width(styles.ClampWidth(78, m.width)+2).
 				BorderForeground(styles.ElectricBlue).
 				Padding(0, 2).
 				MarginBottom(0).
@@ -520,7 +520,7 @@ func (m SettingsModel) viewMnemonicWarning() string {
 	}
 
 	warningBox := styles.BoxStyle.
-		Width(styles.ClampWidth(60, m.width)).
+		Width(styles.ClampWidth(60, m.width) + 2).
 		BorderForeground(styles.PastelPink).
 		Render(warningText)
 

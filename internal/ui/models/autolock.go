@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/config"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // idleCheckInterval is how often root checks for an idle unlocked wallet.

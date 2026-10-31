@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
@@ -45,8 +45,8 @@ func newTestSend(t *testing.T) SendModel {
 	return NewSendModel(nil, balance, utxos)
 }
 
-// asSendModel extracts a SendModel from tea.Model (handles both value and pointer receivers)
-func asSendModel(t *testing.T, model tea.Model) SendModel {
+// asSendModel extracts a SendModel from screenModel (handles both value and pointer receivers)
+func asSendModel(t *testing.T, model screenModel) SendModel {
 	t.Helper()
 	switch m := model.(type) {
 	case SendModel:
@@ -1186,7 +1186,7 @@ func TestSend_TickMsg_CopiedStillVisible(t *testing.T) {
 func TestSend_Address_EnterWithEmptyAddress(t *testing.T) {
 	m := newTestSend(t)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1204,7 +1204,7 @@ func TestSend_Address_EnterWithInvalidAddress(t *testing.T) {
 	m := newTestSend(t)
 	m.addressInput.SetValue("not-a-bitcoin-address")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1219,7 +1219,7 @@ func TestSend_Address_EnterWithValidAddress(t *testing.T) {
 	m := newTestSend(t)
 	m.addressInput.SetValue("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx")
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepAmount {
@@ -1240,14 +1240,14 @@ func TestSend_Address_EnterWithValidAddress(t *testing.T) {
 func TestSend_Address_EscNavigatesToDashboard(t *testing.T) {
 	m := newTestSend(t)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestSend_Address_ImportPSBT(t *testing.T) {
 	m := newTestSend(t)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	model, _ := m.Update(keyRune('i'))
 	updated := asSendModel(t, model)
 
 	if !updated.showFileBrowser {
@@ -1264,7 +1264,7 @@ func TestSend_Amount_EnterWithEmptyAmount(t *testing.T) {
 	m := newTestSend(t)
 	advanceToAmount(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1280,7 +1280,7 @@ func TestSend_Amount_EnterWithValidBTC(t *testing.T) {
 	advanceToAmount(&m)
 	m.amountInput.SetValue("0.00010000")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepRecipientList {
@@ -1303,7 +1303,7 @@ func TestSend_Amount_EnterWithValidSatoshi(t *testing.T) {
 	m.usesBTC = false
 	m.amountInput.SetValue("5000")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepRecipientList {
@@ -1319,7 +1319,7 @@ func TestSend_Amount_InvalidBTCAmount(t *testing.T) {
 	advanceToAmount(&m)
 	m.amountInput.SetValue("0.0")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1335,7 +1335,7 @@ func TestSend_Amount_ExceedsBalance(t *testing.T) {
 	advanceToAmount(&m)
 	m.amountInput.SetValue("9.00000000") // 9 BTC = way more than 100k sats
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1352,7 +1352,7 @@ func TestSend_Amount_DustLimit(t *testing.T) {
 	m.usesBTC = false
 	m.amountInput.SetValue("100") // Below dust limit for segwit
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1371,7 +1371,7 @@ func TestSend_Amount_TabTogglesBTCSats(t *testing.T) {
 		t.Fatal("precondition: expected usesBTC=true")
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := asSendModel(t, model)
 
 	if updated.usesBTC {
@@ -1379,7 +1379,7 @@ func TestSend_Amount_TabTogglesBTCSats(t *testing.T) {
 	}
 
 	// Toggle back
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ = updated.Update(keyCode(tea.KeyTab))
 	updated = asSendModel(t, model)
 
 	if !updated.usesBTC {
@@ -1391,7 +1391,7 @@ func TestSend_Amount_EscGoesBackToAddress(t *testing.T) {
 	m := newTestSend(t)
 	advanceToAmount(&m)
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, cmd := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepAddress {
@@ -1406,7 +1406,7 @@ func TestSend_Amount_SendAllSkipsToFeeSelection(t *testing.T) {
 	m := newTestSend(t)
 	advanceToAmount(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	model, _ := m.Update(keyRune('m'))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepFee {
@@ -1438,7 +1438,7 @@ func TestSend_Amount_SendAllWithExistingRecipientRejected(t *testing.T) {
 		{Address: "tb1qexistingrecipientxxxxxxxxxxxxxxxxxxxxxx", Amount: 1000},
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	model, _ := m.Update(keyRune('m'))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil || !strings.Contains(updated.err.Error(), "cannot be combined") {
@@ -1456,7 +1456,7 @@ func TestSend_Amount_MissingRecipientAddress(t *testing.T) {
 	m.amountInput.SetValue("1000")
 	m.usesBTC = false
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1473,7 +1473,7 @@ func TestSend_Amount_ClearsInputsAfterAdding(t *testing.T) {
 	m.usesBTC = false
 	m.amountInput.SetValue("5000")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	// Inputs should be cleared for next recipient
@@ -1499,21 +1499,21 @@ func TestSend_RecipientList_CursorNavigation(t *testing.T) {
 	})
 
 	// Down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1, got %d", updated.cursor)
 	}
 
 	// Can't go past end
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor clamped at 1, got %d", updated.cursor)
 	}
 
 	// Up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = asSendModel(t, model)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0, got %d", updated.cursor)
@@ -1524,7 +1524,7 @@ func TestSend_RecipientList_ContinueToUTXOSelection(t *testing.T) {
 	m := newTestSend(t)
 	advanceToRecipientList(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepUTXOSelection {
@@ -1542,7 +1542,7 @@ func TestSend_RecipientList_ContinueWithTab(t *testing.T) {
 	m := newTestSend(t)
 	advanceToRecipientList(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepUTXOSelection {
@@ -1554,7 +1554,7 @@ func TestSend_RecipientList_AddAnother(t *testing.T) {
 	m := newTestSend(t)
 	advanceToRecipientList(&m)
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model, cmd := m.Update(keyRune('a'))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepAddress {
@@ -1569,7 +1569,7 @@ func TestSend_RecipientList_AddAnotherWithPlus(t *testing.T) {
 	m := newTestSend(t)
 	advanceToRecipientList(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	model, _ := m.Update(keyRune('+'))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepAddress {
@@ -1585,7 +1585,7 @@ func TestSend_RecipientList_DeleteWithMultiple(t *testing.T) {
 		Amount:  20000,
 	})
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model, _ := m.Update(keyRune('d'))
 	updated := asSendModel(t, model)
 
 	if len(updated.recipients) != 1 {
@@ -1598,7 +1598,7 @@ func TestSend_RecipientList_AddAnotherDisablesMaxSpend(t *testing.T) {
 	advanceToRecipientList(&m)
 	m.sendAll = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model, _ := m.Update(keyRune('a'))
 	updated := asSendModel(t, model)
 
 	if updated.sendAll {
@@ -1610,7 +1610,7 @@ func TestSend_RecipientList_CannotDeleteLast(t *testing.T) {
 	m := newTestSend(t)
 	advanceToRecipientList(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model, _ := m.Update(keyRune('d'))
 	updated := asSendModel(t, model)
 
 	if len(updated.recipients) != 1 {
@@ -1626,7 +1626,7 @@ func TestSend_RecipientList_EmptyList(t *testing.T) {
 	m.step = SendStepRecipientList
 	m.recipients = nil
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1645,7 +1645,7 @@ func TestSend_RecipientList_InsufficientBalance(t *testing.T) {
 	}
 	m.balance = 100000
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1662,7 +1662,7 @@ func TestSend_RecipientList_EscEditsLastRecipient(t *testing.T) {
 
 	origRecipient := m.recipients[0]
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	// Should pop last recipient and go to amount step for editing
@@ -1689,7 +1689,7 @@ func TestSend_UTXOSelection_ToggleSelection(t *testing.T) {
 	}
 
 	// Toggle with space
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	model, _ := m.Update(keyRune(' '))
 	updated := asSendModel(t, model)
 
 	if updated.utxoSelected[0] {
@@ -1697,7 +1697,7 @@ func TestSend_UTXOSelection_ToggleSelection(t *testing.T) {
 	}
 
 	// Toggle back with enter
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ = updated.Update(keyCode(tea.KeyEnter))
 	updated = asSendModel(t, model)
 
 	if !updated.utxoSelected[0] {
@@ -1713,7 +1713,7 @@ func TestSend_UTXOSelection_SelectAll(t *testing.T) {
 		m.utxoSelected[i] = false
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model, _ := m.Update(keyRune('a'))
 	updated := asSendModel(t, model)
 
 	for i, sel := range updated.utxoSelected {
@@ -1727,7 +1727,7 @@ func TestSend_UTXOSelection_SelectNone(t *testing.T) {
 	m := newTestSend(t)
 	advanceToUTXOSelection(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model, _ := m.Update(keyRune('n'))
 	updated := asSendModel(t, model)
 
 	for i, sel := range updated.utxoSelected {
@@ -1743,7 +1743,7 @@ func TestSend_UTXOSelection_MaxSpendLocksSelection(t *testing.T) {
 	m.sendAll = true
 
 	// Attempt to deselect all should be rejected and all selections restored.
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model, _ := m.Update(keyRune('n'))
 	updated := asSendModel(t, model)
 
 	for i, sel := range updated.utxoSelected {
@@ -1761,7 +1761,7 @@ func TestSend_UTXOSelection_MaxSpendLocksToggleAndKeepsAll(t *testing.T) {
 	advanceToUTXOSelection(&m)
 	m.sendAll = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	model, _ := m.Update(keyRune(' '))
 	updated := asSendModel(t, model)
 
 	for i, sel := range updated.utxoSelected {
@@ -1780,7 +1780,7 @@ func TestSend_UTXOSelection_MaxSpendSelectAllIsNoop(t *testing.T) {
 	m.sendAll = true
 	m.utxoSelected[0] = false
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model, _ := m.Update(keyRune('a'))
 	updated := asSendModel(t, model)
 
 	for i, sel := range updated.utxoSelected {
@@ -1798,28 +1798,28 @@ func TestSend_UTXOSelection_CursorNavigation(t *testing.T) {
 	advanceToUTXOSelection(&m)
 
 	// Down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1, got %d", updated.cursor)
 	}
 
 	// Down again
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor=2, got %d", updated.cursor)
 	}
 
 	// Down - should clamp
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor clamped at 2, got %d", updated.cursor)
 	}
 
 	// Up with 'k'
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model, _ = updated.Update(keyRune('k'))
 	updated = asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 with 'k', got %d", updated.cursor)
@@ -1831,7 +1831,7 @@ func TestSend_UTXOSelection_ContinueToFee(t *testing.T) {
 	advanceToUTXOSelection(&m)
 	// feeEstimates is nil so updateFeeEstimate (called on transition) returns early
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepFee {
@@ -1853,7 +1853,7 @@ func TestSend_UTXOSelection_MustSelectAtLeastOne(t *testing.T) {
 		m.utxoSelected[i] = false
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1878,7 +1878,7 @@ func TestSend_UTXOSelection_InsufficientUTXOs(t *testing.T) {
 	}
 	m.utxoSelected[2] = true // 20000 sats
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model, _ := m.Update(keyCode(tea.KeyTab))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -1893,7 +1893,7 @@ func TestSend_UTXOSelection_EscGoesBack(t *testing.T) {
 	m := newTestSend(t)
 	advanceToUTXOSelection(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepRecipientList {
@@ -1909,7 +1909,7 @@ func TestSend_FeeSelection_CursorNavigation(t *testing.T) {
 	// feeEstimates is nil so updateFeeEstimate returns early (no walletManager needed)
 
 	// Start at Medium (1), go up to High (0)
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ := m.Update(keyCode(tea.KeyUp))
 	updated := asSendModel(t, model)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0 (High), got %d", updated.cursor)
@@ -1919,16 +1919,16 @@ func TestSend_FeeSelection_CursorNavigation(t *testing.T) {
 	}
 
 	// Can't go above High
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = asSendModel(t, model)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor clamped at 0, got %d", updated.cursor)
 	}
 
 	// Go down to Low (2)
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor=2 (Low), got %d", updated.cursor)
@@ -1938,7 +1938,7 @@ func TestSend_FeeSelection_CursorNavigation(t *testing.T) {
 	}
 
 	// Go to Custom (3)
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.cursor != 3 {
 		t.Errorf("expected cursor=3 (Custom), got %d", updated.cursor)
@@ -1952,7 +1952,7 @@ func TestSend_FeeSelection_CustomFeeActivation(t *testing.T) {
 	m := newTestSend(t)
 	advanceToFee(&m)
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	model, cmd := m.Update(keyRune('c'))
 	updated := asSendModel(t, model)
 
 	if !updated.editingCustom {
@@ -1973,7 +1973,7 @@ func TestSend_FeeSelection_CustomFeeValidation(t *testing.T) {
 	// feeEstimates is nil so updateFeeEstimate (called after valid custom fee) returns early
 
 	// Empty fee
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 	if updated.err == nil {
 		t.Fatal("expected error for empty fee")
@@ -1981,7 +1981,7 @@ func TestSend_FeeSelection_CustomFeeValidation(t *testing.T) {
 
 	// Set a fee below minimum
 	updated.customFeeInput.SetValue("0.05")
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ = updated.Update(keyCode(tea.KeyEnter))
 	updated = asSendModel(t, model)
 	if updated.err == nil {
 		t.Fatal("expected error for fee rate below minimum (0.1)")
@@ -2009,7 +2009,7 @@ func TestSend_FeeSelection_CustomFeeTooHigh(t *testing.T) {
 	m.editingCustom = true
 	m.customFeeInput.SetValue("99999")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -2027,7 +2027,7 @@ func TestSend_FeeSelection_CustomFeeEscCancels(t *testing.T) {
 	m.feeLevel = FeeLevelCustom
 	// feeEstimates is nil so updateFeeEstimate (called on esc) returns early
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.editingCustom {
@@ -2042,7 +2042,7 @@ func TestSend_FeeSelection_EscGoesBackToUTXO(t *testing.T) {
 	m := newTestSend(t)
 	advanceToFee(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepUTXOSelection {
@@ -2058,7 +2058,7 @@ func TestSend_FeeSelection_EscWithMaxSpendGoesBackToRecipientList(t *testing.T) 
 		{Address: "tb1qmaxrecipientxxxxxxxxxxxxxxxxxxxxxxx", Amount: 0},
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepRecipientList {
@@ -2073,7 +2073,7 @@ func TestSend_FeeSelection_EnterWithCustomButNoRate(t *testing.T) {
 	m.cursor = 3
 	m.customFeeRate = 0 // No custom rate set yet
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	// Should activate custom fee input instead of proceeding
@@ -2091,7 +2091,7 @@ func TestSend_Review_EscGoesBackToFee(t *testing.T) {
 	m := newTestSend(t)
 	advanceToReview(&m, nil)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepFee {
@@ -2121,7 +2121,7 @@ func TestSend_Review_EnterUsesPreviewedPSBT(t *testing.T) {
 	m.step = SendStepReview
 	m.psbtResult = &wallet.PSBTResult{Fee: 123}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 	if updated.loading != true {
 		t.Fatal("expected loading=true while exporting PSBT")
@@ -2151,7 +2151,7 @@ func TestSend_PSBTExport_EscCloses(t *testing.T) {
 	m := newTestSend(t)
 	advanceToPSBTExport(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.showPSBTExport {
@@ -2167,7 +2167,7 @@ func TestSend_PSBTExport_EscFromStep1Import(t *testing.T) {
 	advanceToPSBTExport(&m)
 	m.fileBrowserForStep = "step1"
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -2175,7 +2175,7 @@ func TestSend_PSBTExport_QOpensQRMenu(t *testing.T) {
 	m := newTestSend(t)
 	advanceToPSBTExport(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model, _ := m.Update(keyRune('q'))
 	updated := asSendModel(t, model)
 
 	if !updated.showQRFormatMenu {
@@ -2190,7 +2190,7 @@ func TestSend_PSBTExport_FileExport(t *testing.T) {
 	m := newTestSend(t)
 	advanceToPSBTExport(&m)
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	model, cmd := m.Update(keyRune('f'))
 	updated := asSendModel(t, model)
 
 	if !updated.showFileInput {
@@ -2208,7 +2208,7 @@ func TestSend_PSBTExport_FileImport(t *testing.T) {
 	m := newTestSend(t)
 	advanceToPSBTExport(&m)
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	model, _ := m.Update(keyRune('i'))
 	updated := asSendModel(t, model)
 
 	if !updated.showFileBrowser {
@@ -2224,7 +2224,7 @@ func TestSend_PSBTExport_SignWithNoPSBT(t *testing.T) {
 	advanceToPSBTExport(&m)
 	m.psbtResult = nil // No PSBT
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	model, _ := m.Update(keyRune('s'))
 	// Should do nothing (and not panic) when psbtResult is nil.
 	_ = asSendModel(t, model)
 }
@@ -2235,7 +2235,7 @@ func TestSend_PSBTExport_AlreadyFullySigned(t *testing.T) {
 	m.psbtSigsAdded = 1
 	m.psbtSigsTotal = 1
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	model, _ := m.Update(keyRune('s'))
 	updated := asSendModel(t, model)
 
 	if updated.psbtExportErr == nil {
@@ -2252,7 +2252,7 @@ func TestSend_PSBTExport_BroadcastNeedsSignatures(t *testing.T) {
 	m.psbtSigsAdded = 0
 	m.psbtSigsTotal = 2
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model, _ := m.Update(keyRune('b'))
 	updated := asSendModel(t, model)
 
 	if updated.psbtExportErr == nil {
@@ -2268,7 +2268,7 @@ func TestSend_PSBTExport_HWISignNoPSBT(t *testing.T) {
 	advanceToPSBTExport(&m)
 	m.psbtBase64 = "" // No PSBT
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	model, _ := m.Update(keyRune('h'))
 	updated := asSendModel(t, model)
 
 	if updated.psbtExportErr == nil {
@@ -2289,21 +2289,21 @@ func TestSend_HWIDeviceSelection_Navigation(t *testing.T) {
 	m.selectedHWDevice = 0
 
 	// Down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := asSendModel(t, model)
 	if updated.selectedHWDevice != 1 {
 		t.Errorf("expected selectedHWDevice=1, got %d", updated.selectedHWDevice)
 	}
 
 	// Clamp at end
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.selectedHWDevice != 1 {
 		t.Errorf("expected selectedHWDevice clamped at 1, got %d", updated.selectedHWDevice)
 	}
 
 	// Up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = asSendModel(t, model)
 	if updated.selectedHWDevice != 0 {
 		t.Errorf("expected selectedHWDevice=0, got %d", updated.selectedHWDevice)
@@ -2315,7 +2315,7 @@ func TestSend_HWIDeviceSelection_EscCloses(t *testing.T) {
 	advanceToPSBTExport(&m)
 	m.showHWIDevices = true
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.showHWIDevices {
@@ -2332,7 +2332,7 @@ func TestSend_FileInput_EscCancels(t *testing.T) {
 	m.fileInputMode = "export"
 	m.psbtFileInput.SetValue("/tmp/test.psbt")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.showFileInput {
@@ -2352,28 +2352,28 @@ func TestSend_FileBrowser_Navigation(t *testing.T) {
 	m.fileBrowserCursor = 0
 
 	// Down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := asSendModel(t, model)
 	if updated.fileBrowserCursor != 1 {
 		t.Errorf("expected fileBrowserCursor=1, got %d", updated.fileBrowserCursor)
 	}
 
 	// Down again
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.fileBrowserCursor != 2 {
 		t.Errorf("expected fileBrowserCursor=2, got %d", updated.fileBrowserCursor)
 	}
 
 	// Clamp
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = asSendModel(t, model)
 	if updated.fileBrowserCursor != 2 {
 		t.Errorf("expected cursor clamped at 2, got %d", updated.fileBrowserCursor)
 	}
 
 	// Up with 'k'
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model, _ = updated.Update(keyRune('k'))
 	updated = asSendModel(t, model)
 	if updated.fileBrowserCursor != 1 {
 		t.Errorf("expected fileBrowserCursor=1, got %d", updated.fileBrowserCursor)
@@ -2385,7 +2385,7 @@ func TestSend_FileBrowser_EscCloses(t *testing.T) {
 	m.showFileBrowser = true
 	m.psbtFiles = []string{"/tmp/a.psbt"}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.showFileBrowser {
@@ -2398,7 +2398,7 @@ func TestSend_FileBrowser_ManualPathEntry(t *testing.T) {
 	m.showFileBrowser = true
 	m.psbtFiles = []string{"/tmp/a.psbt"}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model, cmd := m.Update(keyRune('p'))
 	updated := asSendModel(t, model)
 
 	if updated.showFileBrowser {
@@ -2421,7 +2421,7 @@ func TestSend_FileBrowser_EnterWithNoFiles(t *testing.T) {
 	m.psbtFiles = nil // No files
 	m.fileBrowserCursor = 0
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	// Should fall back to manual input
@@ -2441,7 +2441,7 @@ func TestSend_RawHexExport_EscCloses(t *testing.T) {
 	m.showRawHexExport = true
 	m.rawHex = "020000..."
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := asSendModel(t, model)
 
 	if updated.showRawHexExport {
@@ -2458,7 +2458,7 @@ func TestSend_RawHexExport_QCloses(t *testing.T) {
 	m.showRawHexExport = true
 	m.rawHex = "020000..."
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model, _ := m.Update(keyRune('q'))
 	updated := asSendModel(t, model)
 
 	if updated.showRawHexExport {
@@ -2472,7 +2472,7 @@ func TestSend_Complete_EscNavigatesToDashboard(t *testing.T) {
 	m := newTestSend(t)
 	advanceToComplete(&m)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -2480,7 +2480,7 @@ func TestSend_Complete_QNavigatesToDashboard(t *testing.T) {
 	m := newTestSend(t)
 	advanceToComplete(&m)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(keyRune('q'))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -2490,7 +2490,7 @@ func TestSend_Complete_NewTransaction(t *testing.T) {
 	m.txID = "aabbccdd"
 	m.recipients = []Recipient{{Address: "tb1q...", Amount: 5000}}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model, cmd := m.Update(keyRune('n'))
 	updated := asSendModel(t, model)
 
 	if updated.step != SendStepAddress {
@@ -2632,7 +2632,7 @@ func TestSend_FeeSelection_EnterUnavailableRequiresCustom(t *testing.T) {
 	m.cursor = 1
 	m.feeEstimates = nil
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 	if updated.err == nil || !strings.Contains(updated.err.Error(), "unavailable") {
 		t.Fatalf("expected unavailable error, got %v", updated.err)
@@ -2914,7 +2914,7 @@ func TestSend_FeeSelection_EnterResetsMaxSpendRetryFlag(t *testing.T) {
 		{Address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", Amount: 1000},
 	}
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := asSendModel(t, model)
 
 	if updated.sendAllRetried {
@@ -2971,7 +2971,7 @@ func TestSend_NoUTXOs_SendMaxError(t *testing.T) {
 	m.utxos = nil
 	m.balance = 0
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	model, _ := m.Update(keyRune('m'))
 	updated := asSendModel(t, model)
 
 	if updated.err == nil {
@@ -3008,7 +3008,7 @@ func TestSend_MultipleRecipientsFlow(t *testing.T) {
 
 	// Delete second (cursor at 0, move to 1)
 	m.cursor = 1
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model, _ := m.Update(keyRune('d'))
 	updated := asSendModel(t, model)
 
 	if len(updated.recipients) != 1 {
@@ -3040,14 +3040,14 @@ func TestSend_FeeSelectionWithVimKeys(t *testing.T) {
 	// feeEstimates is nil so updateFeeEstimate returns early
 
 	// 'j' for down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model, _ := m.Update(keyRune('j'))
 	updated := asSendModel(t, model)
 	if updated.cursor != 2 {
 		t.Errorf("expected cursor=2 with 'j', got %d", updated.cursor)
 	}
 
 	// 'k' for up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model, _ = updated.Update(keyRune('k'))
 	updated = asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 with 'k', got %d", updated.cursor)
@@ -3063,14 +3063,14 @@ func TestSend_RecipientListWithVimKeys(t *testing.T) {
 	})
 
 	// 'j' for down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model, _ := m.Update(keyRune('j'))
 	updated := asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1, got %d", updated.cursor)
 	}
 
 	// 'k' for up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model, _ = updated.Update(keyRune('k'))
 	updated = asSendModel(t, model)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0, got %d", updated.cursor)
@@ -3082,7 +3082,7 @@ func TestSend_UTXO_VimKeyToggle(t *testing.T) {
 	advanceToUTXOSelection(&m)
 
 	// 'j' for down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model, _ := m.Update(keyRune('j'))
 	updated := asSendModel(t, model)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1, got %d", updated.cursor)

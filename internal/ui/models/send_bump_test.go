@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -23,14 +23,14 @@ func bumpInfo() *wallet.FeeBumpInfo {
 	}
 }
 
-func bumpKey(s string) tea.KeyMsg {
+func bumpKey(s string) tea.KeyPressMsg {
 	switch s {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return keyCode(tea.KeyEnter)
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return keyCode(tea.KeyEsc)
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return keyRunes(s)
 }
 
 func newBumpTest(t *testing.T, info *wallet.FeeBumpInfo) (SendModel, *MockWalletManager, *[]string) {

@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
@@ -112,11 +112,7 @@ func main() {
 
 	model := models.NewRootModel(walletManager, configManager)
 
-	p := tea.NewProgram(
-		model,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
+	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
