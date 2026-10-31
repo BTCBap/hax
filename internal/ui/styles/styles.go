@@ -41,6 +41,14 @@ var (
 	TextMuted     color.Color
 	TextSubtle    color.Color
 
+	// Transaction flow diagram.
+	TxFlowBand    color.Color
+	TxFlowBandOwn color.Color
+	TxFlowBandDim color.Color
+	TxFlowChange  color.Color
+	TxFlowFee     color.Color
+	TxFlowAccent  color.Color
+
 	DarkGray      color.Color
 	MediumGray    color.Color
 	LightGray     color.Color
@@ -263,6 +271,15 @@ func setDarkPalette() {
 	WarningYellow = lipgloss.Color("#FFE66D")
 	InfoBlue = lipgloss.Color("#A8D8FF")
 
+	// Transaction flow diagram. The bands stay close to the background so
+	// the selected path is the only warm accent on the screen.
+	TxFlowBand = lipgloss.Color("#3B4458")
+	TxFlowBandOwn = lipgloss.Color("#4A5568")
+	TxFlowBandDim = lipgloss.Color("#2F3747")
+	TxFlowChange = lipgloss.Color("#5E8C83")
+	TxFlowFee = lipgloss.Color("#A88654")
+	TxFlowAccent = lipgloss.Color("#FFB374")
+
 	PrimaryBg = lipgloss.Color("#0F111A")
 	SecondaryBg = lipgloss.Color("#1A1D2E")
 	AccentBg = lipgloss.Color("#252A3D")
@@ -328,6 +345,13 @@ func setLightPalette() {
 	TextSecondary = lipgloss.Color("#4A5568")
 	TextMuted = lipgloss.Color("#5F6B7A")
 	TextSubtle = lipgloss.Color("#8A94A6")
+
+	TxFlowBand = lipgloss.Color("#C9D1DC")
+	TxFlowBandOwn = lipgloss.Color("#B4BECC")
+	TxFlowBandDim = lipgloss.Color("#DDE2EA")
+	TxFlowChange = lipgloss.Color("#4E8A7F")
+	TxFlowFee = lipgloss.Color("#A0782E")
+	TxFlowAccent = lipgloss.Color("#B85C00")
 
 	DarkGray = lipgloss.Color("#8A94A6")
 	MediumGray = lipgloss.Color("#5F6B7A")

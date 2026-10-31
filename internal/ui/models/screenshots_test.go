@@ -98,35 +98,35 @@ var addressScreenLayout = map[string]struct {
 	addrs  []addressExpectation
 }{
 	"txflow": {
-		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 110, 63, 88, 0, 71, 38, 85, 32},
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 68, 110, 68, 110, 68, 84, 0, 71, 38, 85, 32},
 		addrs: []addressExpectation{
-			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 27},
 			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"txflow_many": {
-		widths: []int{110, 0, 48, 48, 48, 48, 110, 63, 110, 63, 110, 63, 110, 63, 88, 48, 48, 48, 48, 0, 69, 37, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{110, 0, 0, 0, 0, 0, 68, 68, 68, 68, 68, 110, 68, 110, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 62, 0, 0, 0, 0, 0, 69, 37, 84, 32},
 		addrs: []addressExpectation{
-			{txFlowAddr(0), 25},
+			{txFlowAddr(0), 27},
 			{txFlowAddr(0), ansi.StringWidth(txFlowAddr(0))},
-			{txFlowAddr(1), 25},
+			{txFlowAddr(1), 27},
 		},
 	},
 	"txflow_send": {
-		widths: []int{19, 19, 19, 63, 22, 110, 0, 110, 63, 110, 63, 88, 0, 71, 38, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{19, 19, 19, 63, 22, 110, 0, 0, 0, 0, 68, 68, 68, 68, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 62, 0, 0, 0, 0, 71, 38, 85, 32},
 		addrs: []addressExpectation{
-			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 25},
+			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 27},
 			{"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", 62},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"txflow_history": {
-		widths: []int{22, 110, 0, 110, 63, 110, 63, 88, 0, 51, 40, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32},
+		widths: []int{22, 110, 0, 0, 0, 0, 0, 68, 68, 68, 68, 68, 68, 110, 68, 110, 68, 84, 68, 68, 68, 68, 68, 68, 62, 0, 0, 0, 0, 51, 40, 26, 32},
 		addrs: []addressExpectation{
-			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 25},
+			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 27},
 			{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", 42},
-			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 25},
+			{"tb1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", 29},
 		},
 	},
 	"psbt_inspect": {
@@ -630,6 +630,14 @@ func renderScreens(t *testing.T, w, h int) []renderedScreen {
 	// are laid out together.
 	screens = append(screens, renderedScreen{"txflow_many", TxFlowView{
 		Flow: txFlowFixture(9, 4), Width: w, Height: h,
+	}.View()})
+
+	// The visualizer at the two other supported terminal sizes.
+	screens = append(screens, renderedScreen{"txflow_80", TxFlowView{
+		Flow: txFlowExample(), Width: 80, Height: 24,
+	}.View()})
+	screens = append(screens, renderedScreen{"txflow_120", TxFlowView{
+		Flow: txFlowExample(), Width: 120, Height: 40,
 	}.View()})
 
 	hp := sized(NewHelpModel(nil), w, h)
