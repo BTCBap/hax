@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -44,8 +45,12 @@ func TestCopyToClipboard_AutoClearsAfterTimeout(t *testing.T) {
 	fc, cleanup := withFakeClipboard(t)
 	defer cleanup()
 
-	if err := copyToClipboard("bc1qexample"); err != nil {
+	cmd, err := copyToClipboard("bc1qexample")
+	if err != nil {
 		t.Fatalf("copy failed: %v", err)
+	}
+	if cmd == nil || cmd() == nil {
+		t.Fatal("expected an OSC 52 clipboard command")
 	}
 	if got := fc.get(); got != "bc1qexample" {
 		t.Fatalf("clipboard = %q, want copied value", got)
@@ -57,6 +62,34 @@ func TestCopyToClipboard_AutoClearsAfterTimeout(t *testing.T) {
 	}
 	if got := fc.get(); got != "" {
 		t.Error("expected clipboard to be cleared after timeout")
+	}
+}
+
+func TestCopyToClipboard_OSC52WhenLocalClipboardFails(t *testing.T) {
+	fc, cleanup := withFakeClipboard(t)
+	defer cleanup()
+
+	calls := 0
+	clipboardWrite = func(s string) error {
+		calls++
+		return errors.New("no system clipboard")
+	}
+
+	cmd, err := copyToClipboard("bc1qexample")
+	if err == nil {
+		t.Fatal("expected the local clipboard error")
+	}
+	if calls != 1 {
+		t.Fatalf("clipboardWrite called %d times, want 1", calls)
+	}
+	if cmd == nil {
+		t.Fatal("expected an OSC 52 clipboard command even when the local clipboard fails")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("OSC 52 command produced no message")
+	}
+	if fc.get() != "" {
+		t.Fatal("clipboard should not have been written")
 	}
 }
 

@@ -417,12 +417,12 @@ func (m SettingsModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 			case "c", "C":
 				// Copy descriptor to clipboard
 				if m.descriptorText != "" {
-					err := copyToClipboard(m.descriptorText)
-					if err == nil {
+					cmd, err := copyToClipboard(m.descriptorText)
+					if err == nil || cmd != nil {
 						m.showCopied = true
 						m.copyMessage = "DESCRIPTOR COPIED!"
 						m.copiedTime = time.Now()
-						return m, m.animateTick()
+						return m, tea.Batch(m.animateTick(), cmd)
 					}
 				}
 				return m, nil
@@ -655,12 +655,12 @@ func (m SettingsModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 					}
 				}
 				if xpub != "" {
-					err := copyToClipboard(xpub)
-					if err == nil {
+					cmd, err := copyToClipboard(xpub)
+					if err == nil || cmd != nil {
 						m.showCopied = true
 						m.copyMessage = "COPIED!"
 						m.copiedTime = time.Now()
-						cmds = append(cmds, m.animateTick())
+						cmds = append(cmds, m.animateTick(), cmd)
 					}
 				}
 			}

@@ -27,6 +27,7 @@ import (
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -374,6 +375,15 @@ func renderScreens(t *testing.T, w, h int) []renderedScreen {
 	d := sized(NewMainDashboardModel(mock, nil), w, h)
 	d.balance, d.balanceLoaded, d.loading = balance, true, false
 	screens = append(screens, renderedScreen{"dashboard", d.View()})
+
+	lightView := func() string {
+		styles.SetDarkBackground(false)
+		defer styles.SetDarkBackground(true)
+		light := sized(NewMainDashboardModel(mock, nil), w, h)
+		light.balance, light.balanceLoaded, light.loading = balance, true, false
+		return light.View()
+	}()
+	screens = append(screens, renderedScreen{"dashboard_light", lightView})
 
 	dStealth := d
 	dStealth.stealth = true

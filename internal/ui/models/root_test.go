@@ -313,3 +313,44 @@ func TestRootModel_Init_ReturnsCommands(t *testing.T) {
 		t.Error("Init should produce messages")
 	}
 }
+
+func TestRootModel_TerminalProgressDuringSetup(t *testing.T) {
+	m := NewRootModel(NewMockWalletManager(), nil)
+	model, _ := m.Update(NavigateMsg{Target: StateWalletSetup})
+	r := model.(RootModel)
+
+	setup, ok := r.walletSetupModel.(WalletSetupModel)
+	if !ok {
+		t.Fatalf("wallet setup model has type %T", r.walletSetupModel)
+	}
+	setup.step = StepEnterPassword
+	setup.err = nil
+	r.walletSetupModel = setup
+
+	bar := r.View().ProgressBar
+	if bar == nil {
+		t.Fatal("expected a terminal progress bar during wallet setup")
+	}
+	if bar.State != tea.ProgressBarDefault {
+		t.Errorf("progress state = %v, want Default", bar.State)
+	}
+	if want := int(setup.getStepProgress()*100 + 0.5); bar.Value != want {
+		t.Errorf("progress value = %d, want %d", bar.Value, want)
+	}
+
+	setup.err = fmt.Errorf("setup failed")
+	r.walletSetupModel = setup
+	if bar := r.View().ProgressBar; bar == nil || bar.State != tea.ProgressBarError {
+		t.Errorf("progress on setup failure = %+v, want error state", bar)
+	}
+}
+
+func TestRootModel_TerminalProgressIdleOnDashboard(t *testing.T) {
+	m := NewRootModel(NewMockWalletManager(), nil)
+	model, _ := m.Update(NavigateMsg{Target: StateMainDashboard})
+	r := model.(RootModel)
+
+	if bar := r.View().ProgressBar; bar != nil {
+		t.Errorf("dashboard progress bar = %+v, want nil", bar)
+	}
+}

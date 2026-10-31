@@ -483,11 +483,11 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
 				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
 					tx := m.filteredTransactions[absoluteIndex]
-					err := copyToClipboard(tx.TxID)
-					if err == nil {
+					cmd, err := copyToClipboard(tx.TxID)
+					if err == nil || cmd != nil {
 						m.showCopied = true
 						m.copiedTime = time.Now()
-						cmds = append(cmds, m.animateTick())
+						cmds = append(cmds, m.animateTick(), cmd)
 					} else {
 						m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 						m.errorTime = time.Now()

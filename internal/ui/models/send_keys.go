@@ -812,12 +812,12 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 		case "c":
 			// Copy PSBT to clipboard
 			if m.psbtBase64 != "" {
-				err := copyToClipboard(m.psbtBase64)
-				if err == nil {
+				cmd, err := copyToClipboard(m.psbtBase64)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
 					m.lastAction = "copied"
-					return m, m.animateTick()
+					return m, tea.Batch(m.animateTick(), cmd)
 				} else {
 					m.psbtExportErr = fmt.Errorf("failed to copy to clipboard: %v", err)
 				}
@@ -966,11 +966,11 @@ func (m *SendModel) handleReview(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 		case "c":
 			// Copy raw hex to clipboard
 			if m.rawHex != "" {
-				err := copyToClipboard(m.rawHex)
-				if err == nil {
+				cmd, err := copyToClipboard(m.rawHex)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
-					return m, m.animateTick()
+					return m, tea.Batch(m.animateTick(), cmd)
 				} else {
 					m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 				}
@@ -1018,11 +1018,11 @@ func (m *SendModel) handleComplete(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	case "c":
 		// Copy transaction ID to clipboard
 		if m.txID != "" {
-			err := copyToClipboard(m.txID)
-			if err == nil {
+			cmd, err := copyToClipboard(m.txID)
+			if err == nil || cmd != nil {
 				m.showCopied = true
 				m.copiedTime = time.Now()
-				return m, m.animateTick()
+				return m, tea.Batch(m.animateTick(), cmd)
 			} else {
 				m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 			}

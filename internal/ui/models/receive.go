@@ -323,11 +323,11 @@ func (m ReceiveModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 			})
 		case "c":
 			if m.selectedAddress != "" {
-				err := copyToClipboard(m.selectedAddress)
-				if err == nil {
+				cmd, err := copyToClipboard(m.selectedAddress)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
-					cmds = append(cmds, m.animateTick())
+					cmds = append(cmds, m.animateTick(), cmd)
 				} else {
 					m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 				}

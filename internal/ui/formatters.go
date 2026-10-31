@@ -14,16 +14,21 @@ const (
 )
 
 var (
-	addressHeadStyle = lipgloss.NewStyle().
-				Foreground(styles.PastelOrange). // Pastel orange
-				Bold(true)
-
-	addressMiddleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#BAE1FF")) // Pastel blue
-
-	addressSeparatorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#B0B0B0")) // Light gray
+	addressHeadStyle      lipgloss.Style
+	addressMiddleStyle    lipgloss.Style
+	addressSeparatorStyle lipgloss.Style
 )
+
+func init() {
+	rebuildAddressStyles()
+	styles.OnRebuild(rebuildAddressStyles)
+}
+
+func rebuildAddressStyles() {
+	addressHeadStyle = styles.AddressHeadStyle
+	addressMiddleStyle = styles.AddressMiddleStyle
+	addressSeparatorStyle = styles.AddressSeparatorStyle
+}
 
 // sanitizeAddress drops control characters so terminal escapes in an address
 // cannot restyle the output.

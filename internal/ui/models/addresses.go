@@ -264,11 +264,12 @@ func (m AddressesModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 			idx := m.table.Cursor()
 			if idx >= 0 && idx < len(addrs) {
 				addr := addrs[idx].Address
-				if err := copyToClipboard(addr); err == nil {
+				cmd, err := copyToClipboard(addr)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copyMsg = "ADDRESS COPIED!"
 					m.copiedTime = time.Now()
-					cmds = append(cmds, tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
+					cmds = append(cmds, cmd, tea.Tick(time.Second/60, func(t time.Time) tea.Msg {
 						return TickMsg(t)
 					}))
 				}

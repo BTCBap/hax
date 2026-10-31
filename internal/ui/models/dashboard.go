@@ -168,6 +168,9 @@ func (m MainDashboardModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+	case ThemeChangedMsg:
+		m.spinner = styles.NewStandardSpinner()
+
 	case RefreshBalanceMsg:
 		m.loading = true
 		if cached, ok := m.walletManager.GetCachedBalance(); ok {

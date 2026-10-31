@@ -74,8 +74,7 @@ func (m SettingsModel) updateBackupExport(msg tea.KeyPressMsg) (screenModel, tea
 			m.closeBackupExport()
 			return m, nil
 		case TrayConfirmed:
-			m.confirmBackupExport(result.Selected)
-			return m, nil
+			return m, m.confirmBackupExport(result.Selected)
 		}
 		if m.backupTray.stage == TrayStageConfirm {
 			m.backupExportStage = backupExportStageConfirm
@@ -92,28 +91,29 @@ func (m SettingsModel) updateBackupExport(msg tea.KeyPressMsg) (screenModel, tea
 	return m, nil
 }
 
-func (m *SettingsModel) confirmBackupExport(selected int) {
+func (m *SettingsModel) confirmBackupExport(selected int) tea.Cmd {
 	data, err := m.walletManager.ExportUnifiedBackup()
 	if err != nil {
 		m.backupExportStage = backupExportStageResult
 		m.backupExportPath = ""
 		m.backupExportResult = ""
 		m.backupExportError = "Export failed: " + err.Error()
-		return
+		return nil
 	}
 
 	if selected == 1 {
-		if err := copyToClipboard(string(data)); err != nil {
+		cmd, err := copyToClipboard(string(data))
+		if err != nil && cmd == nil {
 			m.backupExportStage = backupExportStageResult
 			m.backupExportResult = ""
 			m.backupExportError = "Copy failed: " + err.Error()
-			return
+			return nil
 		}
 		m.backupExportStage = backupExportStageResult
 		m.backupExportPath = ""
 		m.backupExportError = ""
 		m.backupExportResult = "✓ Backup copied to clipboard"
-		return
+		return cmd
 	}
 
 	homeDir, err := os.UserHomeDir()
@@ -121,7 +121,7 @@ func (m *SettingsModel) confirmBackupExport(selected int) {
 		m.backupExportStage = backupExportStageResult
 		m.backupExportResult = ""
 		m.backupExportError = "Failed to get home directory: " + err.Error()
-		return
+		return nil
 	}
 	path, err := writePrivateExport(filepath.Join(homeDir, ".hax"),
 		m.walletName()+"_backup.json", data)
@@ -130,12 +130,13 @@ func (m *SettingsModel) confirmBackupExport(selected int) {
 		m.backupExportPath = ""
 		m.backupExportResult = ""
 		m.backupExportError = "Save failed: " + err.Error()
-		return
+		return nil
 	}
 	m.backupExportStage = backupExportStageResult
 	m.backupExportError = ""
 	m.backupExportResult = "✓ Backup saved"
 	m.backupExportPath = path
+	return nil
 }
 
 func (m *SettingsModel) closeBackupExport() {

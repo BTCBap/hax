@@ -101,6 +101,10 @@ func (m FeesModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
+	case ThemeChangedMsg:
+		m.spinner = styles.NewStandardSpinner()
+		return m, nil
+
 	case FeesMsg:
 		m.refreshing = false
 		if msg.Err != nil {
