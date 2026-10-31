@@ -578,56 +578,115 @@ func flowAggregateValues(items []TxFlowItem) (api.Satoshi, bool, int) {
 	return value, unknown == 0, unknown
 }
 
-// flowAllocate divides a row budget between entries. Every entry keeps one
-// row; the rest follows the known values. Unknown and aggregate entries
-// stay at one row so they read as a hairline rather than a false
-// proportion. When the minimums exceed the budget the excess is taken from
-// the largest entries.
+// flowSub is the number of sub-pixel rows in one text row. The band canvas
+// resolves ribbons at this vertical resolution and cells() packs a text row
+// back into one of the eighth-block glyphs.
+const flowSub = 8
+
+// flowMinRibbon is the thinnest ribbon, in sub-pixels.
+const flowMinRibbon = flowSub / 4
+
+// flowAllocate divides a sub-pixel budget between entries. Every entry keeps
+// the minimum; the rest follows the square root of the known values, which
+// keeps small flows visible. Unknown and aggregate entries stay at the
+// minimum so they read as a hairline rather than a false proportion. No
+// ribbon may take more than 45% of the budget when there is another weighted
+// entry to share with.
 func flowAllocate(entries []flowEntry, budget int) []int {
 	n := len(entries)
 	if n == 0 {
 		return nil
 	}
-	if budget < n {
-		budget = n
+	if budget < n*flowMinRibbon {
+		budget = n * flowMinRibbon
 	}
 	heights := make([]int, n)
 	for i := range heights {
-		heights[i] = 1
+		heights[i] = flowMinRibbon
 	}
-	extra := budget - n
-	if extra <= 0 {
-		return heights
-	}
+
+	weighted := make([]int, 0, n)
 	weightSum := 0.0
-	for _, entry := range entries {
-		if entry.aggregate() || !entry.known || entry.value <= 0 {
-			continue
-		}
-		weightSum += float64(entry.value)
-	}
-	if weightSum <= 0 {
-		return heights
-	}
-	shares := make([]float64, n)
-	allocated := 0
+	weights := make([]float64, n)
 	for i, entry := range entries {
 		if entry.aggregate() || !entry.known || entry.value <= 0 {
 			continue
 		}
-		share := float64(entry.value) / weightSum * float64(extra)
-		add := int(math.Floor(share))
-		heights[i] += add
-		shares[i] = share - float64(add)
-		allocated += add
+		weights[i] = math.Sqrt(float64(entry.value))
+		weightSum += weights[i]
+		weighted = append(weighted, i)
 	}
-	for leftover := extra - allocated; leftover > 0; leftover-- {
+	if len(weighted) == 0 || weightSum <= 0 {
+		return heights
+	}
+	extra := budget - n*flowMinRibbon
+	if extra <= 0 {
+		return heights
+	}
+
+	shares := make([]float64, n)
+	for _, i := range weighted {
+		shares[i] = float64(flowMinRibbon) + float64(extra)*weights[i]/weightSum
+	}
+
+	capShare := 0.0
+	if len(weighted) >= 2 {
+		capShare = 0.45 * float64(budget)
+		if capShare < float64(flowMinRibbon) {
+			capShare = float64(flowMinRibbon)
+		}
+		capped := make([]bool, n)
+		for {
+			excess := 0.0
+			changed := false
+			for _, i := range weighted {
+				if capped[i] || shares[i] <= capShare {
+					continue
+				}
+				excess += shares[i] - capShare
+				shares[i] = capShare
+				capped[i] = true
+				changed = true
+			}
+			if !changed {
+				break
+			}
+			uncappedWeight := 0.0
+			for _, i := range weighted {
+				if !capped[i] {
+					uncappedWeight += weights[i]
+				}
+			}
+			if uncappedWeight <= 0 {
+				break
+			}
+			for _, i := range weighted {
+				if !capped[i] {
+					shares[i] += excess * weights[i] / uncappedWeight
+				}
+			}
+		}
+	}
+
+	total := 0
+	fracs := make([]float64, n)
+	for i := range heights {
+		whole := int(math.Floor(shares[i]))
+		if whole < flowMinRibbon {
+			whole = flowMinRibbon
+		}
+		heights[i] = whole
+		fracs[i] = shares[i] - float64(whole)
+		total += whole
+	}
+	for leftover := budget - total; leftover > 0; leftover-- {
 		best := -1
-		for i, entry := range entries {
-			if entry.aggregate() || !entry.known || entry.value <= 0 {
+		for _, i := range weighted {
+			if len(weighted) >= 2 && float64(heights[i]+1) > capShare {
 				continue
 			}
-			if best < 0 || shares[i] > shares[best] {
+			if best < 0 || fracs[i] > fracs[best] ||
+				(fracs[i] == fracs[best] && heights[i] > heights[best]) {
 				best = i
 			}
 		}
@@ -635,14 +694,14 @@ func flowAllocate(entries []flowEntry, budget int) []int {
 			break
 		}
 		heights[best]++
-		shares[best]--
+		fracs[best]--
 	}
 	// A proportional pass can only overshoot after clamping a minimum, but
 	// guard the invariant the renderer relies on.
 	for total := flowHeightsTotal(heights); total > budget; total-- {
 		best := -1
 		for i := range heights {
-			if heights[i] <= 1 {
+			if heights[i] <= flowMinRibbon {
 				continue
 			}
 			if best < 0 || heights[i] > heights[best] {
@@ -690,9 +749,9 @@ func (l flowSideLayout) edgeThickness(i int) int {
 // needed to stay inside the entry's slot.
 func (l flowSideLayout) edgeCenter(i int) float64 {
 	thickness := float64(l.edges[i])
-	slotTop := float64(2 * l.tops[i])
-	slotBottom := float64(2 * (l.tops[i] + l.heights[i]))
-	center := float64(2*l.entries[i].row + 1)
+	slotTop := float64(flowSub * l.tops[i])
+	slotBottom := float64(flowSub * (l.tops[i] + l.heights[i]))
+	center := float64(flowSub*l.entries[i].row + flowSub/2)
 	if center-thickness/2 < slotTop {
 		center = slotTop + thickness/2
 	}
@@ -702,19 +761,19 @@ func (l flowSideLayout) edgeCenter(i int) float64 {
 	return center
 }
 
-// flowTrunkPixels is the shared half-block budget for the trunk body:
-// about a third of the diagram height, at least one pixel per entry and
-// capped so a margin always remains above and below.
+// flowTrunkPixels is the shared sub-pixel budget for the trunk body:
+// about 28% of the diagram height, at least flowSub/4 per entry and capped
+// so a margin always remains above and below.
 func flowTrunkPixels(inCount, outCount, rows int) int {
 	if rows <= 0 {
 		return 0
 	}
-	minimum := max(inCount, outCount)
-	maximum := 2*rows - 2
+	minimum := max(inCount, outCount) * flowMinRibbon
+	maximum := flowSub*rows - flowSub
 	if maximum < minimum {
 		maximum = minimum
 	}
-	budget := int(math.Round(0.36 * float64(2*rows)))
+	budget := int(math.Round(0.28 * float64(flowSub*rows)))
 	if budget < minimum {
 		budget = minimum
 	}
@@ -725,7 +784,7 @@ func flowTrunkPixels(inCount, outCount, rows int) int {
 }
 
 // flowLayoutSide sizes the labels for one side and spreads them over the
-// diagram. Each entry claims max(1, ceil(slice/2)) rows; leftover rows
+// diagram. Each entry claims max(1, ceil(slice/flowSub)) rows; leftover rows
 // become equal gaps (at most four) with any remainder split as top and
 // bottom margin. That fans the ribbons over most of the height.
 func flowLayoutSide(entries []flowEntry, rows, trunkPx int) flowSideLayout {
@@ -738,7 +797,7 @@ func flowLayoutSide(entries []flowEntry, rows, trunkPx int) flowSideLayout {
 	layout.heights = make([]int, n)
 	total := 0
 	for i, px := range layout.slices {
-		height := (px + 1) / 2
+		height := (px + flowSub - 1) / flowSub
 		if height < 1 {
 			height = 1
 		}
@@ -784,7 +843,7 @@ func flowLayoutSide(entries []flowEntry, rows, trunkPx int) flowSideLayout {
 		layout.tops[i] = top
 		entries[i].row = top + (layout.heights[i]-1)/2
 		edge := layout.slices[i]
-		if limit := 2 * layout.heights[i]; edge > limit {
+		if limit := flowSub * layout.heights[i]; edge > limit {
 			edge = limit
 		}
 		// Touching bands lose one pixel so a hairline of background keeps
@@ -1170,8 +1229,12 @@ func (c *flowCanvas) lines() []string {
 	return out
 }
 
+// flowBandPixel is one optional sub-pixel colour. hasTop and hasBottom are
+// occupancy aliases kept for callers written against the half-block canvas;
+// set is the authoritative flag.
 type flowBandPixel struct {
-	top, bottom       color.Color
+	col               color.Color
+	set               bool
 	hasTop, hasBottom bool
 }
 
@@ -1189,13 +1252,11 @@ func (c *flowPixelCanvas) set(x, y int, col color.Color) {
 	if x < 0 || x >= c.w || y < 0 || y >= c.h {
 		return
 	}
-	pixel := &c.pixels[y*c.w+x]
-	if y%2 == 0 {
-		pixel.top = col
-		pixel.hasTop = true
-	} else {
-		pixel.bottom = col
-		pixel.hasBottom = true
+	c.pixels[y*c.w+x] = flowBandPixel{
+		col:       col,
+		set:       true,
+		hasTop:    true,
+		hasBottom: true,
 	}
 }
 
@@ -1210,24 +1271,171 @@ func flowGlyphSGR(fg color.Color, hasFG bool, bg color.Color, hasBG bool) string
 	return sgrPrefix(style)
 }
 
-// cells converts pixels to half blocks. Empty cells stay plain spaces so
-// the terminal background shows through and no background SGR is emitted.
-func (c *flowPixelCanvas) cells() *flowCanvas {
-	cells := newFlowCanvas(c.w, c.h/2)
-	for row := 0; row < c.h/2; row++ {
-		for x := 0; x < c.w; x++ {
-			top := c.pixels[(2*row)*c.w+x]
-			bottom := c.pixels[(2*row+1)*c.w+x]
-			switch {
-			case top.hasTop && bottom.hasBottom && top.top != bottom.bottom:
-				cells.put(x, row, "▀", flowGlyphSGR(top.top, true, bottom.bottom, true))
-			case top.hasTop && bottom.hasBottom:
-				cells.put(x, row, "█", flowGlyphSGR(top.top, true, nil, false))
-			case top.hasTop:
-				cells.put(x, row, "▀", flowGlyphSGR(top.top, true, nil, false))
-			case bottom.hasBottom:
-				cells.put(x, row, "▄", flowGlyphSGR(bottom.bottom, true, nil, false))
+// flowEighthGlyph is the lower-eighth block for k filled eighths.
+func flowEighthGlyph(k int) string {
+	glyphs := []rune("▁▂▃▄▅▆▇")
+	if k < 1 {
+		k = 1
+	}
+	if k > len(glyphs) {
+		k = len(glyphs)
+	}
+	return string(glyphs[k-1])
+}
+
+// flowHalfChoice is one candidate colour for half a text row; set false
+// means the terminal background shows through.
+type flowHalfChoice struct {
+	col color.Color
+	set bool
+}
+
+// flowBestHalves returns every colour (or empty) that covers the most
+// sub-pixels in subs[from:to], plus the mismatch of choosing one of them.
+func flowBestHalves(subs []flowBandPixel, from, to int) ([]flowHalfChoice, int) {
+	type count struct {
+		col color.Color
+		n   int
+	}
+	empty := 0
+	counts := make([]count, 0, to-from)
+	for i := from; i < to; i++ {
+		if !subs[i].set {
+			empty++
+			continue
+		}
+		found := false
+		for j := range counts {
+			if counts[j].col == subs[i].col {
+				counts[j].n++
+				found = true
+				break
 			}
+		}
+		if !found {
+			counts = append(counts, count{col: subs[i].col, n: 1})
+		}
+	}
+	best := empty
+	for _, c := range counts {
+		if c.n > best {
+			best = c.n
+		}
+	}
+	options := make([]flowHalfChoice, 0, len(counts)+1)
+	if empty == best {
+		options = append(options, flowHalfChoice{})
+	}
+	for _, c := range counts {
+		if c.n == best {
+			options = append(options, flowHalfChoice{col: c.col, set: true})
+		}
+	}
+	return options, (to - from) - best
+}
+
+func flowChoiceDistinct(upper, lower flowHalfChoice) int {
+	switch {
+	case upper.set && lower.set && upper.col != lower.col:
+		return 2
+	case upper.set || lower.set:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// flowSubCellStyle renders one text row's flowSub sub-pixels as the closest
+// eighth-block glyph. Empty parts never get an explicit background: a
+// coloured upper part with an empty lower part uses reverse video instead so
+// the terminal background shows in the gap.
+func flowSubCellStyle(upper color.Color, hasUpper bool, lower color.Color, hasLower bool, k int) (string, string) {
+	switch {
+	case !hasUpper && !hasLower:
+		return " ", ""
+	case !hasUpper:
+		if k >= flowSub {
+			return "█", flowGlyphSGR(lower, true, nil, false)
+		}
+		return flowEighthGlyph(k), flowGlyphSGR(lower, true, nil, false)
+	case !hasLower:
+		switch k {
+		case 0:
+			return "█", flowGlyphSGR(upper, true, nil, false)
+		case flowSub / 2:
+			return "▀", flowGlyphSGR(upper, true, nil, false)
+		case flowSub - 1:
+			return "▔", flowGlyphSGR(upper, true, nil, false)
+		}
+		style := lipgloss.NewStyle().Foreground(upper).Reverse(true)
+		return flowEighthGlyph(k), sgrPrefix(style)
+	case upper == lower:
+		return "█", flowGlyphSGR(upper, true, nil, false)
+	default:
+		return flowEighthGlyph(k), flowGlyphSGR(lower, true, upper, true)
+	}
+}
+
+// cells converts sub-pixels to text rows. Each text row takes its flowSub
+// sub-pixels and picks the upper/lower colours and split that mismatch the
+// fewest of them. Empty cells stay plain spaces so the terminal background
+// shows through and no background SGR is emitted.
+func (c *flowPixelCanvas) cells() *flowCanvas {
+	rows := (c.h + flowSub - 1) / flowSub
+	cells := newFlowCanvas(c.w, rows)
+	subs := make([]flowBandPixel, flowSub)
+	for row := 0; row < rows; row++ {
+		for x := 0; x < c.w; x++ {
+			filled := 0
+			for k := 0; k < flowSub; k++ {
+				y := row*flowSub + k
+				if y < c.h {
+					subs[k] = c.pixels[y*c.w+x]
+				} else {
+					subs[k] = flowBandPixel{}
+				}
+				if subs[k].set {
+					filled++
+				}
+			}
+			if filled == 0 {
+				continue
+			}
+			same := true
+			for k := 1; k < flowSub; k++ {
+				if !subs[k].set || subs[k].col != subs[0].col {
+					same = false
+					break
+				}
+			}
+			if same {
+				cells.put(x, row, "█", flowGlyphSGR(subs[0].col, true, nil, false))
+				continue
+			}
+
+			bestMismatch := flowSub + 1
+			bestDistinct := 3
+			bestK := 0
+			var bestUpper, bestLower flowHalfChoice
+			for k := 0; k <= flowSub; k++ {
+				upperOptions, upperMiss := flowBestHalves(subs, 0, flowSub-k)
+				lowerOptions, lowerMiss := flowBestHalves(subs, flowSub-k, flowSub)
+				mismatch := upperMiss + lowerMiss
+				for _, upper := range upperOptions {
+					for _, lower := range lowerOptions {
+						distinct := flowChoiceDistinct(upper, lower)
+						if mismatch < bestMismatch ||
+							(mismatch == bestMismatch && distinct < bestDistinct) {
+							bestMismatch = mismatch
+							bestDistinct = distinct
+							bestK = k
+							bestUpper, bestLower = upper, lower
+						}
+					}
+				}
+			}
+			glyph, sgr := flowSubCellStyle(bestUpper.col, bestUpper.set, bestLower.col, bestLower.set, bestK)
+			cells.put(x, row, glyph, sgr)
 		}
 	}
 	return cells
@@ -1264,7 +1472,9 @@ func flowDrawBand(c *flowPixelCanvas, x0, x1 int, startCenter, startThick, endCe
 	minTop := math.Min(startTop, endTop)
 	maxBottom := math.Max(startBottom, endBottom)
 	for x := x0; x <= x1; x++ {
-		if dashed && (x-x0)%2 != 0 {
+		// Dashes read better at sub-pixel resolution as pairs: draw two
+		// columns, skip one.
+		if dashed && (x-x0)%3 == 2 {
 			continue
 		}
 		leftTop, leftBottom := edgeAt(float64(x) - 0.5)
@@ -1272,7 +1482,7 @@ func flowDrawBand(c *flowPixelCanvas, x0, x1 int, startCenter, startThick, endCe
 		top := math.Max(minTop, math.Min(leftTop, rightTop))
 		bottom := math.Min(maxBottom, math.Max(leftBottom, rightBottom))
 		first := int(math.Ceil(top - 0.5))
-		last := int(math.Ceil(bottom-0.5)) - 1
+		last := int(math.Floor(bottom - 0.5))
 		if last < first {
 			last = first
 		}
@@ -1330,7 +1540,7 @@ func flowTrunkSlices(layout flowSideLayout, rows int) []flowTrunkSlice {
 		slices[i].thickness = layout.edgeThickness(i)
 		total += slices[i].thickness
 	}
-	top := rows - total/2
+	top := rows*flowSub/2 - total/2
 	if top < 0 {
 		top = 0
 	}
@@ -1359,7 +1569,7 @@ func flowBandCanvasLines(v TxFlowView, in, out flowSideLayout, canvasW, rows int
 		trunkMid = trunkLeft + 1
 	}
 
-	pixels := newFlowPixelCanvas(canvasW, rows*2)
+	pixels := newFlowPixelCanvas(canvasW, rows*flowSub)
 	inSlices := flowTrunkSlices(in, rows)
 	outSlices := flowTrunkSlices(out, rows)
 
@@ -1403,7 +1613,7 @@ func flowBandCanvasLines(v TxFlowView, in, out flowSideLayout, canvasW, rows int
 	drawTrunkHalf(out, outSlices, trunkMid, trunkRight, FlowOutput)
 
 	cells := pixels.cells()
-	topPx, bottomPx := rows*2, -1
+	topPx, bottomPx := rows*flowSub, -1
 	for _, stack := range [][]flowTrunkSlice{inSlices, outSlices} {
 		for _, slice := range stack {
 			if slice.thickness <= 0 {
@@ -1418,9 +1628,10 @@ func flowBandCanvasLines(v TxFlowView, in, out flowSideLayout, canvasW, rows int
 		}
 	}
 	if bottomPx < topPx {
-		topPx, bottomPx = rows, rows-1
+		// No ribbons: keep the caption on the middle rows.
+		topPx, bottomPx = rows*flowSub/2, rows*flowSub/2-1
 	}
-	cells.placeCaption(flowCaptionCandidates(v), topPx/2, bottomPx/2)
+	cells.placeCaption(flowCaptionCandidates(v), topPx/flowSub, bottomPx/flowSub)
 	return cells.lines()
 }
 
