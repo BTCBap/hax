@@ -50,12 +50,10 @@ var docsScreens = map[string]bool{"txflow": true, "verify": true, "psbt_inspect"
 // panel in the README image.
 const docsPSBTInspectHeight = 48
 
-// docsTxFlowHeight is the smallest terminal height at which the batch send
-// keeps the spacer rows between all four rows on each side: the send header
-// takes five rows and the flow needs seven diagram rows (2*4-1) plus its own
-// header, detail block, and hint. Smaller heights drop the gaps and the bus
-// reads as a boxed ladder in the README image.
-const docsTxFlowHeight = 20
+// docsTxFlowHeight gives the README image enough diagram rows for the
+// sub-cell ribbons to curve gently between four outputs and two inputs. At 20
+// rows the curves are too steep and read as staircases.
+const docsTxFlowHeight = 28
 
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("HAX_SCREENSHOT_DIR")
