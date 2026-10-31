@@ -603,33 +603,45 @@ func (m *SendModel) handleFeeSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *SendModel) handleFileInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		// Execute the file operation
+		path := strings.TrimSpace(m.psbtFileInput.Value())
+		if path == "" {
+			if m.fileInputMode != "export" {
+				// Import needs a real path; the default is a new save name.
+				return m, nil
+			}
+			path = getDefaultPSBTPath()
+		}
+		m.loading = true
+		if m.fileInputMode == "export" {
+			return m, m.savePSBTToFile(path)
+		} else {
+			return m, m.loadPSBTFromFile(path)
+		}
+	case "esc":
+		// Cancel file input
+		m.showFileInput = false
+		m.psbtFileInput.SetValue("")
+		if m.fileInputFromBrowser {
+			m.showFileBrowser = true
+		}
+		m.fileInputFromBrowser = false
+		return m, nil
+	default:
+		// Pass to text input
+		var cmd tea.Cmd
+		m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
+		return m, cmd
+	}
+}
+
 func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle file path input mode (for save/load PSBT)
 	if m.showFileInput {
-		switch msg.String() {
-		case "enter":
-			// Execute the file operation
-			path := m.psbtFileInput.Value()
-			if path == "" {
-				path = getDefaultPSBTPath()
-			}
-			m.loading = true
-			if m.fileInputMode == "export" {
-				return m, m.savePSBTToFile(path)
-			} else {
-				return m, m.loadPSBTFromFile(path)
-			}
-		case "esc":
-			// Cancel file input
-			m.showFileInput = false
-			m.psbtFileInput.SetValue("")
-			return m, nil
-		default:
-			// Pass to text input
-			var cmd tea.Cmd
-			m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
-			return m, cmd
-		}
+		return m.handleFileInputKey(msg)
 	}
 
 	// Handle HWI device selection
@@ -795,6 +807,7 @@ func (m *SendModel) handleReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.showFileInput = true
+			m.fileInputFromBrowser = false
 			m.fileInputMode = "export"
 			m.psbtFileInput.SetValue(getDefaultPSBTPath())
 			m.psbtFileInput.Focus()

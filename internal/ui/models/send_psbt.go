@@ -381,6 +381,7 @@ func (m *SendModel) handleFileBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// No files available, show manual input
 		m.showFileBrowser = false
 		m.showFileInput = true
+		m.fileInputFromBrowser = true
 		m.fileInputMode = "import"
 		m.psbtFileInput.SetValue("")
 		m.psbtFileInput.Focus()
@@ -390,6 +391,7 @@ func (m *SendModel) handleFileBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Manual path entry
 		m.showFileBrowser = false
 		m.showFileInput = true
+		m.fileInputFromBrowser = true
 		m.fileInputMode = "import"
 		m.psbtFileInput.SetValue("")
 		m.psbtFileInput.Focus()

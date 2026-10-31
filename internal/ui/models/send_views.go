@@ -24,6 +24,10 @@ func (m SendModel) View() string {
 		return m.viewFileBrowser()
 	}
 
+	if m.showFileInput {
+		return m.viewFileInput()
+	}
+
 	if m.showQRDisplay {
 		return m.viewQRDisplay()
 	}
