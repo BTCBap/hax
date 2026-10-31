@@ -16,7 +16,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/exp/teatest/v2 v2.0.0-20261028143050-ac49f62f807e
 	github.com/lucasb-eyer/go-colorful v1.4.1
-	github.com/muesli/reflow v0.3.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tyler-smith/go-bip39 v1.1.0
 	golang.org/x/crypto v0.58.0
