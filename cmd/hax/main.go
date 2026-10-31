@@ -21,6 +21,17 @@ import (
 )
 
 func main() {
+	code := run()
+	if code != 0 {
+		// On Windows, keep an Explorer-launched console open so the error
+		// stays visible. On other platforms this does nothing.
+		pauseOnError()
+	}
+	os.Exit(code)
+}
+
+// run owns the program body so main can decide what to do after an error.
+func run() (code int) {
 	var walletDir string
 	var walletManager *wallet.WalletManager
 	// A panic must restore the terminal and must not leave a stack trace
@@ -36,30 +47,30 @@ func main() {
 			// Leave the alternate screen and show the cursor again.
 			_, _ = fmt.Fprint(os.Stderr, "\x1b[?1049l\x1b[?25h")
 			_, _ = fmt.Fprintln(os.Stderr, "hax: unexpected error; the wallet was locked and closed.")
-			os.Exit(70)
+			code = 70
 		}
 	}()
 
-	if done, code := handleArgs(os.Args[1:], os.Stdout, os.Stderr); done {
-		os.Exit(code)
+	if done, exitCode := handleArgs(os.Args[1:], os.Stdout, os.Stderr); done {
+		return exitCode
 	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Printf("Error getting home directory: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	walletDir, err = resolveWalletDir(homeDir)
 	if err != nil {
 		fmt.Printf("Error preparing wallet directory: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if len(os.Getenv("DEBUG")) > 0 {
 		f, err := setupDebugLog(walletDir)
 		if err != nil {
 			fmt.Println("fatal:", err)
-			os.Exit(1)
+			return 1
 		}
 		defer func() { _ = f.Close() }()
 	} else {
@@ -69,7 +80,7 @@ func main() {
 	configManager, err := config.NewConfigManager(walletDir)
 	if err != nil {
 		fmt.Printf("Error creating config manager: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Trust-on-first-use pinning for Electrum TLS servers.
@@ -88,7 +99,7 @@ func main() {
 	walletManager, err = wallet.NewWalletManager(walletDir, b)
 	if err != nil {
 		fmt.Printf("Error creating wallet manager: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer walletManager.LockWallet()
 
@@ -116,8 +127,10 @@ func main() {
 
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 // maxDebugLogSize caps debug.log; older content is rotated to debug.log.1.
