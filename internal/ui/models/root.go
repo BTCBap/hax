@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
 	"github.com/BTCBap/hax/internal/logsafe"
 	"github.com/BTCBap/hax/internal/ui/alert"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 var debugEnabled = len(os.Getenv("DEBUG")) > 0
@@ -73,6 +73,18 @@ type StealthToggledMsg struct {
 	On bool
 }
 
+// ThemeChangedMsg tells screens that the palette changed, so models that cache
+// styles at construction can rebuild them.
+type ThemeChangedMsg struct{}
+
+// screenModel is the interface each child screen implements. Its View still
+// returns a plain string; RootModel wraps that content in a tea.View.
+type screenModel interface {
+	Init() tea.Cmd
+	Update(tea.Msg) (screenModel, tea.Cmd)
+	View() string
+}
+
 // textInputCapturer reports whether a screen is reading raw text input. Root
 // global single-letter shortcuts must not intercept keys on those screens.
 type textInputCapturer interface {
@@ -85,19 +97,19 @@ type RootModel struct {
 	width  int
 	height int
 
-	splashModel             tea.Model
-	connectionSetupModel    tea.Model
-	walletSetupModel        tea.Model
-	unlockModel             tea.Model
-	mainDashboardModel      tea.Model
-	receiveModel            tea.Model
-	sendModel               tea.Model
-	transactionHistoryModel tea.Model
-	addressesModel          tea.Model
-	utxosModel              tea.Model
-	feesModel               tea.Model
-	settingsModel           tea.Model
-	helpModel               tea.Model
+	splashModel             screenModel
+	connectionSetupModel    screenModel
+	walletSetupModel        screenModel
+	unlockModel             screenModel
+	mainDashboardModel      screenModel
+	receiveModel            screenModel
+	sendModel               screenModel
+	transactionHistoryModel screenModel
+	addressesModel          screenModel
+	utxosModel              screenModel
+	feesModel               screenModel
+	settingsModel           screenModel
+	helpModel               screenModel
 
 	alertModel alert.AlertModel
 
@@ -204,23 +216,9 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 		}
 	}
 
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeNewTx,
-		ForeColor: "#B5EAD7",
-		Prefix:    "⚡",
-	})
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeNewBlock,
-		ForeColor: "#87CEEB",
-		Prefix:    "🧱",
-	})
-	alertModel.RegisterNewAlertType(alert.AlertDefinition{
-		Key:       AlertTypeError,
-		ForeColor: "#FFB3BA",
-		Prefix:    "⚠",
-	})
+	registerAlertTypes(alertModel)
 
-	vp := viewport.New(0, 0)
+	vp := viewport.New()
 	vp.MouseWheelEnabled = true
 	vp.MouseWheelDelta = 1
 	vp.KeyMap.PageDown = key.NewBinding(key.WithKeys("pgdown"))
@@ -243,6 +241,26 @@ func NewRootModel(walletManager WalletService, configManager *config.ConfigManag
 	}
 }
 
+// registerAlertTypes points root's notification types at the current palette.
+// It runs again when the terminal background changes.
+func registerAlertTypes(alertModel *alert.AlertModel) {
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeNewTx,
+		ForeColor: styles.Hex(styles.AlertNewTx),
+		Prefix:    "⚡",
+	})
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeNewBlock,
+		ForeColor: styles.Hex(styles.AlertNewBlock),
+		Prefix:    "🧱",
+	})
+	alertModel.RegisterNewAlertType(alert.AlertDefinition{
+		Key:       AlertTypeError,
+		ForeColor: styles.Hex(styles.AlertTxError),
+		Prefix:    "⚠",
+	})
+}
+
 // Init initializes the root model
 func (m RootModel) Init() tea.Cmd {
 	var cmds []tea.Cmd
@@ -253,6 +271,8 @@ func (m RootModel) Init() tea.Cmd {
 		cmds = append(cmds, m.splashModel.Init())
 	}
 	cmds = append(cmds, scheduleIdleCheck())
+	// Keep the dark palette when the terminal does not answer.
+	cmds = append(cmds, tea.RequestBackgroundColor)
 
 	return tea.Batch(cmds...)
 }
@@ -263,7 +283,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg.(type) {
-	case tea.KeyMsg, tea.MouseMsg:
+	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseMsg:
 		m.lastActivity = time.Now()
 	}
 
@@ -275,7 +295,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, scheduleIdleCheck()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		m.suppressWheelActive = true
 		m.suppressWheelMaxUntil = time.Now().Add(wheelSuppressMaxWindow)
 		m.suppressWheelToken++
@@ -300,8 +320,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.contentViewport.Width = msg.Width
-		m.contentViewport.Height = msg.Height
+		m.contentViewport.SetWidth(msg.Width)
+		m.contentViewport.SetHeight(msg.Height)
+	case tea.BackgroundColorMsg:
+		styles.SetDarkBackground(msg.IsDark())
+		cmds = append(cmds, m.refreshTheme())
 	case BackendChosenMsg:
 		return m, m.applySavedBackend(msg.Then)
 	case ChooseServerMsg:
@@ -443,7 +466,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			activeModel := m.getActiveModel()
 			if activeModel != nil {
 				var activeCmd tea.Cmd
-				var updated tea.Model
+				var updated screenModel
 				updated, activeCmd = activeModel.Update(ScreenActiveMsg{})
 				m.setActiveModel(msg.Target, updated)
 				if activeCmd != nil {
@@ -652,7 +675,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Route messages to active sub-model
 	if activeModel := m.getActiveModel(); activeModel != nil {
-		var updated tea.Model
+		var updated screenModel
 		updated, cmd = activeModel.Update(msg)
 		m.setActiveModel(m.state, updated)
 		cmds = append(cmds, cmd)
@@ -670,7 +693,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Forward PgUp/PgDn to viewport for keyboard scrolling
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		if (keyMsg.String() == "pgup" || keyMsg.String() == "pgdown") && m.usesRootViewport() {
 			if m.contentViewport.TotalLineCount() > m.height {
 				m.contentViewport, cmd = m.contentViewport.Update(msg)
@@ -684,7 +707,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // modelCapturesTextInput reports whether the given screen is currently
 // reading text input.
-func modelCapturesTextInput(model tea.Model) bool {
+func modelCapturesTextInput(model screenModel) bool {
 	if c, ok := model.(textInputCapturer); ok {
 		return c.CapturesTextInput()
 	}
@@ -692,7 +715,7 @@ func modelCapturesTextInput(model tea.Model) bool {
 }
 
 // applyStealth forwards the current stealth state to a newly created screen.
-func applyStealth(model tea.Model, on bool) tea.Model {
+func applyStealth(model screenModel, on bool) screenModel {
 	if model == nil {
 		return nil
 	}
@@ -705,7 +728,7 @@ func applyStealth(model tea.Model, on bool) tea.Model {
 func (m *RootModel) broadcastStealth() tea.Cmd {
 	msg := StealthToggledMsg{On: m.stealth}
 	var cmds []tea.Cmd
-	update := func(model *tea.Model) {
+	update := func(model *screenModel) {
 		if *model == nil {
 			return
 		}
@@ -721,6 +744,38 @@ func (m *RootModel) broadcastStealth() tea.Cmd {
 	update(&m.transactionHistoryModel)
 	update(&m.addressesModel)
 	update(&m.utxosModel)
+	return tea.Batch(cmds...)
+}
+
+// refreshTheme rebuilds styles cached at construction time in every live
+// screen. Screens that read styles in View need no other work.
+func (m *RootModel) refreshTheme() tea.Cmd {
+	registerAlertTypes(&m.alertModel)
+	msg := ThemeChangedMsg{}
+	var cmds []tea.Cmd
+	update := func(model *screenModel) {
+		if *model == nil {
+			return
+		}
+		updated, cmd := (*model).Update(msg)
+		*model = updated
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	update(&m.splashModel)
+	update(&m.connectionSetupModel)
+	update(&m.walletSetupModel)
+	update(&m.unlockModel)
+	update(&m.mainDashboardModel)
+	update(&m.receiveModel)
+	update(&m.sendModel)
+	update(&m.transactionHistoryModel)
+	update(&m.addressesModel)
+	update(&m.utxosModel)
+	update(&m.feesModel)
+	update(&m.settingsModel)
+	update(&m.helpModel)
 	return tea.Batch(cmds...)
 }
 
@@ -741,7 +796,7 @@ func persistStealth(configManager *config.ConfigManager, on bool) tea.Cmd {
 }
 
 // getActiveModel returns the currently active model
-func (m RootModel) getActiveModel() tea.Model {
+func (m RootModel) getActiveModel() screenModel {
 	switch m.state {
 	case StateSplash:
 		return m.splashModel
@@ -777,7 +832,7 @@ func (m RootModel) getActiveModel() tea.Model {
 // setActiveModel assigns a model back to the correct field for the given state.
 // This is the write counterpart to getActiveModel, needed because BubbleTea
 // uses value semantics (Update returns a new model that must be stored).
-func (m *RootModel) setActiveModel(state AppState, model tea.Model) {
+func (m *RootModel) setActiveModel(state AppState, model screenModel) {
 	switch state {
 	case StateSplash:
 		m.splashModel = model
@@ -808,8 +863,45 @@ func (m *RootModel) setActiveModel(state AppState, model tea.Model) {
 	}
 }
 
+// terminalProgress returns the native terminal progress bar for the active
+// screen. It is nil when the screen has no step-accurate percentage, and it
+// uses the error state when the setup flow reports a failure.
+func (m RootModel) terminalProgress() *tea.ProgressBar {
+	if m.state != StateWalletSetup {
+		return nil
+	}
+	var setup *WalletSetupModel
+	switch model := m.walletSetupModel.(type) {
+	case WalletSetupModel:
+		setup = &model
+	case *WalletSetupModel:
+		setup = model
+	default:
+		return nil
+	}
+	if setup == nil || !setup.showProgressBar() {
+		return nil
+	}
+	state := tea.ProgressBarDefault
+	if setup.err != nil {
+		state = tea.ProgressBarError
+	}
+	percent := int(setup.getStepProgress()*100 + 0.5)
+	return tea.NewProgressBar(state, percent)
+}
+
 // View renders the active screen
-func (m RootModel) View() string {
+func (m RootModel) View() tea.View {
+	content := m.renderContent()
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	v.ProgressBar = m.terminalProgress()
+	return v
+}
+
+// renderContent builds the active screen's text.
+func (m RootModel) renderContent() string {
 	stateNames := map[AppState]string{
 		StateSplash:             "Splash",
 		StateConnectionSetup:    "ConnectionSetup",
@@ -852,7 +944,7 @@ func (m RootModel) View() string {
 				scrollHint := styles.DimText.Render("  ↓ PgDn/scroll for more")
 				lines[len(lines)-1] = scrollHint
 			}
-			if m.contentViewport.YOffset > 0 {
+			if m.contentViewport.YOffset() > 0 {
 				scrollHint := styles.DimText.Render("  ↑ PgUp to scroll up")
 				lines[0] = scrollHint
 			}

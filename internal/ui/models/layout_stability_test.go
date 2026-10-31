@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
@@ -686,9 +684,11 @@ func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
 		{Type: "bitbox", Model: "BitBox02", Fingerprint: "12345678"},
 	}
 
+	// The picked device rows only fit unclipped inside the picker panel at the
+	// wide layout; at 80 columns the panel truncates their right edge instead.
 	t.Run("send", func(t *testing.T) {
 		m := newTestSend(t)
-		m.width, m.height = 80, 24
+		m.width, m.height = 110, 34
 		m.showPSBTExport = true
 		m.showHWIDevices = true
 		m.hwiDevices = devices
@@ -700,7 +700,7 @@ func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
 
 	t.Run("wallet setup", func(t *testing.T) {
 		m := NewWalletSetupModel(NewMockWalletManager(), nil)
-		m.width, m.height = 80, 24
+		m.width, m.height = 110, 34
 		m.step = StepHardwareWalletConnect
 		m.hwiDevices = devices
 		assertDeviceMenuStable(t, devices, "Found 4 device(s):", func(selected int) string {
@@ -711,7 +711,7 @@ func TestHardwareDeviceMenusLayoutStable(t *testing.T) {
 
 	t.Run("multisig import", func(t *testing.T) {
 		m := NewWalletSetupModel(NewMockWalletManager(), nil)
-		m.width, m.height = 80, 24
+		m.width, m.height = 110, 34
 		m.isMultisig = true
 		m.step = StepMultisigEnterCosigners
 		m.showHWIDevices = true
@@ -815,15 +815,11 @@ func assertDeviceMenuStable(t *testing.T, devices []wallet.HardwareDevice, listH
 					selected, i, strings.Join(lines, "\n"))
 			}
 		}
-		assertFits(t, view, 80)
+		assertFits(t, view, 110)
 	}
 }
 
 func TestHardwareDeviceMenuStatusStyles(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	defer lipgloss.SetColorProfile(previous)
-
 	longError := "Could not connect to device: the user did not confirm the request " +
 		"on the device screen before the transport closed unexpectedly"
 	devices := []wallet.HardwareDevice{

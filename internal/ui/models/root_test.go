@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
@@ -37,7 +37,7 @@ func TestNewRootModel_InitialState(t *testing.T) {
 
 func TestRootModel_CtrlC_Quits(t *testing.T) {
 	m := newTestRootModel(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("ctrl+c should return a command")
 	}
@@ -141,7 +141,7 @@ func TestRoot_ConnectionSetupFromSettingsUsesWalletNetwork(t *testing.T) {
 
 func TestRootModel_View_Splash(t *testing.T) {
 	m := newTestRootModel(t)
-	view := m.View()
+	view := m.View().Content
 	// Should render splash content (title text visible in the splash screen)
 	if !strings.Contains(view, "BITCOIN WALLET") {
 		t.Error("root view at splash state should contain 'BITCOIN WALLET'")
@@ -251,7 +251,7 @@ func TestRootModel_View_NoActiveModel(t *testing.T) {
 	m := newTestRootModel(t)
 	// Force a state with no initialized model
 	m.state = StateSettings // settingsModel is nil
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "No active model") {
 		t.Error("view with nil active model should show error message")
 	}
@@ -261,7 +261,7 @@ func TestRootModel_View_HelpScreen(t *testing.T) {
 	m := newTestRootModel(t)
 	model, _ := m.Update(NavigateMsg{Target: StateHelp})
 	updated := model.(RootModel)
-	view := updated.View()
+	view := updated.View().Content
 	if !strings.Contains(view, "GETTING STARTED") {
 		t.Error("root view at Help state should contain 'GETTING STARTED'")
 	}
@@ -311,5 +311,46 @@ func TestRootModel_Init_ReturnsCommands(t *testing.T) {
 	msgs := collectMsgs(cmd)
 	if len(msgs) == 0 {
 		t.Error("Init should produce messages")
+	}
+}
+
+func TestRootModel_TerminalProgressDuringSetup(t *testing.T) {
+	m := NewRootModel(NewMockWalletManager(), nil)
+	model, _ := m.Update(NavigateMsg{Target: StateWalletSetup})
+	r := model.(RootModel)
+
+	setup, ok := r.walletSetupModel.(WalletSetupModel)
+	if !ok {
+		t.Fatalf("wallet setup model has type %T", r.walletSetupModel)
+	}
+	setup.step = StepEnterPassword
+	setup.err = nil
+	r.walletSetupModel = setup
+
+	bar := r.View().ProgressBar
+	if bar == nil {
+		t.Fatal("expected a terminal progress bar during wallet setup")
+	}
+	if bar.State != tea.ProgressBarDefault {
+		t.Errorf("progress state = %v, want Default", bar.State)
+	}
+	if want := int(setup.getStepProgress()*100 + 0.5); bar.Value != want {
+		t.Errorf("progress value = %d, want %d", bar.Value, want)
+	}
+
+	setup.err = fmt.Errorf("setup failed")
+	r.walletSetupModel = setup
+	if bar := r.View().ProgressBar; bar == nil || bar.State != tea.ProgressBarError {
+		t.Errorf("progress on setup failure = %+v, want error state", bar)
+	}
+}
+
+func TestRootModel_TerminalProgressIdleOnDashboard(t *testing.T) {
+	m := NewRootModel(NewMockWalletManager(), nil)
+	model, _ := m.Update(NavigateMsg{Target: StateMainDashboard})
+	r := model.(RootModel)
+
+	if bar := r.View().ProgressBar; bar != nil {
+		t.Errorf("dashboard progress bar = %+v, want nil", bar)
 	}
 }

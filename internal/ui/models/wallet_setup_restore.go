@@ -3,9 +3,9 @@ package models
 import (
 	"fmt"
 
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Restore flow view functions

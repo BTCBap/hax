@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type ReceiveModel struct {
@@ -73,7 +73,7 @@ type HWIVerifyMsg struct {
 type CopiedTimerMsg time.Time
 
 func NewReceiveModel(walletManager WalletService) ReceiveModel {
-	vp := viewport.New(80, 20)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	return ReceiveModel{
 		walletManager:  walletManager,
@@ -172,7 +172,7 @@ func (m ReceiveModel) canVerifyOnDevice() bool {
 		m.selectedAddress != "" && m.derivationPath != ""
 }
 
-func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m ReceiveModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -191,8 +191,8 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - 10
+		m.viewport.SetWidth(msg.Width - 4)
+		m.viewport.SetHeight(msg.Height - 10)
 
 	case AddressGeneratedMsg:
 		m.generatingNew = false
@@ -283,7 +283,7 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.verify.Active() {
 			switch msg.String() {
 			case "esc":
@@ -329,11 +329,11 @@ func (m ReceiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "c":
 			if m.selectedAddress != "" {
-				err := copyToClipboard(m.selectedAddress)
-				if err == nil {
+				cmd, err := copyToClipboard(m.selectedAddress)
+				if err == nil || cmd != nil {
 					m.showCopied = true
 					m.copiedTime = time.Now()
-					cmds = append(cmds, m.animateTick())
+					cmds = append(cmds, m.animateTick(), cmd)
 				} else {
 					m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 				}

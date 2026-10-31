@@ -6,19 +6,19 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
-func historyRune(r rune) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+func historyRune(r rune) tea.KeyPressMsg {
+	return keyRune(r)
 }
 
-func historyKey(kind tea.KeyType) tea.KeyMsg {
-	return tea.KeyMsg{Type: kind}
+func historyKey(kind rune) tea.KeyPressMsg {
+	return keyCode(kind)
 }
 
 func speedUpTransactions() []api.Transaction {

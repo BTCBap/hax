@@ -199,13 +199,13 @@ func (m SendModel) renderInspection(boxWidth int) string {
 		rows = append(rows, renderRow("Speeds up:", shortTxIDUI(m.psbtResult.ChildOf)))
 	}
 
-	section := styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(rows, "\n"))
+	section := styles.InfoBoxStyle.Width(boxWidth + 2).Render(strings.Join(rows, "\n"))
 	if warnings := m.inspectionWarnings(); len(warnings) > 0 {
 		lines := []string{"⚠ Check before signing", ""}
 		for _, w := range warnings {
 			lines = append(lines, "• "+w)
 		}
-		section += "\n" + styles.WarningBoxStyle.Width(boxWidth).Render(strings.Join(lines, "\n"))
+		section += "\n" + styles.WarningBoxStyle.Width(boxWidth+2).Render(strings.Join(lines, "\n"))
 	}
 	return section
 }

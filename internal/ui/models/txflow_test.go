@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
+	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
 )
 
@@ -227,44 +227,53 @@ func TestTxFlow_RenderingFitsAndStaysStable(t *testing.T) {
 		{name: "3-in-2-out", inputs: 3, outputs: 2},
 		{name: "25-in-12-out", inputs: 25, outputs: 12},
 	}
+	sizes := []struct{ w, h int }{
+		{80, 24}, {110, 34}, {120, 40}, {160, 50},
+	}
 	for _, tc := range cases {
-		for _, width := range []int{60, 80, 120, 200} {
-			for _, height := range []int{12, 24, 40} {
-				t.Run(fmt.Sprintf("%s/%dx%d", tc.name, width, height), func(t *testing.T) {
-					v := TxFlowView{Flow: txFlowFixture(tc.inputs, tc.outputs), Width: width, Height: height}
-					for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
-						v.SwitchSide(side)
-						n := len(v.itemsFor(side))
-						for i := 0; i < n; i++ {
-							view := v.View()
-							lines := strings.Split(ansi.Strip(view), "\n")
-							if len(lines) != height {
-								t.Fatalf("%s cursor %d: %d lines, want %d", sideName(side), i, len(lines), height)
+		for _, size := range sizes {
+			t.Run(fmt.Sprintf("%s/%dx%d", tc.name, size.w, size.h), func(t *testing.T) {
+				v := TxFlowView{Flow: txFlowFixture(tc.inputs, tc.outputs), Width: size.w, Height: size.h}
+				for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
+					v.SwitchSide(side)
+					n := len(v.itemsFor(side))
+					for i := 0; i < n; i++ {
+						view := v.View()
+						lines := strings.Split(ansi.Strip(view), "\n")
+						if len(lines) != size.h {
+							t.Fatalf("%s cursor %d: %d lines, want %d", sideName(side), i, len(lines), size.h)
+						}
+						for lineNo, line := range lines {
+							if w := ansi.StringWidth(line); w > size.w {
+								t.Errorf("%s cursor %d line %d: %d cells, max %d: %q",
+									sideName(side), i, lineNo, w, size.w, line)
 							}
-							for lineNo, line := range lines {
-								if w := ansi.StringWidth(line); w > width {
-									t.Errorf("%s cursor %d line %d: %d cells, max %d: %q",
-										sideName(side), i, lineNo, w, width, line)
-								}
+						}
+						item := v.itemsFor(side)[i]
+						if item.Address != "" {
+							available := size.w - ansi.StringWidth("Address  ")
+							formatWidth := min(ansi.StringWidth(item.Address), available)
+							wantText := ansi.Strip(ui.FormatAddress(item.Address, formatWidth))
+							if !strings.Contains(ansi.Strip(view), wantText) {
+								t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, wantText)
 							}
-							item := v.itemsFor(side)[i]
-							if item.Address != "" {
-								available := width - ansi.StringWidth("Address  ")
-								formatWidth := min(ansi.StringWidth(item.Address), available)
-								wantText := ansi.Strip(ui.FormatAddress(item.Address, formatWidth))
-								if !strings.Contains(ansi.Strip(view), wantText) {
-									t.Errorf("%s cursor %d: detail does not show %q", sideName(side), i, wantText)
-								}
-								if ansi.StringWidth(item.Address) > available &&
-									!strings.Contains(ansi.Strip(view), "…") {
-									t.Errorf("%s cursor %d: long address is not truncated", sideName(side), i)
-								}
+							if ansi.StringWidth(item.Address) > available &&
+								!strings.Contains(ansi.Strip(view), "…") {
+								t.Errorf("%s cursor %d: long address is not truncated", sideName(side), i)
 							}
-							v.MoveDown()
+						}
+						v.MoveDown()
+					}
+					for _, off := range []int{0, 1, n / 2, n - 1} {
+						v.Offset[side.index()] = off
+						lines := strings.Split(ansi.Strip(v.View()), "\n")
+						if len(lines) != size.h {
+							t.Fatalf("%s offset %d: %d lines, want %d", sideName(side), off, len(lines), size.h)
 						}
 					}
-				})
-			}
+					v.Offset[side.index()] = 0
+				}
+			})
 		}
 	}
 }
@@ -290,7 +299,8 @@ func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 		t.Fatal("cursor stayed at the top after moving through 25 inputs")
 	}
 	plain = ansi.Strip(v.View())
-	wantLast := ansi.Strip(ui.FormatAddress(txFlowAddr(24), ansi.StringWidth(txFlowAddr(24))))
+	leftW, _, _ := flowColumnWidths(80)
+	wantLast := ansi.Strip(ui.FormatAddress(txFlowAddr(24), flowLabelAddressWidth(leftW, false)))
 	if !strings.Contains(plain, wantLast) {
 		t.Fatalf("last input is not visible after scrolling:\n%s", plain)
 	}
@@ -310,79 +320,6 @@ func TestTxFlow_ManyItemsScrollWithMoreRow(t *testing.T) {
 	}
 }
 
-func TestTxFlow_NoDanglingBusInPadding(t *testing.T) {
-	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
-	lines := strings.Split(ansi.Strip(v.View()), "\n")
-	const diagramStart = 2 // header plus blank row
-	const usedRows = 5     // three items with spacer rows
-	for i := diagramStart + usedRows; i < len(lines); i++ {
-		for _, glyph := range flowBusGlyphs {
-			if strings.ContainsRune(lines[i], glyph) {
-				t.Fatalf("dangling bus glyph %q on line %d: %q", glyph, i, lines[i])
-			}
-		}
-	}
-}
-
-var flowBusGlyphs = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┣', '┫', '┳', '┻', '╋'}
-
-func TestTxFlow_CentersShorterSideAndBusConnections(t *testing.T) {
-	const width, height = 80, 24
-	leftW, bandW, _ := flowColumnWidths(width)
-	busL, busR := flowBusColumns(leftW, bandW)
-
-	// 2 inputs and 3 outputs (including fee): the left bus connects only on
-	// diagram rows 1..3, centered around the core row 2.
-	v := TxFlowView{Flow: txFlowFixture(2, 2), Width: width, Height: height}
-	lines := strings.Split(ansi.Strip(v.View()), "\n")
-	diagramStart, diagramEnd := flowTestDiagram(lines)
-	if diagramEnd-diagramStart != 5 {
-		t.Fatalf("2-in/3-out diagram has %d rows, want 5", diagramEnd-diagramStart)
-	}
-	wantLeft := []rune{' ', '┓', '┣', '┛', ' '}
-	wantRight := []rune{'┏', '┃', '╋', '┃', '┗'}
-	for row, want := range wantLeft {
-		if got := flowTestRuneAt(lines[diagramStart+row], busL); got != want {
-			t.Errorf("left bus row %d = %q, want %q", row, got, want)
-		}
-	}
-	for row, want := range wantRight {
-		if got := flowTestRuneAt(lines[diagramStart+row], busR); got != want {
-			t.Errorf("right bus row %d = %q, want %q", row, got, want)
-		}
-	}
-
-	shapes := []struct {
-		name    string
-		inputs  int
-		outputs int
-	}{
-		{name: "1-in-1-out", inputs: 1, outputs: 0},
-		{name: "1-in-3-out", inputs: 1, outputs: 2},
-		{name: "3-in-1-out", inputs: 3, outputs: 0},
-		{name: "2-in-3-out", inputs: 2, outputs: 2},
-		{name: "5-in-2-out", inputs: 5, outputs: 1},
-		{name: "overflow-25-in-12-out", inputs: 25, outputs: 12},
-	}
-	for _, shape := range shapes {
-		for _, side := range []TxFlowSide{FlowInput, FlowOutput} {
-			t.Run(fmt.Sprintf("%s/%s", shape.name, sideName(side)), func(t *testing.T) {
-				v := TxFlowView{Flow: txFlowFixture(shape.inputs, shape.outputs), Width: width, Height: height}
-				v.SwitchSide(side)
-				lines := strings.Split(ansi.Strip(v.View()), "\n")
-				if len(lines) != height {
-					t.Fatalf("%d lines, want %d", len(lines), height)
-				}
-				start, end := flowTestDiagram(lines)
-				flowTestBusArms(t, lines, start, end, busL, true)
-				flowTestBusArms(t, lines, start, end, busR, false)
-			})
-		}
-	}
-}
-
-// flowTestDiagram locates the diagram block: it starts after the header and
-// blank row, and ends at the blank row before the detail panel.
 func flowTestDiagram(lines []string) (start, end int) {
 	for i, line := range lines {
 		if strings.HasPrefix(line, "Address") {
@@ -392,156 +329,271 @@ func flowTestDiagram(lines []string) (start, end int) {
 	return 2, 2
 }
 
-func flowTestRuneAt(line string, col int) rune {
-	runes := []rune(line)
-	if col < 0 || col >= len(runes) {
-		return ' '
-	}
-	return runes[col]
-}
-
-type flowTestArms struct {
-	left, right, up, down bool
-}
-
-var flowTestBusArmsByRune = map[rune]flowTestArms{
-	'━': {left: true, right: true},
-	'┃': {up: true, down: true},
-	'┏': {right: true, down: true},
-	'┓': {left: true, down: true},
-	'┗': {right: true, up: true},
-	'┛': {left: true, up: true},
-	'┣': {right: true, up: true, down: true},
-	'┫': {left: true, up: true, down: true},
-	'┳': {left: true, right: true, down: true},
-	'┻': {left: true, right: true, up: true},
-	'╋': {left: true, right: true, up: true, down: true},
-}
-
-// flowTestBusArms verifies that a bus has no gaps, stops at its first and
-// last connecting rows, and that every arm meets a matching arm in the
-// neighbouring cell. outwardLeft selects the side whose connector leaves
-// toward the left column.
-func flowTestBusArms(t *testing.T, lines []string, start, end, col int, outwardLeft bool) {
-	t.Helper()
-	rows := make([]int, 0, end-start)
-	for row := start; row < end; row++ {
-		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
-			rows = append(rows, row)
-		}
-	}
-	if len(rows) == 0 {
-		t.Fatalf("no bus glyphs in column %d", col)
-	}
-	for i := 1; i < len(rows); i++ {
-		if rows[i] != rows[i-1]+1 {
-			t.Fatalf("bus column %d has a gap between rows %d and %d", col, rows[i-1], rows[i])
-		}
-	}
-
-	for _, row := range rows {
-		arms := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]
-		if arms.up {
-			if row == start {
-				t.Fatalf("bus column %d row %d has an up arm above the diagram", col, row)
-			}
-			above, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row-1], col)]
-			if !ok || !above.down {
-				t.Fatalf("bus column %d row %d has an up arm but the cell above (row %d) has no down arm", col, row, row-1)
-			}
-		}
-		if arms.down {
-			if row == end-1 {
-				t.Fatalf("bus column %d row %d has a down arm below the diagram", col, row)
-			}
-			below, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row+1], col)]
-			if !ok || !below.up {
-				t.Fatalf("bus column %d row %d has a down arm but the cell below (row %d) has no up arm", col, row, row+1)
-			}
-		}
-		if outwardLeft && arms.left && flowTestRuneAt(lines[row], col-1) == ' ' {
-			t.Fatalf("bus column %d row %d has a left arm with no connector", col, row)
-		}
-		if !outwardLeft && arms.right && flowTestRuneAt(lines[row], col+1) == ' ' {
-			t.Fatalf("bus column %d row %d has a right arm with no connector", col, row)
-		}
-	}
-
-	// No bus glyph may appear above or below the contiguous span.
-	for row := start; row < rows[0]; row++ {
-		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
-			t.Fatalf("bus column %d has a dangling glyph on row %d", col, row)
-		}
-	}
-	for row := rows[len(rows)-1] + 1; row < end; row++ {
-		if _, ok := flowTestBusArmsByRune[flowTestRuneAt(lines[row], col)]; ok {
-			t.Fatalf("bus column %d has a dangling glyph on row %d", col, row)
-		}
-	}
-}
-
-func TestTxFlow_CenterLabelAndJoints(t *testing.T) {
+func TestTxFlow_CenterCaptionAndMarkers(t *testing.T) {
 	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
 	plain := ansi.Strip(v.View())
-	lines := strings.Split(plain, "\n")
-	centerLine := 2 + (2*3-1)/2
-	if !strings.Contains(lines[centerLine], "1 s/vB") {
-		t.Fatalf("center row does not contain the fee rate: %q", lines[centerLine])
+	if !strings.Contains(plain, "1 s/vB · 141 vB") {
+		t.Fatalf("diagram does not contain the centered fee caption:\n%s", plain)
 	}
-	for _, glyph := range []string{"┓", "┛", "┏", "┗", "╋", "█"} {
-		if !strings.Contains(plain, glyph) {
-			t.Errorf("view is missing %q:\n%s", glyph, plain)
-		}
-	}
-	for _, marker := range []string{"●", "◆", "○", "⛁"} {
+	for _, marker := range []string{"●", "◆", "○", "▪"} {
 		if !strings.Contains(plain, marker) {
 			t.Errorf("view is missing marker %q:\n%s", marker, plain)
 		}
 	}
-	if !strings.Contains(lines[2], "…") {
-		t.Errorf("addresses are not truncated in the middle: %q", lines[2])
+	if strings.ContainsAny(plain, "┏┓┗┛┣┫┳┻╋") {
+		t.Errorf("bands renderer still draws bus glyphs:\n%s", plain)
+	}
+	if !strings.Contains(plain, "…") {
+		t.Errorf("addresses are not truncated in the middle:\n%s", plain)
 	}
 }
 
-func TestTxFlow_ConnectorWeightTiers(t *testing.T) {
+func TestTxFlow_TrunkThicknessFollowsValue(t *testing.T) {
+	entries := []flowEntry{
+		{item: 0, value: 600_000, known: true},
+		{item: 1, value: 300_000, known: true},
+		{item: 2, value: 100_000, known: true},
+		{item: 3, known: false},
+	}
+	thickness := flowAllocate(entries, 40)
+	if thickness[0] < thickness[1] || thickness[1] < thickness[2] {
+		t.Fatalf("thickness is not monotonic in value: %v", thickness)
+	}
+	if thickness[3] != flowMinRibbon {
+		t.Fatalf("unknown value got %d sub-pixels, want the minimum %d", thickness[3], flowMinRibbon)
+	}
+	if thickness[0] != flowMaxRibbon {
+		t.Fatalf("dominant value got %d sub-pixels, want the cap %d", thickness[0], flowMaxRibbon)
+	}
+	sum := 0
+	for _, n := range thickness {
+		if n > flowMaxRibbon {
+			t.Fatalf("ribbon thickness %d exceeds the cap %d: %v", n, flowMaxRibbon, thickness)
+		}
+		sum += n
+	}
+	if sum > 40 {
+		t.Fatalf("thickness sum = %d, want at most the trunk span 40", sum)
+	}
+
+	// Rendered trunk slices keep the same ordering.
 	flow := TxFlow{
 		Fee: 100_000, FeeKnown: true, FeeRate: 2, VSize: 50_000,
 		Inputs: []TxFlowItem{
-			{Address: "bc1qunknown", Kind: KindForeignInput},
 			{Address: "bc1qlarge", Value: 600_000, ValueKnown: true, Kind: KindOwnInput},
 			{Address: "bc1qmedium", Value: 300_000, ValueKnown: true, Kind: KindOwnInput},
 			{Address: "bc1qsmall", Value: 100_000, ValueKnown: true, Kind: KindOwnInput},
+			{Address: "bc1qunknown", Kind: KindForeignInput},
 		},
 		Outputs: []TxFlowItem{
 			{Address: "bc1qdest", Value: 900_000, ValueKnown: true, Kind: KindExternal},
 		},
 	}
-	v := TxFlowView{Flow: flow, Width: 80, Height: 24}
-	lines := strings.Split(ansi.Strip(v.View()), "\n")
-	// Items sit on diagram rows 0, 2, 4, and 6.
-	if !strings.ContainsRune(lines[2], '┄') {
-		t.Errorf("unknown value does not use a dotted connector: %q", lines[2])
+	view := TxFlowView{Flow: flow, Width: 80, Height: 24}
+	lines := strings.Split(ansi.Strip(view.View()), "\n")
+	start, end := flowTestDiagram(lines)
+	found := false
+	for _, line := range lines[start:end] {
+		if strings.Contains(line, "2 s/vB") {
+			found = true
+		}
 	}
-	if !strings.ContainsRune(lines[4], '█') {
-		t.Errorf(">50%% item does not use a thick connector: %q", lines[4])
+	if !found {
+		t.Fatalf("caption is missing from the diagram:\n%s", strings.Join(lines, "\n"))
 	}
-	if !strings.ContainsRune(lines[6], '━') {
-		t.Errorf("15-50%% item does not use a heavy connector: %q", lines[6])
+}
+
+func TestTxFlow_BandLayoutIsProportionalAndShared(t *testing.T) {
+	assertLayout := func(t *testing.T, v TxFlowView, rows int) {
+		t.Helper()
+		in, out := v.flowEntries(FlowInput, rows), v.flowEntries(FlowOutput, rows)
+		inLayout, outLayout := flowDiagramLayouts(in, out, rows)
+		if inLayout.trunkPx != outLayout.trunkPx {
+			t.Fatalf("side trunk budgets differ: %d and %d", inLayout.trunkPx, outLayout.trunkPx)
+		}
+		if want := flowTrunkPixels(len(in), len(out), rows); inLayout.trunkPx != want {
+			t.Fatalf("trunk budget = %d, want %d", inLayout.trunkPx, want)
+		}
+		minimum := max(len(in), len(out)) * flowMinRibbon
+		maximum := flowSub*rows - flowSub
+		if maximum < minimum {
+			maximum = minimum
+		}
+		if inLayout.trunkPx < minimum || inLayout.trunkPx > maximum {
+			t.Fatalf("trunk budget %d outside [%d, %d]", inLayout.trunkPx, minimum, maximum)
+		}
+		for name, layout := range map[string]flowSideLayout{"inputs": inLayout, "outputs": outLayout} {
+			n := len(layout.entries)
+			if layout.stackRows > rows {
+				t.Errorf("%s stack uses %d of %d rows", name, layout.stackRows, rows)
+			}
+			if want := (rows - layout.stackRows) / 2; layout.stackTop != want {
+				t.Errorf("%s stack top = %d, want %d", name, layout.stackTop, want)
+			}
+			sum := 0
+			for _, px := range layout.slices {
+				sum += px
+			}
+			if sum > layout.trunkPx {
+				t.Errorf("%s slices sum to %d px, want at most the trunk budget %d", name, sum, layout.trunkPx)
+			}
+			seenRows := make(map[int]bool, n)
+			for i, entry := range layout.entries {
+				if layout.heights[i] < 1 {
+					t.Errorf("%s entry %d has %d rows", name, i, layout.heights[i])
+				}
+				wantRow := layout.tops[i] + (layout.heights[i]-1)/2
+				if entry.row != wantRow {
+					t.Errorf("%s entry %d row = %d, want %d", name, i, entry.row, wantRow)
+				}
+				if entry.row < 0 || entry.row >= rows {
+					t.Errorf("%s entry %d row %d is outside the diagram", name, i, entry.row)
+				}
+				if seenRows[entry.row] {
+					t.Errorf("%s label row %d is used twice", name, entry.row)
+				}
+				seenRows[entry.row] = true
+				if entry.aggregate() && layout.heights[i] != 1 {
+					t.Errorf("%s aggregate entry has %d rows, want 1", name, layout.heights[i])
+				}
+				edge := layout.edgeThickness(i)
+				if edge < 1 || edge > layout.slices[i] || edge > flowSub*layout.heights[i] {
+					t.Errorf("%s entry %d edge = %d, want 1..min(%d, %d)",
+						name, i, edge, layout.slices[i], flowSub*layout.heights[i])
+				}
+				if layout.gap > 0 && edge != layout.slices[i] {
+					t.Errorf("%s entry %d edge %d != slice %d without a cap",
+						name, i, edge, layout.slices[i])
+				}
+				if layout.gap == 0 && n > 1 && layout.slices[i] > 1 && edge != layout.slices[i]-1 {
+					t.Errorf("%s entry %d edge = %d, want %d for touching ribbons",
+						name, i, edge, layout.slices[i]-1)
+				}
+				center := layout.edgeCenter(i)
+				slotTop := float64(flowSub * layout.tops[i])
+				slotBottom := float64(flowSub * (layout.tops[i] + layout.heights[i]))
+				half := float64(edge) / 2
+				if center-half < slotTop-1e-9 || center+half > slotBottom+1e-9 {
+					t.Errorf("%s entry %d edge span %.1f..%.1f escapes slot %.1f..%.1f",
+						name, i, center-half, center+half, slotTop, slotBottom)
+				}
+			}
+			slices := flowTrunkSlices(layout, rows)
+			total := 0
+			for i := range slices {
+				if slices[i].thickness != layout.edgeThickness(i) {
+					t.Errorf("%s entry %d trunk slice = %d px, edge = %d px",
+						name, i, slices[i].thickness, layout.edgeThickness(i))
+				}
+				total += slices[i].thickness
+			}
+			if len(slices) > 0 {
+				wantTop := rows*flowSub/2 - total/2
+				if wantTop < 0 {
+					wantTop = 0
+				}
+				if slices[0].top != wantTop {
+					t.Errorf("%s trunk stack top = %d, want %d", name, slices[0].top, wantTop)
+				}
+			}
+			for i := range layout.entries {
+				for j := range layout.entries {
+					if layout.entries[i].aggregate() || layout.entries[j].aggregate() ||
+						!layout.entries[i].known || !layout.entries[j].known {
+						continue
+					}
+					if layout.entries[i].value < layout.entries[j].value &&
+						layout.slices[i] > layout.slices[j] {
+						t.Errorf("%s thickness is not monotonic in value: %v vs %v px %v",
+							name, layout.entries[i].value, layout.entries[j].value, layout.slices)
+					}
+				}
+			}
+		}
 	}
-	if !strings.ContainsRune(lines[8], '─') {
-		t.Errorf("<15%% item does not use a light connector: %q", lines[8])
+
+	for _, size := range []struct{ w, h int }{{80, 24}, {110, 34}, {120, 40}, {160, 50}} {
+		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
+			for _, fixture := range [][2]int{{1, 2}, {3, 3}, {9, 4}, {25, 12}} {
+				v := TxFlowView{
+					Flow:   txFlowFixture(fixture[0], fixture[1]),
+					Width:  size.w,
+					Height: size.h,
+				}
+				assertLayout(t, v, v.diagramRows())
+			}
+		})
 	}
-	if !strings.Contains(lines[5], "2 s/vB") {
-		t.Errorf("center row does not contain the fee rate: %q", lines[5])
+}
+
+// TestTxFlow_TrunkSidesMeetEvenly guards the Sankey meeting point: per-ribbon
+// caps can leave one side much thinner than the other, so the taller side is
+// re-allocated down to meet it.
+func TestTxFlow_TrunkSidesMeetEvenly(t *testing.T) {
+	const rows = 20
+	flow := TxFlow{
+		Fee: 141, FeeKnown: true, FeeRate: 1, VSize: 141,
+		Inputs: []TxFlowItem{
+			{Address: "bc1qin", Value: 700_000, ValueKnown: true, Kind: KindOwnInput},
+		},
+		Outputs: []TxFlowItem{
+			{Address: "bc1qpay", Value: 100_000, ValueKnown: true, Kind: KindExternal},
+			{Address: "bc1qchg", Value: 599_859, ValueKnown: true, Kind: KindChange},
+		},
+	}
+	v := TxFlowView{Flow: flow, Width: 80, Height: rows + 7}
+	in, out := v.flowEntries(FlowInput, rows), v.flowEntries(FlowOutput, rows)
+	if len(in) != 1 || len(out) != 3 {
+		t.Fatalf("entries = %d in, %d out, want 1 and 3", len(in), len(out))
+	}
+	inLayout, outLayout := flowDiagramLayouts(in, out, rows)
+	inSum, outSum := flowHeightsTotal(inLayout.slices), flowHeightsTotal(outLayout.slices)
+	if inSum <= 0 || outSum <= 0 {
+		t.Fatalf("side slice sums = %d and %d, want both positive", inSum, outSum)
+	}
+	diff := inSum - outSum
+	if diff < 0 {
+		diff = -diff
+	}
+	if limit := flowMinRibbon * max(len(in), len(out)); diff > limit {
+		t.Fatalf("side slice sums differ by %d: %d and %d (limit %d)", diff, inSum, outSum, limit)
+	}
+}
+
+func TestTxFlow_CanvasWidthRange(t *testing.T) {
+	cases := []struct {
+		width  int
+		minCol int
+		maxCol int
+	}{
+		{width: 80, minCol: 20, maxCol: 27},
+		{width: 110, minCol: 34, maxCol: 38},
+		{width: 120, minCol: 38, maxCol: 42},
+		{width: 160, minCol: 44, maxCol: 52},
+	}
+	for _, tc := range cases {
+		left, canvas, right := flowColumnWidths(tc.width)
+		if canvas < tc.minCol || canvas > tc.maxCol {
+			t.Errorf("width %d: canvas = %d, want %d..%d", tc.width, canvas, tc.minCol, tc.maxCol)
+		}
+		if left+canvas+right != tc.width {
+			t.Errorf("width %d: columns %d+%d+%d do not fill the view", tc.width, left, canvas, right)
+		}
+		if left > tc.width || right > tc.width {
+			t.Errorf("width %d: label columns %d/%d exceed the view", tc.width, left, right)
+		}
+		v := TxFlowView{Flow: txFlowFixture(3, 3), Width: tc.width, Height: 24}
+		for i, line := range strings.Split(ansi.Strip(v.View()), "\n") {
+			if w := ansi.StringWidth(line); w > tc.width {
+				t.Errorf("width %d: line %d is %d cells", tc.width, i, w)
+			}
+		}
 	}
 }
 
 func TestTxFlow_80(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.Ascii)
-	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
-
 	v := TxFlowView{Flow: txFlowExample(), Width: 80, Height: 24}
-	got := v.View()
+	got := ansi.Strip(v.View())
 
 	const path = "testdata/TestTxFlow_80.golden"
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
@@ -590,8 +642,8 @@ func TestTxFlow_UnknownValueAndOpReturn(t *testing.T) {
 	if !strings.Contains(plain, "unknown") {
 		t.Fatalf("unknown input value is not marked:\n%s", plain)
 	}
-	if !strings.Contains(plain, "∅") {
-		t.Fatalf("OP_RETURN marker is missing:\n%s", plain)
+	if !strings.Contains(plain, "◇") || !strings.Contains(plain, "data") {
+		t.Fatalf("OP_RETURN marker or data label is missing:\n%s", plain)
 	}
 	v.SwitchSide(FlowOutput)
 	v.MoveDown()
@@ -696,9 +748,6 @@ func TestTxFlow_EmptyOutPointTxIDShowsInputIndex(t *testing.T) {
 }
 
 func TestTxFlow_MarkersAndWordsWithoutColor(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.Ascii)
-	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.TrueColor) })
-
 	flow := txFlowFixture(3, 3)
 	v := TxFlowView{Flow: flow, Width: 120, Height: 40, Side: FlowInput}
 
@@ -712,9 +761,186 @@ func TestTxFlow_MarkersAndWordsWithoutColor(t *testing.T) {
 		}
 	}
 	plain := seen.String()
-	for _, want := range []string{"●", "◆", "○", "⛁", "yours", "change", "external", "fee"} {
+	for _, want := range []string{"●", "◆", "○", "▪", "yours", "change", "external", "fee"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("no-color view is missing %q:\n%s", want, plain)
 		}
+	}
+}
+
+func TestTxFlow_SelectedBandUsesAccent(t *testing.T) {
+	v := TxFlowView{Flow: txFlowExample(), Width: 110, Height: 34, Side: FlowInput, Cursor: 0}
+	accent := sgrPrefix(lipgloss.NewStyle().Foreground(styles.TxFlowAccent))
+	for _, line := range strings.Split(v.View(), "\n") {
+		if !strings.Contains(line, accent) {
+			continue
+		}
+		if strings.ContainsAny(ansi.Strip(line), "█▀▄") {
+			return
+		}
+	}
+	t.Fatalf("selected band does not use the accent color:\n%s", ansi.Strip(v.View()))
+}
+
+func TestTxFlow_EmptyCanvasCellsHaveNoBackground(t *testing.T) {
+	canvas := newFlowPixelCanvas(6, flowSub)
+	lines := canvas.cells().lines()
+	for i, line := range lines {
+		if line != strings.Repeat(" ", 6) {
+			t.Fatalf("empty canvas row %d = %q, want six spaces", i, line)
+		}
+		if strings.Contains(line, "\x1b") {
+			t.Fatalf("empty canvas row %d carries SGR: %q", i, line)
+		}
+	}
+
+	// A single sub-pixel uses a foreground only; two different colors put
+	// the bottom tone in the background. The renderer may pick any block
+	// glyph that approximates the filled part of the cell.
+	canvas.set(0, 0, styles.TxFlowBand)
+	line := canvas.cells().lines()[0]
+	if !strings.ContainsAny(ansi.Strip(line), "▁▂▃▄▅▆▇█▀▔") {
+		t.Fatalf("canvas row does not use a block glyph: %q", line)
+	}
+	if strings.Contains(line, "48;2;") {
+		t.Fatalf("single-color partial cell emitted a background: %q", line)
+	}
+
+	canvas.set(0, 0, styles.TxFlowBand)
+	canvas.set(0, 1, styles.TxFlowBand)
+	canvas.set(0, 2, styles.TxFlowBand)
+	canvas.set(0, 3, styles.TxFlowBand)
+	canvas.set(0, 4, styles.TxFlowChange)
+	canvas.set(0, 5, styles.TxFlowChange)
+	canvas.set(0, 6, styles.TxFlowChange)
+	canvas.set(0, 7, styles.TxFlowChange)
+	line = canvas.cells().lines()[0]
+	if !strings.Contains(line, "48;2;") {
+		t.Fatalf("two-color cell did not use a background: %q", line)
+	}
+}
+
+// TestTxFlow_MidCellRibbonIsNotDropped guards a thin ribbon that only
+// crosses the middle sub-rows of a text cell: neither half has a colour
+// majority, so an empty cover would win on mismatch and drop the cell.
+func TestTxFlow_MidCellRibbonIsNotDropped(t *testing.T) {
+	canvas := newFlowPixelCanvas(1, flowSub)
+	canvas.set(0, 3, styles.TxFlowBand)
+	canvas.set(0, 4, styles.TxFlowBand)
+	line := canvas.cells().lines()[0]
+	if strings.TrimSpace(ansi.Strip(line)) == "" {
+		t.Fatalf("mid-cell ribbon rendered a blank cell: %q", line)
+	}
+}
+
+// TestFlowCanvasLinesCoalesceSGR keeps the canvas-to-text conversion from
+// re-emitting a style for every half-block cell of one coloured ribbon.
+func TestFlowCanvasLinesCoalesceSGR(t *testing.T) {
+	const sgr = "\x1b[38;2;1;2;3m"
+	canvas := newFlowCanvas(4, 1)
+	for x := 0; x < 4; x++ {
+		canvas.put(x, 0, "▀", sgr)
+	}
+	line := canvas.lines()[0]
+	if got := strings.Count(line, sgr); got != 1 {
+		t.Fatalf("line emits the SGR %d times, want one run: %q", got, line)
+	}
+	if got := strings.Count(line, "\x1b[0m"); got != 1 {
+		t.Fatalf("line emits %d resets, want one per run: %q", got, line)
+	}
+	if plain := ansi.Strip(line); plain != "▀▀▀▀" {
+		t.Fatalf("stripped line = %q, want the same glyphs", plain)
+	}
+}
+
+// TestTxFlow_FeeRibbonColumnsTouch guards the half-block band against steep
+// one-pixel ribbons: every column must share a filled pixel row with the
+// column before it, so the ribbon stays connected instead of dotting.
+func TestTxFlow_FeeRibbonColumnsTouch(t *testing.T) {
+	const rows = 40
+	flow := txFlowFixture(1, 6)
+	v := TxFlowView{Flow: flow, Width: 40, Height: rows}
+	in, out := v.flowEntries(FlowInput, rows), v.flowEntries(FlowOutput, rows)
+	_, outLayout := flowDiagramLayouts(in, out, rows)
+	_, canvasW, _ := flowColumnWidths(40)
+	trunkRight := (canvasW-flowTrunkCols(canvasW))/2 + flowTrunkCols(canvasW)
+	slices := flowTrunkSlices(outLayout, rows)
+
+	fee := -1
+	for i, entry := range outLayout.entries {
+		if entry.kind == KindFee {
+			fee = i
+			break
+		}
+	}
+	if fee < 0 {
+		t.Fatal("fee entry missing from the output layout")
+	}
+	thickness := outLayout.edgeThickness(fee)
+	if thickness > flowMinRibbon*2 {
+		t.Fatalf("fee edge thickness = %d, want a thin band of at most %d", thickness, flowMinRibbon*2)
+	}
+	for i := range outLayout.entries {
+		if i != fee && outLayout.edgeThickness(i) < thickness {
+			t.Fatalf("fee edge thickness = %d is not the thinnest; entry %d is %d",
+				thickness, i, outLayout.edgeThickness(i))
+		}
+	}
+
+	canvas := newFlowPixelCanvas(canvasW, rows*flowSub)
+	trunkCenter := float64(slices[fee].top) + float64(thickness)/2
+	flowDrawBand(canvas, trunkRight, canvasW-1, trunkCenter, float64(thickness), outLayout.edgeCenter(fee), float64(thickness), false, styles.TxFlowFee)
+
+	columnPixels := func(x int) []int {
+		var ys []int
+		for y := 0; y < canvas.h; y++ {
+			if pixel := canvas.pixels[y*canvasW+x]; pixel.set {
+				ys = append(ys, y)
+			}
+		}
+		return ys
+	}
+	previous := columnPixels(trunkRight)
+	if len(previous) == 0 {
+		t.Fatalf("column %d of the ribbon is empty", trunkRight)
+	}
+	for x := trunkRight + 1; x < canvasW; x++ {
+		current := columnPixels(x)
+		if len(current) == 0 {
+			t.Fatalf("column %d of the ribbon is empty", x)
+		}
+		touches := false
+		for _, y := range current {
+			for _, prev := range previous {
+				if y >= prev-1 && y <= prev+1 {
+					touches = true
+				}
+			}
+		}
+		if !touches {
+			t.Fatalf("column %d does not touch column %d: rows %v vs %v", x, x-1, current, previous)
+		}
+		previous = current
+	}
+}
+
+// TestFlowDrawBandDashPeriod pins dashed bands to three drawn columns and
+// one skipped column: shorter runs break into isolated dots on steep
+// sections.
+func TestFlowDrawBandDashPeriod(t *testing.T) {
+	canvas := newFlowPixelCanvas(12, flowSub)
+	flowDrawBand(canvas, 0, 11, float64(flowSub)/2, 1, float64(flowSub)/2, 1, true, styles.TxFlowBand)
+
+	pattern := make([]byte, canvas.w)
+	for x := 0; x < canvas.w; x++ {
+		pattern[x] = '.'
+		for y := 0; y < canvas.h; y++ {
+			if canvas.pixels[y*canvas.w+x].set {
+				pattern[x] = '#'
+			}
+		}
+	}
+	if got, want := string(pattern), "###.###.###."; got != want {
+		t.Fatalf("dash pattern = %q, want %q", got, want)
 	}
 }

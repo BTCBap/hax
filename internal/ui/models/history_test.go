@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
@@ -174,13 +174,13 @@ func (e *testError) Error() string { return "test error" }
 
 func TestHistory_EscNavigatesBack(t *testing.T) {
 	m, _ := newTestHistory(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestHistory_QNavigatesBack(t *testing.T) {
 	m, _ := newTestHistory(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	_, cmd := m.Update(keyRunes("q"))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -274,7 +274,7 @@ func TestHistory_LabelEditing(t *testing.T) {
 	m.labelInput.SetValue("My Label")
 
 	// Press enter to save
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	result := model.(TransactionHistoryModel)
 
 	if result.editMode {
@@ -294,7 +294,7 @@ func TestHistory_EditMode_EscCancels(t *testing.T) {
 	m.editTxID = "sometxid"
 	m.labelInput.SetValue("partial input")
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ := m.Update(keyCode(tea.KeyEsc))
 	updated := model.(TransactionHistoryModel)
 
 	if updated.editMode {
@@ -313,7 +313,7 @@ func TestHistory_Pagination_PreservesHeaderOnNextPage(t *testing.T) {
 	updated := model.(TransactionHistoryModel)
 	updated.fadeIn = 1.0
 
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model, _ = updated.Update(keyCode(tea.KeyRight))
 	updated = model.(TransactionHistoryModel)
 
 	if updated.currentPage != 1 {
@@ -383,8 +383,8 @@ func TestHistory_HeaderLine_ShowsTitlePageAndCopied(t *testing.T) {
 	if !strings.Contains(headerLine, "COPIED") {
 		t.Fatalf("expected copied status on header line, got %q", headerLine)
 	}
-	if !strings.Contains(headerLine, "Page 1/") || !strings.Contains(headerLine, "Page 1/3 ✓ COPIED!") {
-		t.Fatalf("expected copied status directly after page badge, got %q", headerLine)
+	if plainHeader := stripANSI(headerLine); !strings.Contains(plainHeader, "Page 1/3 ✓ COPIED!") {
+		t.Fatalf("expected copied status directly after page badge, got %q", plainHeader)
 	}
 }
 

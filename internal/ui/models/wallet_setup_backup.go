@@ -7,10 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // backupCheckWords is how many seed words the user re-enters after creating
@@ -24,10 +23,10 @@ func (m *WalletSetupModel) startBackupCheck() {
 	m.backupPos = 0
 	m.backupSkipConfirm = false
 	m.err = nil
-	in := textinput.New()
+	in := newTextInput()
 	in.Placeholder = "word"
 	in.CharLimit = 16
-	in.Width = 20
+	in.SetWidth(20)
 	in.Focus()
 	m.backupInput = in
 }
@@ -61,7 +60,7 @@ func pickWordPositions(n, k int) []int {
 	return out
 }
 
-func (m WalletSetupModel) handleConfirmMnemonic(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) handleConfirmMnemonic(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	if m.backupSkipConfirm {
 		switch msg.String() {
 		case "y", "Y":
@@ -103,7 +102,7 @@ func (m WalletSetupModel) handleConfirmMnemonic(msg tea.KeyMsg) (tea.Model, tea.
 
 // finishCreate unlocks the newly created wallet, adds its first account, and
 // opens the dashboard.
-func (m WalletSetupModel) finishCreate() (tea.Model, tea.Cmd) {
+func (m WalletSetupModel) finishCreate() (screenModel, tea.Cmd) {
 	m.backupWords = nil
 	m.backupInput.SetValue("")
 	if err := m.walletManager.UnlockWallet(m.walletName, m.password); err != nil {

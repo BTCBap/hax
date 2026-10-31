@@ -9,9 +9,9 @@ import (
 	"strings"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/ur"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // maxPastedPSBTLen bounds pasted PSBT text so a paste cannot grow without

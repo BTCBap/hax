@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/config"
 )
@@ -49,7 +49,7 @@ func TestConnectionSetup_ReturnToSettingsFlag(t *testing.T) {
 
 func TestConnectionSetup_EscFromChooseBackend_Quits(t *testing.T) {
 	m := newTestConnectionSetupModel(t, false)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	if cmd == nil {
 		t.Fatal("expected a command from esc")
 	}
@@ -61,14 +61,14 @@ func TestConnectionSetup_EscFromChooseBackend_Quits(t *testing.T) {
 
 func TestConnectionSetup_EscFromChooseBackend_ReturnsToSettings(t *testing.T) {
 	m := newTestConnectionSetupModel(t, true)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateSettings)
 }
 
 func TestConnectionSetup_SelectElectrum(t *testing.T) {
 	m := newTestConnectionSetupModel(t, false)
 	// Cursor starts at 0 (Electrum). Press enter to select.
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(ConnectionSetupModel)
 	if updated.step != StepConfigureElectrum {
 		t.Errorf("expected step StepConfigureElectrum, got %d", updated.step)
@@ -79,21 +79,21 @@ func TestConnectionSetup_CursorNavigation(t *testing.T) {
 	m := newTestConnectionSetupModel(t, false)
 
 	// Move down
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ := m.Update(keyCode(tea.KeyDown))
 	updated := model.(ConnectionSetupModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 after down, got %d", updated.cursor)
 	}
 
 	// Move down again (should not exceed bounds)
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, _ = updated.Update(keyCode(tea.KeyDown))
 	updated = model.(ConnectionSetupModel)
 	if updated.cursor != 1 {
 		t.Errorf("expected cursor=1 (clamped), got %d", updated.cursor)
 	}
 
 	// Move up
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model, _ = updated.Update(keyCode(tea.KeyUp))
 	updated = model.(ConnectionSetupModel)
 	if updated.cursor != 0 {
 		t.Errorf("expected cursor=0 after up, got %d", updated.cursor)
@@ -103,13 +103,13 @@ func TestConnectionSetup_CursorNavigation(t *testing.T) {
 func TestConnectionSetup_EscFromConfigureElectrum_GoesBack(t *testing.T) {
 	m := newTestConnectionSetupModel(t, false)
 	// Enter Electrum config
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, _ := m.Update(keyCode(tea.KeyEnter))
 	updated := model.(ConnectionSetupModel)
 	if updated.step != StepConfigureElectrum {
 		t.Fatalf("precondition: expected StepConfigureElectrum, got %d", updated.step)
 	}
 	// Press esc to go back
-	model, _ = updated.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model, _ = updated.Update(keyCode(tea.KeyEsc))
 	updated = model.(ConnectionSetupModel)
 	if updated.step != StepChooseBackend {
 		t.Errorf("expected StepChooseBackend after esc, got %d", updated.step)
@@ -145,7 +145,7 @@ func TestConnectionSetup_View_ShowsBackendOptions(t *testing.T) {
 
 func TestConnectionSetup_CtrlC_Quits(t *testing.T) {
 	m := newTestConnectionSetupModel(t, false)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("expected a command from ctrl+c")
 	}

@@ -3,9 +3,9 @@ package models
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -159,14 +159,14 @@ func (t Tray) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.BitcoinOrange).
 		Padding(0, 1).
-		Width(t.contentWidth + 2).
+		Width(t.width).
 		Render(strings.Join(inner, "\n"))
 }
 
 // Update handles a key press. Enter advances from choose to confirm, and
 // confirms from the confirm stage. Esc goes back from confirm and cancels
 // from choose.
-func (t Tray) Update(msg tea.KeyMsg) (Tray, TrayResult) {
+func (t Tray) Update(msg tea.KeyPressMsg) (Tray, TrayResult) {
 	switch msg.String() {
 	case "esc":
 		if t.stage == TrayStageConfirm {

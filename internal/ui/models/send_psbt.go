@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/bbqr"
 	"github.com/BTCBap/hax/internal/fsutil"
@@ -16,9 +19,6 @@ import (
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/ur"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // exportPSBT creates an UNSIGNED PSBT and exports it to base64 format
@@ -356,17 +356,7 @@ type fileInfo struct {
 	modTime time.Time
 }
 
-func (m *SendModel) handleFileBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// A pasted PSBT is imported directly; the browser stays open on failure.
-	if msg.Paste {
-		ok, cmd := m.startPSBTImport(string(msg.Runes))
-		if !ok {
-			return m, nil
-		}
-		m.showFileBrowser = false
-		return m, cmd
-	}
-
+func (m *SendModel) handleFileBrowser(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.fileBrowserCursor > 0 {
@@ -557,7 +547,7 @@ func (m SendModel) buildPSBTExportScrollable() (string, string, string) {
 	psbtWrapped = strings.TrimSuffix(psbtWrapped, "\n")
 
 	// Show PSBT in a box with monospace styling
-	psbtBox := styles.BoxStyle.Width(psbtBoxWidth).Render(psbtWrapped)
+	psbtBox := styles.BoxStyle.Width(psbtBoxWidth + 2).Render(psbtWrapped)
 
 	// Info section with signature progress
 	progressWidth := psbtBoxWidth - 30
@@ -977,7 +967,7 @@ func (m SendModel) viewRawHexExport() string {
 	hexWrapped = strings.TrimSuffix(hexWrapped, "\n")
 
 	// Show hex in a box with monospace styling
-	hexBox := styles.BoxStyle.Width(hexBoxWidth).Render(hexWrapped)
+	hexBox := styles.BoxStyle.Width(hexBoxWidth + 2).Render(hexWrapped)
 
 	// Info section
 	infoRows := []string{

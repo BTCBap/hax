@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // SendStep represents the current step in the send flow
@@ -258,37 +258,37 @@ type QRFrameTickMsg struct{}
 
 func NewSendModel(walletManager WalletService, cachedBalance api.Satoshi, cachedUTXOs []api.UTXO) SendModel {
 	// Create address input
-	addrInput := textinput.New()
+	addrInput := newTextInput()
 	addrInput.Placeholder = "Address or bitcoin: URI"
-	addrInput.Width = 60
+	addrInput.SetWidth(60)
 	addrInput.CharLimit = 2048 // room for a pasted BIP21 URI
 	addrInput.Focus()
 
 	// Create amount input with validation
-	amtInput := textinput.New()
+	amtInput := newTextInput()
 	amtInput.Placeholder = "0.00000000"
-	amtInput.Width = 30
+	amtInput.SetWidth(30)
 	amtInput.CharLimit = 20
 	// Only allow numbers and decimal point
 	amtInput.Validate = validateBTCAmount
 
 	// Create custom fee input
-	customFeeInput := textinput.New()
+	customFeeInput := newTextInput()
 	customFeeInput.Placeholder = "sat/vB"
-	customFeeInput.Width = 10
+	customFeeInput.SetWidth(10)
 	customFeeInput.CharLimit = 6
 	customFeeInput.Validate = validateSatPerVB
 
 	// Create file path input for PSBT import/export
-	fileInput := textinput.New()
+	fileInput := newTextInput()
 	fileInput.Placeholder = "~/transaction.psbt"
-	fileInput.Width = 50
+	fileInput.SetWidth(50)
 	fileInput.CharLimit = 200
 
 	s := styles.NewStandardSpinner()
 
 	// Viewport for smooth scrolling in Step 6/7 (matches Help screen behavior)
-	vp := viewport.New(0, 0)
+	vp := viewport.New()
 	vp.MouseWheelEnabled = true
 	vp.KeyMap.Up = key.NewBinding(key.WithKeys("up"))
 	vp.KeyMap.Down = key.NewBinding(key.WithKeys("down"))
@@ -537,7 +537,7 @@ func (m SendModel) CapturesTextInput() bool {
 	return m.txFlow != nil || m.editingCustom || m.showFileInput || m.showURInput
 }
 
-func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m SendModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -815,7 +815,55 @@ func (m SendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		var cmd tea.Cmd
+		switch {
+		case m.showFileBrowser:
+			// A pasted PSBT is imported directly; the browser stays open on failure.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.showFileBrowser = false
+			cmds = append(cmds, pasteCmd)
+		case m.showFileInput && m.fileInputMode == "import" && looksLikePSBTText(msg.Content):
+			// Import pasted PSBT text instead of treating it as a file path.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.showFileInput = false
+			m.fileInputFromBrowser = false
+			cmds = append(cmds, pasteCmd)
+		case m.showURInput:
+			m.urInput, cmd = m.urInput.Update(tea.PasteMsg{Content: stripPSBTWhitespace(msg.Content)})
+		case m.showFileInput:
+			m.psbtFileInput, cmd = m.psbtFileInput.Update(msg)
+		case m.highFeePending > 0:
+			m.highFeeInput, cmd = m.highFeeInput.Update(msg)
+		case m.step == SendStepFee && m.editingCustom:
+			m.customFeeInput, cmd = m.customFeeInput.Update(msg)
+		case m.step == SendStepAddress && looksLikePSBTText(msg.Content):
+			// A pasted PSBT would otherwise be truncated by the address input's
+			// CharLimit and rejected as an address, so import it directly.
+			ok, pasteCmd := m.startPSBTImport(msg.Content)
+			if !ok {
+				return m, nil
+			}
+			m.fileBrowserForStep = "step1"
+			m.addressInput.SetValue("")
+			cmds = append(cmds, pasteCmd)
+		case m.step == SendStepAddress:
+			m.addressInput, cmd = m.addressInput.Update(msg)
+		case m.step == SendStepAmount:
+			m.amountInput, cmd = m.amountInput.Update(msg)
+			m.sendAll = false
+		}
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		// The visualizer owns every key while it is open.
 		if m.txFlow != nil {
 			return m.handleTxFlowKey(msg)

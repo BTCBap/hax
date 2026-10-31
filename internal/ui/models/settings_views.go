@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/config"
@@ -110,7 +111,7 @@ func (m SettingsModel) View() string {
 	}
 
 	walletInfo := styles.BoxStyle.
-		Width(styles.ClampWidth(70, m.width)).
+		Width(styles.ClampWidth(70, m.width)+2).
 		BorderForeground(styles.NeonPurple).
 		Padding(0, 2).
 		Render(
@@ -211,7 +212,7 @@ func (m SettingsModel) renderConnectionSection() string {
 
 	boxWidth := styles.ClampWidth(70, m.width)
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.SuccessGreen).
 		Padding(0, 2).
 		Render(
@@ -230,7 +231,7 @@ func (m SettingsModel) renderSettingsActions() string {
 		renderSettingsActionRow("B", "Export backup (descriptors + labels)", "no private keys", rowWidth),
 	}
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.BitcoinGold).
 		Padding(0, 2).
 		Render(
@@ -363,13 +364,127 @@ func (m SettingsModel) renderAccountSection(account wallet.AccountData, index in
 
 	boxWidth := styles.ClampWidth(70, m.width)
 	return styles.BoxStyle.
-		Width(boxWidth).
+		Width(boxWidth+2).
 		BorderForeground(styles.ElectricBlue).
 		Padding(0, 2).
 		Render(
 			styles.HighlightText.Render(accountTitle) + "\n" +
 				strings.Join(infoRows, "\n"),
 		)
+}
+
+const (
+	descriptorBoxDesiredWidth = 78
+	descriptorBoxPadding      = 2
+)
+
+// descriptorBoxWidth returns the descriptor box's outer width. The box keeps
+// the fixed width the other detail boxes use.
+func descriptorBoxWidth(available int) int {
+	return styles.ClampWidth(descriptorBoxDesiredWidth, available) + 2
+}
+
+// descriptorInnerWidth returns the content width inside the descriptor box,
+// excluding its border and horizontal padding.
+func descriptorInnerWidth(boxWidth int) int {
+	inner := boxWidth - 2 - descriptorBoxPadding*2
+	if inner < 1 {
+		inner = 1
+	}
+	return inner
+}
+
+// descriptorSegments splits text into segments that end after each ',', so a
+// multisig descriptor starts every key on its own line:
+// "wsh(sortedmulti(2,[a]xpub/0/*,[b]xpub/0/*))" becomes "wsh(sortedmulti(2,",
+// "[a]xpub/0/*," and "[b]xpub/0/*))". Newlines also end a segment.
+func descriptorSegments(text string) []string {
+	var segments []string
+	start := 0
+	for i, r := range text {
+		switch r {
+		case ',':
+			segments = append(segments, text[start:i+1])
+			start = i + 1
+		case '\n':
+			if i > start {
+				segments = append(segments, text[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(text) {
+		segments = append(segments, text[start:])
+	}
+	return segments
+}
+
+// wrapDescriptor splits text into lines no wider than width display cells.
+// Segments are broken after each ',' so keys are never split mid-origin. A
+// segment wider than width is balanced into equal-width lines, so the block
+// reads as a rectangle instead of one full line plus a short stub.
+func wrapDescriptor(text string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	lines := make([]string, 0, len(text)/width+1)
+	for _, segment := range descriptorSegments(text) {
+		segmentWidth := ansi.StringWidth(segment)
+		if segmentWidth <= width {
+			lines = append(lines, segment)
+			continue
+		}
+		chunks := (segmentWidth + width - 1) / width
+		target := (segmentWidth + chunks - 1) / chunks
+		remaining := segment
+		for i := 0; i < chunks-1 && remaining != ""; i++ {
+			cut := cutDisplayCells(remaining, target)
+			lines = append(lines, remaining[:cut])
+			remaining = remaining[cut:]
+		}
+		if remaining != "" {
+			lines = append(lines, remaining)
+		}
+	}
+	return lines
+}
+
+// cutDisplayCells returns the byte index of the longest prefix of s that fits
+// in limit display cells. It always takes at least one rune.
+func cutDisplayCells(s string, limit int) int {
+	used := 0
+	for i, r := range s {
+		w := ansi.StringWidth(string(r))
+		if used+w > limit {
+			if i == 0 {
+				return len(string(r))
+			}
+			return i
+		}
+		used += w
+	}
+	return len(s)
+}
+
+// renderDescriptorBox wraps, centers, and renders the descriptor text. Every
+// line is centered within the box's inner width.
+func (m SettingsModel) renderDescriptorBox() string {
+	boxWidth := descriptorBoxWidth(m.width)
+	inner := descriptorInnerWidth(boxWidth)
+	lines := wrapDescriptor(m.descriptorText, inner)
+	lineStyle := lipgloss.NewStyle().
+		Foreground(styles.PastelOrange).
+		Width(inner).
+		AlignHorizontal(lipgloss.Center)
+	for i, line := range lines {
+		lines[i] = lineStyle.Render(line)
+	}
+	return styles.BoxStyle.
+		Width(boxWidth).
+		BorderForeground(styles.ElectricBlue).
+		Padding(0, descriptorBoxPadding).
+		MarginBottom(0).
+		Render(strings.Join(lines, "\n"))
 }
 
 // viewDescriptorMenu displays the descriptor detail screen with QR code and cosigner info
@@ -398,33 +513,15 @@ func (m SettingsModel) viewDescriptorMenu() string {
 	qrCode, err := ui.GenerateQRCodeHalfBlocks(qrData)
 	if err == nil {
 		qrSection = styles.BoxStyle.
-			Width(styles.ClampWidth(78, m.width)).
+			Width(styles.ClampWidth(78, m.width)+2).
 			BorderForeground(styles.NeonPurple).
 			Padding(0, 0).
 			MarginBottom(0).
 			Render(qrLabel + qrCode)
 	}
 
-	// Descriptor text - wrap long lines for readability
-	descriptorDisplay := m.descriptorText
-	if len(descriptorDisplay) > 70 {
-		var wrapped []string
-		for len(descriptorDisplay) > 70 {
-			wrapped = append(wrapped, descriptorDisplay[:70])
-			descriptorDisplay = descriptorDisplay[70:]
-		}
-		if len(descriptorDisplay) > 0 {
-			wrapped = append(wrapped, descriptorDisplay)
-		}
-		descriptorDisplay = strings.Join(wrapped, "\n")
-	}
-
-	descriptorBox := styles.BoxStyle.
-		Width(styles.ClampWidth(78, m.width)).
-		BorderForeground(styles.ElectricBlue).
-		Padding(0, 2).
-		MarginBottom(0).
-		Render(lipgloss.NewStyle().Foreground(styles.PastelOrange).Render(descriptorDisplay))
+	// Descriptor text - wrap and center each line inside the box.
+	descriptorBox := m.renderDescriptorBox()
 
 	// Cosigner table (only for multisig)
 	cosignerSection := ""
@@ -453,7 +550,7 @@ func (m SettingsModel) viewDescriptorMenu() string {
 			}
 
 			cosignerSection = styles.BoxStyle.
-				Width(styles.ClampWidth(78, m.width)).
+				Width(styles.ClampWidth(78, m.width)+2).
 				BorderForeground(styles.ElectricBlue).
 				Padding(0, 2).
 				MarginBottom(0).
@@ -520,7 +617,7 @@ func (m SettingsModel) viewMnemonicWarning() string {
 	}
 
 	warningBox := styles.BoxStyle.
-		Width(styles.ClampWidth(60, m.width)).
+		Width(styles.ClampWidth(60, m.width) + 2).
 		BorderForeground(styles.PastelPink).
 		Render(warningText)
 

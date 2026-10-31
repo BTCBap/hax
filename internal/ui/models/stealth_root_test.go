@@ -3,8 +3,6 @@ package models
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/BTCBap/hax/internal/config"
 )
 
@@ -20,7 +18,7 @@ func TestRoot_StealthToggleBroadcastsAndPersists(t *testing.T) {
 	updated, _ := m.Update(NavigateMsg{Target: StateMainDashboard})
 	m = updated.(RootModel)
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	updated, _ = m.Update(keyRunes("z"))
 	m = updated.(RootModel)
 	if !m.stealth {
 		t.Fatal("z did not enable stealth mode")
@@ -65,7 +63,7 @@ func TestRoot_StealthIgnoresFocusedTextInput(t *testing.T) {
 	unlock.passwordInput.Focus()
 	m.unlockModel = unlock
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	updated, _ = m.Update(keyRunes("z"))
 	m = updated.(RootModel)
 	if m.stealth {
 		t.Fatal("z toggled stealth while a text input was focused")

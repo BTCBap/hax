@@ -3,8 +3,32 @@ package models
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
+
+// keyRune builds a key press for a single printable rune.
+func keyRune(r rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: r, Text: string(r)}
+}
+
+// keyRunes builds a key press carrying a string of printable characters.
+// A single rune maps to its own code; longer strings use KeyExtended, which
+// matches how Bubble Tea v2 delivers pasted or multi-rune input.
+func keyRunes(s string) tea.KeyPressMsg {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return tea.KeyPressMsg{}
+	}
+	if len(runes) > 1 {
+		return tea.KeyPressMsg{Code: tea.KeyExtended, Text: s}
+	}
+	return keyRune(runes[0])
+}
+
+// keyCode builds a key press for a special key code (enter, esc, arrows, ...).
+func keyCode(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: code}
+}
 
 // extractMsg runs a tea.Cmd and returns the resulting message.
 // Returns nil if cmd is nil.

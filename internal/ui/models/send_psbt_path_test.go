@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
-// typeRunes feeds one KeyMsg per rune so shortcuts cannot swallow the text.
+// typeRunes feeds one key press per rune so shortcuts cannot swallow the text.
 func typeRunes(t *testing.T, m SendModel, s string) SendModel {
 	t.Helper()
 	for _, r := range s {
-		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		updated, _ := m.Update(keyRune(r))
 		m = asSendModel(t, updated)
 	}
 	return m
@@ -69,10 +69,6 @@ func requirePSBTFileMsg(t *testing.T, msg tea.Msg) PSBTFileMsg {
 	return fileMsg
 }
 
-func keyRunes(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-}
-
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 // TestSend_ManualPathFromAddressStep covers entering a manual PSBT path from
@@ -114,7 +110,7 @@ func TestSend_ManualPathFromAddressStep(t *testing.T) {
 		t.Fatalf("view does not show the PSBT path prompt (view length %d)", len(view))
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ = m.Update(keyCode(tea.KeyEsc))
 	m = asSendModel(t, updated)
 	if m.showFileInput {
 		t.Fatalf("esc should close the manual path input")
@@ -140,7 +136,7 @@ func TestSend_ManualPathEnterLoads(t *testing.T) {
 
 	m = typeRunes(t, m, "/nonexistent/x.psbt")
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(keyCode(tea.KeyEnter))
 	m = asSendModel(t, updated)
 	if cmd == nil {
 		t.Fatalf("pressing enter on a manual path returned no command")

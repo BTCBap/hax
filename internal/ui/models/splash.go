@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/version"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 )
 
@@ -64,7 +64,7 @@ func tick() tea.Cmd {
 }
 
 // Update handles messages
-func (m SplashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m SplashModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -82,7 +82,7 @@ func (m SplashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Allow skipping splash with any key
 		if msg.String() != "ctrl+c" {
 			return m, func() tea.Msg {

@@ -3,12 +3,13 @@ package models
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
@@ -292,7 +293,7 @@ func (v AddressVerifyView) statusLine(width int) string {
 	return style.Render(text)
 }
 
-func (v AddressVerifyView) borderColor() lipgloss.Color {
+func (v AddressVerifyView) borderColor() color.Color {
 	switch v.State {
 	case AddressVerifyWaiting:
 		return styles.PastelOrange
@@ -316,7 +317,7 @@ func (c addressCell) render() string {
 	if c.style == "" {
 		return c.text
 	}
-	return c.style + c.text + "\x1b[0m"
+	return c.style + c.text + "\x1b[m"
 }
 
 // styledAddressCells splits a formatted address into visible cells so the
@@ -396,7 +397,10 @@ func wrapAddressCells(cells []addressCell, width int) []string {
 
 // sgrPrefix returns the escape sequence a style writes before its text.
 func sgrPrefix(style lipgloss.Style) string {
-	rendered := strings.TrimSuffix(style.Render("x"), "\x1b[0m")
+	rendered := style.Render("x")
+	// Lip Gloss v1 resets with "\x1b[0m"; v2 uses "\x1b[m".
+	rendered = strings.TrimSuffix(rendered, "\x1b[0m")
+	rendered = strings.TrimSuffix(rendered, "\x1b[m")
 	return strings.TrimSuffix(rendered, "x")
 }
 

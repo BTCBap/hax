@@ -11,17 +11,18 @@ import (
 
 	"github.com/BTCBap/hax/internal/wallet"
 
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/backend"
 	"github.com/BTCBap/hax/internal/fsutil"
+	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type TransactionHistoryModel struct {
@@ -112,11 +113,10 @@ type SpeedUpFeeEstimatesMsg struct {
 
 // speedUpTrayState is the inline speed-up panel opened from a pending row.
 type speedUpTrayState struct {
-	tx        api.Transaction
-	tray      Tray
-	rates     [3]float64
-	loading   bool
-	baseLines int
+	tx      api.Transaction
+	tray    Tray
+	rates   [3]float64
+	loading bool
 }
 
 const speedUpCustomIndex = 3
@@ -166,17 +166,17 @@ func NewTransactionHistoryModel(walletManager WalletService) TransactionHistoryM
 
 	t.SetStyles(tableStyles)
 
-	vp := viewport.New(80, 10)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
 
-	searchInput := textinput.New()
+	searchInput := newTextInput()
 	searchInput.Placeholder = "Search transactions..."
 	searchInput.CharLimit = 100
-	searchInput.Width = 50
+	searchInput.SetWidth(50)
 
-	labelInput := textinput.New()
+	labelInput := newTextInput()
 	labelInput.Placeholder = "Enter label for transaction..."
 	labelInput.CharLimit = 255
-	labelInput.Width = 60
+	labelInput.SetWidth(60)
 
 	return TransactionHistoryModel{
 		walletManager: walletManager,
@@ -242,7 +242,7 @@ func (m TransactionHistoryModel) animateTick() tea.Cmd {
 	})
 }
 
-func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m TransactionHistoryModel) Update(msg tea.Msg) (screenModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -272,7 +272,7 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width - 4
+		m.viewport.SetWidth(msg.Width - 4)
 		reservedHeight := 17
 		if m.searchMode {
 			reservedHeight += 2
@@ -294,14 +294,13 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.table.SetHeight(tableHeight)
 		m.itemsPerPage = tableHeight
-		m.viewport.Height = m.height - tableHeight - 14
-		if m.viewport.Height < 5 {
-			m.viewport.Height = 5
+		m.viewport.SetHeight(m.height - tableHeight - 14)
+		if m.viewport.Height() < 5 {
+			m.viewport.SetHeight(5)
 		}
 		m.updateTableData()
 		if m.speedUp != nil {
 			m.speedUp.tray = m.speedUp.tray.WithWidth(m.trayWidth())
-			m.speedUp.baseLines = m.linesWithoutTray()
 		}
 
 	case TransactionsMsg:
@@ -392,7 +391,19 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.animateTick())
 		}
 
-	case tea.KeyMsg:
+	case tea.PasteMsg:
+		if m.editMode {
+			m.labelInput, cmd = m.labelInput.Update(msg)
+			cmds = append(cmds, cmd)
+		} else if m.searchMode {
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			m.searchQuery = m.searchInput.Value()
+			m.currentPage = 0
+			m.updateTableData()
+			cmds = append(cmds, cmd)
+		}
+
+	case tea.KeyPressMsg:
 		// The speed-up tray owns every key while it is open.
 		if m.speedUp != nil {
 			if handled, cmd := m.handleSpeedUpKey(msg); handled {
@@ -471,11 +482,11 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				absoluteIndex := m.currentPage*m.itemsPerPage + m.selectedRow
 				if absoluteIndex >= 0 && absoluteIndex < len(m.filteredTransactions) {
 					tx := m.filteredTransactions[absoluteIndex]
-					err := copyToClipboard(tx.TxID)
-					if err == nil {
+					cmd, err := copyToClipboard(tx.TxID)
+					if err == nil || cmd != nil {
 						m.showCopied = true
 						m.copiedTime = time.Now()
-						cmds = append(cmds, m.animateTick())
+						cmds = append(cmds, m.animateTick(), cmd)
 					} else {
 						m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
 						m.errorTime = time.Now()
@@ -676,13 +687,13 @@ func (m TransactionHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 		}
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseWheelUp:
 			m.table.MoveUp(1)
 			m.selectedRow = m.table.Cursor()
 			return m, nil
-		case tea.MouseButtonWheelDown:
+		case tea.MouseWheelDown:
 			m.table.MoveDown(1)
 			m.selectedRow = m.table.Cursor()
 			return m, nil
@@ -740,6 +751,7 @@ func (m *TransactionHistoryModel) updateTableData() {
 		{Title: "", Width: actionWidth},
 	}
 	m.table.SetColumns(columns)
+	m.table.SetWidth(naturalTableWidth(columns))
 
 	// Get accounts to determine our addresses
 	accounts := m.walletManager.GetAccounts()
@@ -1239,7 +1251,7 @@ func (m TransactionHistoryModel) trayWidth() int {
 // openSpeedUpTray opens the inline panel and loads fee estimates when the
 // wallet has no cached ones.
 func (m *TransactionHistoryModel) openSpeedUpTray(tx api.Transaction) tea.Cmd {
-	m.speedUp = &speedUpTrayState{tx: tx, baseLines: m.linesWithoutTray()}
+	m.speedUp = &speedUpTrayState{tx: tx}
 
 	var estimates *api.FeeEstimates
 	if m.walletManager != nil {
@@ -1322,7 +1334,7 @@ func (m TransactionHistoryModel) fetchSpeedUpFeeEstimates() tea.Cmd {
 	}
 }
 
-func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyMsg) (bool, tea.Cmd) {
+func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	st := m.speedUp
 	if st == nil {
 		return false, nil
@@ -1363,14 +1375,6 @@ func (m *TransactionHistoryModel) handleSpeedUpKey(msg tea.KeyMsg) (bool, tea.Cm
 		return true, NavigateToFeeBumpWithRate(txid, rate)
 	}
 	return true, nil
-}
-
-// linesWithoutTray is the normal history height, used to keep the total
-// line count fixed while the tray is open.
-func (m TransactionHistoryModel) linesWithoutTray() int {
-	clone := m
-	clone.speedUp = nil
-	return lipgloss.Height(clone.View())
 }
 
 // openTransactionFlow shows the selected transaction as a flow diagram.
@@ -1500,17 +1504,22 @@ func (m TransactionHistoryModel) View() string {
 	headerBlock := m.historyHeaderBlock()
 
 	if m.txFlow != nil {
+		headerHeight := lipgloss.Height(headerBlock)
 		flow := *m.txFlow
 		flow.Width = m.width
-		flow.Height = m.height - lipgloss.Height(headerBlock) - 1
+		flow.Height = m.height - headerHeight - 1
 		if flow.Height < 1 {
 			flow.Height = 1
 		}
-		return headerBlock + "\n" + flow.View()
+		base := m
+		base.txFlow = nil
+		base.speedUp = nil
+		return ui.Composite(base.View(), m.width, headerHeight+flow.Height,
+			ui.Overlay{Content: flowBlock(flow), X: 0, Y: headerHeight}.TopLeft())
 	}
 
 	if m.speedUp != nil {
-		return m.viewWithSpeedUp(headerBlock)
+		return m.viewWithSpeedUp()
 	}
 
 	var content string
@@ -1623,28 +1632,34 @@ func (m TransactionHistoryModel) renderTransactionTableAt(tableHeight int) strin
 	return styles.TableBorderStyle.Render(view)
 }
 
-// viewWithSpeedUp keeps the header and table top in place and gives the
-// tray the bottom of the screen. The table loses rows to make room, so the
-// total height stays the same as the normal history view.
-func (m TransactionHistoryModel) viewWithSpeedUp(headerBlock string) string {
+// viewWithSpeedUp keeps the history frame at its normal size and draws the
+// tray as a bottom-centered layer over it. The table fills the space above
+// the tray, so opening the tray never changes the frame height.
+func (m TransactionHistoryModel) viewWithSpeedUp() string {
+	headerBlock := m.historyHeaderBlock()
 	trayView := m.speedUp.tray.View()
-	trayLines := lipgloss.Height(trayView)
-	target := m.speedUp.baseLines
+	trayHeight := lipgloss.Height(trayView)
+
+	frame := m
+	frame.speedUp = nil
+	frameView := frame.View()
+	target := lipgloss.Height(frameView)
 	if target <= 0 {
-		target = m.height
-	}
-	if target <= 0 {
-		target = lipgloss.Height(headerBlock) + trayLines + 6
+		target = lipgloss.Height(headerBlock) + trayHeight + 6
 	}
 
-	tableBlock := target - lipgloss.Height(headerBlock) - trayLines
+	tableBlock := target - lipgloss.Height(headerBlock) - trayHeight
 	if tableBlock < 5 {
 		tableBlock = 5
 	}
+	base := headerBlock + "\n" + m.renderTransactionTableAt(tableBlock-2)
 
-	return headerBlock + "\n" +
-		m.renderTransactionTableAt(tableBlock-2) + "\n" +
-		trayView
+	width := lipgloss.Width(frameView)
+	if width < lipgloss.Width(trayView) {
+		width = lipgloss.Width(trayView)
+	}
+	return ui.Composite(base, width, target,
+		ui.Overlay{Content: trayView}.BottomCenter())
 }
 
 func (m TransactionHistoryModel) renderTransactionDetails() string {
@@ -1682,7 +1697,7 @@ func (m TransactionHistoryModel) renderTransactionDetails() string {
 
 	detailsWidth := styles.ClampWidth(84, m.width)
 	detailsBox := styles.BoxStyle.
-		Width(detailsWidth).
+		Width(detailsWidth + 2).
 		BorderForeground(styles.ElectricBlue).
 		Render(strings.Join(details, "\n"))
 

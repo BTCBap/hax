@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"unicode"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ─── PSBT builders ──────────────────────────────────────────────────────────
@@ -79,8 +80,8 @@ func testBigPSBTBase64(t *testing.T) string {
 	return b64
 }
 
-func pasteMsg(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s), Paste: true}
+func pasteMsg(s string) tea.PasteMsg {
+	return tea.PasteMsg{Content: s}
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -252,7 +253,7 @@ func TestSend_URInputAcceptsBase64(t *testing.T) {
 	updated, _ = m.Update(pasteMsg(wrapped))
 	m = asSendModel(t, updated)
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.Update(keyCode(tea.KeyEnter))
 	m = asSendModel(t, updated)
 
 	if m.psbtExportErr != nil {
@@ -263,5 +264,35 @@ func TestSend_URInputAcceptsBase64(t *testing.T) {
 	}
 	if m.showURInput {
 		t.Fatalf("showURInput = true, want false after a successful import")
+	}
+}
+
+// TestSend_URInputPasteStripsWhitespace covers pasting a base64 PSBT into the
+// UR import overlay with line wraps and spaces: the input must hold the PSBT
+// text without any whitespace.
+func TestSend_URInputPasteStripsWhitespace(t *testing.T) {
+	m := newTestSend(t)
+	small := testPSBTBase64(t)
+
+	m.step = SendStepReview
+	m.showPSBTExport = true
+	m.psbtBase64 = small
+
+	updated, _ := m.Update(keyRunes("u"))
+	m = asSendModel(t, updated)
+	if !m.showURInput {
+		t.Fatalf("pressing u in the PSBT export view did not open the UR input")
+	}
+
+	pasted := small[:10] + " \n " + small[10:30] + "\r\n\t" + small[30:]
+	updated, _ = m.Update(pasteMsg(pasted))
+	m = asSendModel(t, updated)
+
+	got := m.urInput.Value()
+	if i := strings.IndexFunc(got, unicode.IsSpace); i >= 0 {
+		t.Fatalf("urInput.Value() contains whitespace at byte %d (length %d)", i, len(got))
+	}
+	if got != small {
+		t.Fatalf("urInput.Value() length = %d, want %d (exact match)", len(got), len(small))
 	}
 }

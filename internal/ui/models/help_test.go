@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/wallet"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestNewHelpModel(t *testing.T) {
@@ -33,19 +33,19 @@ func TestHelpInit_ReturnsTickCmd(t *testing.T) {
 
 func TestHelpKeyEsc_NavigatesToDashboard(t *testing.T) {
 	m := NewHelpModel(nil)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestHelpKeyQ_NavigatesToDashboard(t *testing.T) {
 	m := NewHelpModel(nil)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(keyRune('q'))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestHelpKeyQuestion_NavigatesToDashboard(t *testing.T) {
 	m := NewHelpModel(nil)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	_, cmd := m.Update(keyRune('?'))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -76,7 +76,7 @@ func TestHelpWindowSizeMsg(t *testing.T) {
 func TestHelpTickMsg_AdvancesFadeIn(t *testing.T) {
 	m := NewHelpModel(nil)
 	m.isActive = true
-	var model tea.Model = m
+	var model screenModel = m
 	for i := 0; i < 20; i++ {
 		model, _ = model.Update(TickMsg(time.Now()))
 	}

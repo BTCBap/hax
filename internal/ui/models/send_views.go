@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/ui/styles"
 	"github.com/BTCBap/hax/internal/wallet"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // sendCompactAddressWidth keeps the compact address column used by the send
@@ -203,7 +203,7 @@ func (m SendModel) viewAmountInput() string {
 	if addrBoxWidth < 40 {
 		addrBoxWidth = 40
 	}
-	addrDisplay := styles.BoxStyle.Width(addrBoxWidth).Render(addrContent)
+	addrDisplay := styles.BoxStyle.Width(addrBoxWidth + 2).Render(addrContent)
 
 	unitLabel := "BTC"
 	if !m.usesBTC {
@@ -645,7 +645,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 
 		inputRows = append(inputRows, renderRow("Total Input:", formatBTCWithSats(m.psbtResult.TotalInput())))
 
-		inputsSection = styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(inputRows, "\n"))
+		inputsSection = styles.InfoBoxStyle.Width(boxWidth + 2).Render(strings.Join(inputRows, "\n"))
 	}
 
 	// === OUTPUTS SECTION ===
@@ -697,7 +697,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 
 	outputRows = append(outputRows, renderRow("Total Output:", formatBTCWithSats(totalRecipientAmount+m.psbtResult.Change)))
 
-	outputsSection := styles.InfoBoxStyle.Width(boxWidth).Render(strings.Join(outputRows, "\n"))
+	outputsSection := styles.InfoBoxStyle.Width(boxWidth + 2).Render(strings.Join(outputRows, "\n"))
 
 	// === FEE & SIZE BREAKDOWN ===
 	// Calculate actual transaction size breakdown
@@ -725,7 +725,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 		renderRow("Total Cost:", formatBTCWithSats(totalRecipientAmount+displayFee)),
 	}
 
-	feeSection := styles.BoxStyle.Width(boxWidth).Render(strings.Join(feeRows, "\n"))
+	feeSection := styles.BoxStyle.Width(boxWidth + 2).Render(strings.Join(feeRows, "\n"))
 
 	reviewWarnings := m.buildReviewWarnings(totalRecipientAmount, displayFee, txVSize)
 	warningSection := ""
@@ -734,7 +734,7 @@ func (m SendModel) buildReviewScrollable() (string, string, string) {
 		for _, warning := range reviewWarnings {
 			warningLines = append(warningLines, "• "+warning)
 		}
-		warningSection = styles.WarningBoxStyle.Width(boxWidth).Render(strings.Join(warningLines, "\n"))
+		warningSection = styles.WarningBoxStyle.Width(boxWidth + 2).Render(strings.Join(warningLines, "\n"))
 	}
 
 	// Dust warning - show if dust was absorbed into fee
@@ -801,15 +801,21 @@ func (m SendModel) viewReviewTxFlow() string {
 	return m.renderTxFlowUnder(header)
 }
 
-// renderTxFlowUnder draws the visualizer in the rows left below header.
+// renderTxFlowUnder draws the visualizer over the rows below header. The
+// flow block is opaque, so the screen behind it keeps its size and does not
+// show through the diagram's blank rows.
 func (m SendModel) renderTxFlowUnder(header string) string {
+	headerHeight := lipgloss.Height(header)
 	flow := *m.txFlow
 	flow.Width = m.width
-	flow.Height = m.height - lipgloss.Height(header) - 1
+	flow.Height = m.height - headerHeight - 1
 	if flow.Height < 1 {
 		flow.Height = 1
 	}
-	return header + "\n" + flow.View()
+	base := m
+	base.txFlow = nil
+	return ui.Composite(base.View(), m.width, headerHeight+flow.Height,
+		ui.Overlay{Content: flowBlock(flow), X: 0, Y: headerHeight}.TopLeft())
 }
 
 func (m SendModel) viewBroadcasting() string {
@@ -890,7 +896,7 @@ func (m SendModel) viewComplete() string {
 	if completeBoxWidth < 40 {
 		completeBoxWidth = 40
 	}
-	successBox := styles.SuccessBoxStyle.Width(completeBoxWidth).Render(strings.Join(summaryRows, "\n"))
+	successBox := styles.SuccessBoxStyle.Width(completeBoxWidth + 2).Render(strings.Join(summaryRows, "\n"))
 
 	// Show "copied" indicator if transaction ID was just copied
 	copiedIndicator := ""
@@ -898,7 +904,7 @@ func (m SendModel) viewComplete() string {
 		copiedIndicator = "\n" + styles.SuccessBoxStyle.Render("✓ Copied to clipboard!")
 	}
 
-	info := styles.InfoBoxStyle.Width(completeBoxWidth).Render(
+	info := styles.InfoBoxStyle.Width(completeBoxWidth + 2).Render(
 		"🔍 Track your transaction:\n\n" +
 			wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID))
 
@@ -954,8 +960,8 @@ func (m *SendModel) syncScrollViewport() {
 		availableHeight = 1
 	}
 
-	m.scrollViewport.Width = width
-	m.scrollViewport.Height = availableHeight
+	m.scrollViewport.SetWidth(width)
+	m.scrollViewport.SetHeight(availableHeight)
 	m.scrollViewport.SetContent(content)
 }
 
@@ -971,7 +977,7 @@ func (m SendModel) renderScrollableViewport(header, content, footer string) stri
 	}
 
 	indicator := ""
-	if m.scrollViewport.TotalLineCount() > m.scrollViewport.Height {
+	if m.scrollViewport.TotalLineCount() > m.scrollViewport.Height() {
 		scrollPct := int(m.scrollViewport.ScrollPercent() * 100)
 		indicator = styles.ScrollIndicatorStyle.Render(fmt.Sprintf("  %d%%", scrollPct))
 	}

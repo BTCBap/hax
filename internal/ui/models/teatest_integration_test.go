@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 
 	"github.com/BTCBap/hax/internal/config"
 )
@@ -30,7 +30,7 @@ func TestRootTeatest_SplashToWalletSetup(t *testing.T) {
 	}, teatest.WithDuration(3*time.Second))
 
 	// Quit the program
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+	tm.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 }
 
@@ -46,7 +46,7 @@ func TestRootTeatest_SplashKeySkip(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 
 	// Press a key to skip the splash immediately (don't wait for auto-navigate)
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	tm.Send(keyRune(' '))
 
 	// Should arrive at wallet setup
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
@@ -54,7 +54,7 @@ func TestRootTeatest_SplashKeySkip(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second))
 
 	// Verify final model state
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+	tm.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	final := tm.FinalModel(t, teatest.WithFinalTimeout(2*time.Second))
 	root := final.(RootModel)
 	if root.state != StateWalletSetup {
@@ -83,7 +83,7 @@ func TestRootTeatest_NavigateToHelp(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second))
 
 	// Quit
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
+	tm.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	final := tm.FinalModel(t, teatest.WithFinalTimeout(2*time.Second))
 	root := final.(RootModel)
 	if root.state != StateHelp {

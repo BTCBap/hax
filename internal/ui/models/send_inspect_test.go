@@ -4,14 +4,12 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/ui"
 	"github.com/BTCBap/hax/internal/wallet"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/wire"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 )
 
 const (
@@ -61,10 +59,6 @@ func TestSigningGate(t *testing.T) {
 // address, so one that cannot fit the box wraps by visible cells with the
 // continuation indent and keeps each group's style.
 func TestRenderInspection_WrapsLongAddress(t *testing.T) {
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
-
 	const boxWidth = 40
 	m := NewSendModel(NewMockWalletManager(), 0, nil)
 	m.inspection = &wallet.PSBTInspection{

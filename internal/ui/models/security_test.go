@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSettings_MnemonicCannotBeCopied(t *testing.T) {
@@ -15,7 +13,7 @@ func TestSettings_MnemonicCannotBeCopied(t *testing.T) {
 	m.showMnemonic = true
 	m.mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	updated, _ := m.Update(keyRune('c'))
 	sm := updated.(SettingsModel)
 	if sm.showCopied {
 		t.Fatal("pressing 'c' on the seed view must not copy the mnemonic")

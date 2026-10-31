@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/BTCBap/hax/internal/config"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSettings_SaveFailureIsShown(t *testing.T) {
@@ -22,7 +22,7 @@ func TestSettings_SaveFailureIsShown(t *testing.T) {
 	m := NewSettingsModel(mock, cm)
 	m.width, m.height = 100, 40
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	model, _ := m.Update(keyRune('u'))
 	sm := model.(SettingsModel)
 	if !strings.HasPrefix(sm.copyMessage, "Not saved") {
 		t.Fatalf("status = %q, want a not-saved message", sm.copyMessage)
@@ -32,7 +32,7 @@ func TestSettings_SaveFailureIsShown(t *testing.T) {
 func TestConnectionSetup_FromSettingsAppliesServer(t *testing.T) {
 	m := NewConnectionSetupModel(nil, true)
 	m.step = StepConnectionComplete
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(keyCode(tea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("no command")
 	}

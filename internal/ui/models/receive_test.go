@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/BTCBap/hax/internal/api"
 	"github.com/BTCBap/hax/internal/ui"
@@ -94,13 +94,13 @@ func TestReceive_AddressGeneratedMsg_UpdatesState(t *testing.T) {
 
 func TestReceive_EscNavigatesBack(t *testing.T) {
 	m, _ := newTestReceive(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(keyCode(tea.KeyEsc))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
 func TestReceive_QNavigatesBack(t *testing.T) {
 	m, _ := newTestReceive(t)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	_, cmd := m.Update(keyRunes("q"))
 	assertNavigatesTo(t, cmd, StateMainDashboard)
 }
 
@@ -111,7 +111,7 @@ func TestReceive_LeftRight_NavigatesAddresses(t *testing.T) {
 	m.selectedAddress = "tb1q_current"
 
 	// Press left
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	model, cmd := m.Update(keyCode(tea.KeyLeft))
 	updated := model.(ReceiveModel)
 	if !updated.generatingNew {
 		t.Error("expected generatingNew=true after left")
@@ -122,7 +122,7 @@ func TestReceive_LeftRight_NavigatesAddresses(t *testing.T) {
 	}
 
 	// Press right from original
-	model, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model, cmd = m.Update(keyCode(tea.KeyRight))
 	updated = model.(ReceiveModel)
 	if !updated.generatingNew {
 		t.Error("expected generatingNew=true after right")
@@ -137,7 +137,7 @@ func TestReceive_Left_ClampsAtZero(t *testing.T) {
 	m, _ := newTestReceive(t)
 	m.currentIndex = 0
 
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	model, _ := m.Update(keyCode(tea.KeyLeft))
 	updated := model.(ReceiveModel)
 	if updated.generatingNew {
 		t.Error("left at index 0 should not trigger loading")
@@ -167,7 +167,7 @@ func TestReceive_Right_LoadsNextAddress(t *testing.T) {
 		return receiveAddressAt(index), receivePathAt(index), nil
 	}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model, cmd := m.Update(keyCode(tea.KeyRight))
 	loading := model.(ReceiveModel)
 	if !loading.generatingNew {
 		t.Fatal("right should mark the model as loading")
@@ -218,7 +218,7 @@ func TestReceive_Left_LoadsPreviousAddress(t *testing.T) {
 		return receiveAddressAt(index), receivePathAt(index), nil
 	}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	model, cmd := m.Update(keyCode(tea.KeyLeft))
 	loading := model.(ReceiveModel)
 	if !loading.generatingNew {
 		t.Fatal("left should mark the model as loading")
@@ -265,7 +265,7 @@ func TestReceive_NonArrowKeysDoNotNavigate(t *testing.T) {
 				return receiveAddressAt(index), receivePathAt(index), nil
 			}
 
-			model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			model, cmd := m.Update(keyRunes(key))
 			updated := model.(ReceiveModel)
 			if updated.generatingNew {
 				t.Fatalf("%q should not start a load", key)
@@ -286,7 +286,7 @@ func TestReceive_Right_IgnoredWhileLoading(t *testing.T) {
 	m.firstUnusedIndex = 3
 	m.generatingNew = true
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model, cmd := m.Update(keyCode(tea.KeyRight))
 	updated := model.(ReceiveModel)
 	if !updated.generatingNew {
 		t.Fatal("right while loading should keep generatingNew true")
@@ -305,7 +305,7 @@ func TestReceive_Right_StopsAtGapLimit(t *testing.T) {
 		return receiveAddressAt(index), receivePathAt(index), nil
 	}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model, cmd := m.Update(keyCode(tea.KeyRight))
 	updated := model.(ReceiveModel)
 	if updated.generatingNew {
 		t.Fatal("right at the gap cap should not start a load")
@@ -315,7 +315,7 @@ func TestReceive_Right_StopsAtGapLimit(t *testing.T) {
 	}
 
 	updated.currentIndex = lastIndex - 1
-	_, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRight})
+	_, cmd = updated.Update(keyCode(tea.KeyRight))
 	msg, ok := findMsgOfType[AddressGeneratedMsg](collectMsgs(cmd))
 	if !ok {
 		t.Fatal("right one below the gap cap should load the last allowed address")
@@ -355,8 +355,8 @@ func TestReceive_View_StableAcrossAddressIndexes(t *testing.T) {
 	base := NewReceiveModel(mock)
 	base.width = 100
 	base.height = 40
-	base.viewport.Width = 96
-	base.viewport.Height = 30
+	base.viewport.SetWidth(96)
+	base.viewport.SetHeight(30)
 
 	var wantLines, wantHintLine, wantBorderLine int
 	for i, index := range []uint32{0, 1, 9, 10} {
@@ -403,7 +403,7 @@ func newHardwareReceive(t *testing.T) (ReceiveModel, *MockWalletManager) {
 	return m, mock
 }
 
-func pressReceiveKey(t *testing.T, m ReceiveModel, key tea.KeyMsg) ReceiveModel {
+func pressReceiveKey(t *testing.T, m ReceiveModel, key tea.KeyPressMsg) ReceiveModel {
 	t.Helper()
 	model, _ := m.Update(key)
 	return model.(ReceiveModel)
@@ -421,7 +421,7 @@ func TestReceive_VerifyModeReplacesQRCard(t *testing.T) {
 		t.Fatalf("idle receive view is missing the verify hint:\n%s", stripANSI(before))
 	}
 
-	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = pressReceiveKey(t, m, keyRunes("v"))
 	view := m.View()
 	plain := stripANSI(view)
 	if !strings.Contains(plain, "Verify on device") {
@@ -432,7 +432,7 @@ func TestReceive_VerifyModeReplacesQRCard(t *testing.T) {
 	}
 	assertWithinTerminal(t, view, 80, 24)
 
-	restored := pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	restored := pressReceiveKey(t, m, keyCode(tea.KeyEsc))
 	if got := restored.View(); got != before {
 		t.Fatalf("esc did not restore the receive view exactly:\nbefore:\n%q\nafter:\n%q", before, got)
 	}
@@ -490,14 +490,14 @@ func TestReceive_VerifyEscWhileWaitingDiscardsResult(t *testing.T) {
 	m = model.(ReceiveModel)
 	before := m.View()
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, cmd := m.Update(keyRunes("v"))
 	m = model.(ReceiveModel)
 	if !m.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
 	}
 	attempt := m.verify.Attempt()
 
-	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = pressReceiveKey(t, m, keyCode(tea.KeyEsc))
 	if m.verify.Active() {
 		t.Fatal("esc while waiting should leave verify mode")
 	}
@@ -519,13 +519,13 @@ func TestReceive_VerifyRetryStartsNewAttempt(t *testing.T) {
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = model.(ReceiveModel)
 
-	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = pressReceiveKey(t, m, keyRunes("v"))
 	first := m.verify.Attempt()
 	if !m.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
 	}
 
-	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = pressReceiveKey(t, m, keyRunes("v"))
 	second := m.verify.Attempt()
 	if second == first {
 		t.Fatal("v in verify mode should start a new attempt")
@@ -592,7 +592,7 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 
 	// Software wallet: 'v' should NOT trigger verify
 	mock.IsHardwareWalletFn = func() bool { return false }
-	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, _ := m.Update(keyRunes("v"))
 	updated := model.(ReceiveModel)
 	if updated.verify.IsWaiting() {
 		t.Error("v should not trigger verify for software wallet")
@@ -601,7 +601,7 @@ func TestReceive_V_VerifyOnDevice_OnlyForHardware(t *testing.T) {
 	// Hardware wallet: 'v' should trigger verify
 	mock.IsHardwareWalletFn = func() bool { return true }
 	mock.IsMultisigFn = func() bool { return false }
-	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, _ = m.Update(keyRunes("v"))
 	updated = model.(ReceiveModel)
 	if !updated.verify.IsWaiting() {
 		t.Error("v should trigger verify for hardware wallet")
@@ -622,7 +622,7 @@ func TestReceive_VerifyOnDevice_Mismatch(t *testing.T) {
 		return &wallet.AddressMismatchError{Displayed: verifyTestDevice, Expected: addr}
 	}
 
-	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	model, cmd := m.Update(keyRunes("v"))
 	waiting := model.(ReceiveModel)
 	if !waiting.verify.IsWaiting() {
 		t.Fatal("v should start device verification")
@@ -653,7 +653,7 @@ func TestReceive_VerifyModeOuterHintRow(t *testing.T) {
 	m, _ := newHardwareReceive(t)
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = model.(ReceiveModel)
-	m = pressReceiveKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = pressReceiveKey(t, m, keyRunes("v"))
 
 	states := []struct {
 		state AddressVerifyState
