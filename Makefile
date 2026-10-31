@@ -2,7 +2,7 @@
 # Provides build targets with version injection
 
 # Version information
-VERSION := 1.3.0
+VERSION := 1.5.0
 PRERELEASE :=
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")

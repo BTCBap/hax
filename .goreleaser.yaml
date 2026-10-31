@@ -9,12 +9,13 @@ before:
     - go test ./...
 
 builds:
-  - id: hax
+  - &hax-build
+    id: hax
     main: ./cmd/hax
     binary: hax
     env:
       - CGO_ENABLED=0
-    goos: [darwin, linux, windows]
+    goos: [linux, windows]
     goarch: [amd64, arm64]
     ignore:
       - goos: windows
@@ -31,8 +32,14 @@ builds:
         -X github.com/BTCBap/hax/internal/version.GitCommit={{ .ShortCommit }}
         -X github.com/BTCBap/hax/internal/version.GitBranch={{ .Branch }}
         -X github.com/BTCBap/hax/internal/version.BuildDate={{ .CommitDate }}
+  # Separate build ID so only macOS archives get Hax.app.
+  - <<: *hax-build
+    id: hax-darwin
+    goos: [darwin]
+    ignore: []
 
 archives:
+  # Linux and Windows archives keep the existing names and contents.
   - id: default
     ids: [hax]
     formats: [tar.gz]
@@ -43,6 +50,42 @@ archives:
       - README.md
       - LICENSE
       - SECURITY.md
+  # macOS archives also ship the unsigned Hax.app launcher next to hax.
+  - id: macos
+    ids: [hax-darwin]
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE
+      - SECURITY.md
+      - src: packaging/macos/Hax.app/Contents/Info.plist
+        dst: Hax.app/Contents/Info.plist
+        info:
+          mode: 0644
+      - src: packaging/macos/Hax.app/Contents/MacOS/hax-launcher
+        dst: Hax.app/Contents/MacOS/hax-launcher
+        info:
+          mode: 0755
+
+nfpms:
+  - id: packages
+    package_name: hax
+    vendor: BTCBap
+    homepage: https://github.com/BTCBap/hax
+    maintainer: "BTCBap <71675475+BTCBap@users.noreply.github.com>"
+    description: |-
+      Terminal Bitcoin wallet with PSBT, hardware wallet and multisig support.
+      Supports mainnet and testnet4.
+    license: MIT
+    section: utils
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    ids: [hax]
+    contents:
+      - src: packaging/linux/hax.desktop
+        dst: /usr/share/applications/hax.desktop
+        file_info:
+          mode: 0644
 
 checksum:
   name_template: checksums.txt

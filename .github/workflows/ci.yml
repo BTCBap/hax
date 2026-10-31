@@ -61,6 +61,69 @@ jobs:
         with:
           version: v2.14.0
 
+  installers:
+    name: install scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: shellcheck
+        run: shellcheck install.sh packaging/macos/Hax.app/Contents/MacOS/hax-launcher
+      - name: install.sh against v1.4.0
+        run: |
+          bindir="$(mktemp -d)/bin"
+          HAX_INSTALL_DIR="$bindir" HAX_VERSION=v1.4.0 sh install.sh
+          "$bindir/hax" --version
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.19.0
+          args: check
+
+  installers-macos:
+    name: install script (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: install.sh against v1.4.0
+        run: |
+          bindir="$(mktemp -d)/bin"
+          HAX_INSTALL_DIR="$bindir" HAX_VERSION=v1.4.0 HAX_NO_SUDO=1 sh install.sh
+          "$bindir/hax" --version
+
+  installers-windows:
+    name: install script (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse install.ps1
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+      - name: install.ps1 against v1.4.0
+        shell: pwsh
+        run: |
+          $env:HAX_VERSION = "v1.4.0"
+          powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Shortcut
+          & "$env:LOCALAPPDATA\Programs\hax\hax.exe" --version
+      - name: uninstall
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Uninstall
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:
