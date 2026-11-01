@@ -846,6 +846,21 @@ func (m SendModel) viewComplete() string {
 	var addrSection string
 	var numRecipients int
 
+	completeBoxWidth := m.width - 4
+	if completeBoxWidth > 70 {
+		completeBoxWidth = 70
+	}
+	if completeBoxWidth < 40 {
+		completeBoxWidth = 40
+	}
+	explorerURL := wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID)
+	// On wide terminals let the card grow enough to show the whole URL.
+	if needed := lipgloss.Width(explorerURL) + 4; needed > completeBoxWidth && needed <= m.width-4 {
+		completeBoxWidth = needed
+	}
+	// Outer width minus border and horizontal padding.
+	contentWidth := completeBoxWidth - 4
+
 	if len(m.recipients) > 0 {
 		// Normal flow: use recipients
 		for _, r := range m.recipients {
@@ -854,14 +869,10 @@ func (m SendModel) viewComplete() string {
 		numRecipients = len(m.recipients)
 
 		if numRecipients == 1 {
-			formattedAddr := ui.FormatAddress(m.recipients[0].Address, 0)
-			addrSection = lipgloss.JoinVertical(
-				lipgloss.Center,
-				styles.DimText.Render("To:"),
-				formattedAddr,
-			)
+			formattedAddr := ui.FormatAddress(m.recipients[0].Address, contentWidth-16)
+			addrSection = renderRow("To:", formattedAddr)
 		} else {
-			addrSection = styles.DimText.Render(fmt.Sprintf("To: %d recipients", numRecipients))
+			addrSection = renderRow("To:", fmt.Sprintf("%d recipients", numRecipients))
 		}
 	} else if m.psbtResult != nil && m.psbtResult.Packet != nil {
 		// Imported PSBT: extract from PSBT outputs
@@ -872,10 +883,10 @@ func (m SendModel) viewComplete() string {
 				totalAmount += api.Satoshi(txOut.Value)
 			}
 			numRecipients = len(tx.TxOut)
-			addrSection = styles.DimText.Render(fmt.Sprintf("To: %d output(s)", numRecipients))
+			addrSection = renderRow("To:", fmt.Sprintf("%d output(s)", numRecipients))
 		}
 	} else {
-		addrSection = styles.DimText.Render("To: imported transaction")
+		addrSection = renderRow("To:", "imported transaction")
 	}
 
 	summaryRows := []string{
@@ -889,30 +900,30 @@ func (m SendModel) viewComplete() string {
 		styles.HighlightText.Render(m.txID),
 	}
 
-	completeBoxWidth := m.width - 4
-	if completeBoxWidth > 70 {
-		completeBoxWidth = 70
-	}
-	if completeBoxWidth < 40 {
-		completeBoxWidth = 40
-	}
 	successBox := styles.SuccessBoxStyle.Width(completeBoxWidth + 2).Render(strings.Join(summaryRows, "\n"))
 
 	// Show "copied" indicator if transaction ID was just copied
 	copiedIndicator := ""
 	if m.showCopied && time.Since(m.copiedTime) <= 2*time.Second {
-		copiedIndicator = "\n" + styles.SuccessBoxStyle.Render("✓ Copied to clipboard!")
+		if m.lastAction == "link" {
+			copiedIndicator = "\n" + styles.SuccessText.Render("✓ link copied")
+		} else {
+			copiedIndicator = "\n" + styles.SuccessBoxStyle.Render("✓ Copied to clipboard!")
+		}
 	}
 
+	// Keep the URL on one line. The visible text is shortened when it does not
+	// fit, but the hyperlink target and the u copy payload stay the full URL.
+	link := styles.Hyperlink(explorerURL, styles.FitURL(explorerURL, contentWidth))
 	info := styles.InfoBoxStyle.Width(completeBoxWidth + 2).Render(
-		"🔍 Track your transaction:\n\n" +
-			wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID))
+		"🔍 Track your transaction:\n\n" + link)
 
-	help := styles.RenderHelp(
+	help := styles.RenderHelpWrapped(m.width,
 		styles.HK("c", "copy txid"),
+		styles.HK("u", "copy link"),
 		styles.HK("enter", "open in browser"),
 		styles.HK("n", "new transaction"),
-		styles.HK("q/esc", "back to dashboard"),
+		styles.HK("q/esc", "dashboard"),
 	)
 
 	return header + "\n\n" +
