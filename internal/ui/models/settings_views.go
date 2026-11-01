@@ -574,18 +574,28 @@ func (m SettingsModel) viewDescriptorMenu() string {
 
 	parts := []string{
 		"",
-		title + copyStatus,
+		m.centerBlock(title + copyStatus),
 	}
 	if qrSection != "" {
-		parts = append(parts, "", qrSection)
+		parts = append(parts, "", m.centerBlock(qrSection))
 	}
-	parts = append(parts, "", descriptorBox)
+	parts = append(parts, "", m.centerBlock(descriptorBox))
 	if cosignerSection != "" {
-		parts = append(parts, "", cosignerSection)
+		parts = append(parts, "", m.centerBlock(cosignerSection))
 	}
-	parts = append(parts, "", help)
+	parts = append(parts, "", m.centerBlock(help))
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// centerBlock centers a rendered section in the terminal. The descriptor box
+// keeps its own width, so it stays centered on wide screens instead of sitting
+// against the left edge.
+func (m SettingsModel) centerBlock(block string) string {
+	if m.width <= 0 {
+		return block
+	}
+	return styles.CenterHorizontal(block, m.width)
 }
 
 // viewMnemonicWarning shows security warning before revealing mnemonic

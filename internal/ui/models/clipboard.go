@@ -15,6 +15,8 @@ var clipboardClearTimeout = 60 * time.Second
 var (
 	clipboardWrite = clipboard.WriteAll
 	clipboardRead  = clipboard.ReadAll
+	// clipboardSet is the OSC 52 writer. Tests replace it to inspect payloads.
+	clipboardSet = tea.SetClipboard
 )
 
 var (
@@ -28,7 +30,7 @@ var (
 // succeeded. The returned error is the local clipboard error; a non-nil
 // command means the copy can still reach the terminal.
 func copyToClipboard(text string) (tea.Cmd, error) {
-	cmd := tea.SetClipboard(text)
+	cmd := clipboardSet(text)
 	err := clipboardWrite(text)
 	if err != nil {
 		return cmd, err
@@ -38,8 +40,9 @@ func copyToClipboard(text string) (tea.Cmd, error) {
 	clipboardVal = text
 	clipboardMu.Unlock()
 
+	timeout := clipboardClearTimeout
 	go func() {
-		time.Sleep(clipboardClearTimeout)
+		time.Sleep(timeout)
 		clearClipboard()
 	}()
 	return cmd, nil

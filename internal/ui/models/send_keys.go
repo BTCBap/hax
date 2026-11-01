@@ -1041,6 +1041,23 @@ func (m *SendModel) handleComplete(msg tea.KeyPressMsg) (screenModel, tea.Cmd) {
 			if err == nil || cmd != nil {
 				m.showCopied = true
 				m.copiedTime = time.Now()
+				m.lastAction = "copied"
+				return m, tea.Batch(m.animateTick(), cmd)
+			} else {
+				m.err = fmt.Errorf("failed to copy to clipboard: %v", err)
+			}
+		}
+		return m, nil
+
+	case "u":
+		// Copy the full explorer link, even when the visible text is shortened.
+		if m.txID != "" {
+			url := wallet.ExplorerTxURL(walletNetwork(m.walletManager), m.txID)
+			cmd, err := copyToClipboard(url)
+			if err == nil || cmd != nil {
+				m.showCopied = true
+				m.copiedTime = time.Now()
+				m.lastAction = "link"
 				return m, tea.Batch(m.animateTick(), cmd)
 			} else {
 				m.err = fmt.Errorf("failed to copy to clipboard: %v", err)

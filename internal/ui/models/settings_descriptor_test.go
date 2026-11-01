@@ -150,9 +150,12 @@ func TestDescriptorBoxCentersWrappedLines(t *testing.T) {
 		"[abcd1234/48h/1h/0h/2h]" + testXpub + "/1/*," +
 		"[cafebabe/48h/1h/0h/2h]" + testXpub + "/2/*)"
 
-	for _, width := range []int{80, 120} {
+	for _, width := range []int{80, 120, 200} {
 		m := SettingsModel{width: width, descriptorText: descriptor}
 		box := m.renderDescriptorBox()
+		if again := m.renderDescriptorBox(); again != box {
+			t.Errorf("width %d: descriptor box changed on re-render", width)
+		}
 		boxWidth := descriptorBoxWidth(m.width)
 		inner := descriptorInnerWidth(boxWidth)
 		want := wrapDescriptor(descriptor, inner)
@@ -179,6 +182,69 @@ func TestDescriptorBoxCentersWrappedLines(t *testing.T) {
 			}
 			if ansi.StringWidth(strings.TrimSpace(line)) > inner {
 				t.Errorf("width %d: descriptor line %d exceeds inner width %d: %q", width, i, inner, line)
+			}
+		}
+	}
+}
+
+// descriptorBoxFromView returns the descriptor box lines from a full screen
+// render, including borders and any horizontal centering around the box.
+func descriptorBoxFromView(view string) []string {
+	lines := strings.Split(view, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.Contains(line, "wsh(") || strings.Contains(line, "wpkh(") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	for start > 0 && !strings.Contains(lines[start], "╭") {
+		start--
+	}
+	end := start
+	for end < len(lines) && !strings.Contains(lines[end], "╰") {
+		end++
+	}
+	if end >= len(lines) {
+		return nil
+	}
+	return lines[start : end+1]
+}
+
+func TestDescriptorViewCentersBoxInTerminal(t *testing.T) {
+	descriptor := "wsh(sortedmulti(2," +
+		"[0f056943/48h/1h/0h/2h]" + testXpub + "/0/*," +
+		"[abcd1234/48h/1h/0h/2h]" + testXpub + "/1/*," +
+		"[cafebabe/48h/1h/0h/2h]" + testXpub + "/2/*))"
+
+	for _, width := range []int{80, 120, 200} {
+		mock := NewMockWalletManager()
+		m := SettingsModel{width: width, height: 40, walletManager: mock, descriptorText: descriptor}
+		m.showDescriptorMenu = true
+
+		box := descriptorBoxFromView(ansi.Strip(m.View()))
+		if len(box) < 3 {
+			t.Fatalf("width %d: descriptor box not found", width)
+		}
+		again := descriptorBoxFromView(ansi.Strip(m.View()))
+		if strings.Join(box, "\n") != strings.Join(again, "\n") {
+			t.Errorf("width %d: descriptor box changed on re-render", width)
+		}
+
+		for i, line := range box {
+			if ansi.StringWidth(line) != width {
+				t.Errorf("width %d: line %d is %d cells, want the full terminal width", width, i, ansi.StringWidth(line))
+			}
+			if strings.Contains(line, "╭") || strings.Contains(line, "╰") {
+				continue
+			}
+			left := len(line) - len(strings.TrimLeft(line, " "))
+			right := len(line) - len(strings.TrimRight(line, " "))
+			if left-right > 1 || right-left > 1 {
+				t.Errorf("width %d: descriptor line %d is not centered (left %d, right %d): %q", width, i, left, right, strings.TrimSpace(line))
 			}
 		}
 	}
